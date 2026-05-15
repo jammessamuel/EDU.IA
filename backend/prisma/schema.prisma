@@ -1,0 +1,64 @@
+// ============================================================
+// PRISMA SCHEMA — EduFlow Demo
+// ============================================================
+// O schema define a estrutura do banco de dados.
+// Cada "model" vira uma tabela no PostgreSQL.
+// O Prisma lê esse arquivo e gera o cliente TypeScript
+// que usamos no código para fazer queries no banco.
+//
+// Para aplicar mudanças no banco:
+//   npx prisma migrate dev --name nome-da-mudanca
+//
+// Para regenerar o cliente TypeScript após mudança no schema:
+//   npx prisma generate
+// ============================================================
+
+// Configura qual biblioteca o Prisma vai gerar.
+// "prisma-client-js" é o padrão para TypeScript/JavaScript.
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Configura a conexão com o banco.
+// A URL vem da variável de ambiente DATABASE_URL definida no .env
+// Formato: postgresql://usuario:senha@host:porta/nome_do_banco
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// Tabela: leads
+// Representa um aluno que demonstrou interesse
+// e foi qualificado pela IA durante a conversa.
+// ──────────────────────────────────────────────
+model Lead {
+  // Identificador único gerado automaticamente (UUID = string aleatória longa)
+  id        String   @id @default(uuid())
+
+  // Nome completo do aluno, coletado pela IA na conversa
+  name      String
+
+  // Telefone — opcional por enquanto (no simulador não capturamos ainda)
+  phone     String?
+
+  // Curso de interesse (ex: "Enfermagem", "Direito")
+  course    String
+
+  // Unidade preferida (ex: "Centro", "Norte")
+  unit      String
+
+  // Turno preferido: "manhã", "tarde" ou "noite"
+  shift     String
+
+  // Flag que indica se o lead foi completamente qualificado pela IA.
+  // true = tem todas as informações necessárias para o atendente humano agir
+  qualified Boolean  @default(true)
+
+  // Data/hora em que o lead foi criado — preenchida automaticamente
+  createdAt DateTime @default(now())
+
+  // @@map define o nome real da tabela no banco.
+  // Sem isso, o Prisma usaria "Lead" (com L maiúsculo).
+  @@map("leads")
+}
