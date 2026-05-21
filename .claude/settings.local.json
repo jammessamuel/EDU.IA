@@ -19,7 +19,11 @@
       "Bash(pnpm start:dev > /tmp/nest.log 2>&1 & *)",
       "Bash(node_modules/.bin/nest start *)",
       "Bash(pnpm build *)",
-      "Bash(node_modules/.bin/nest build *)"
+      "Bash(node_modules/.bin/nest build *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(node_modules/.bin/prisma generate *)",
+      "PowerShell(Get-Command docker -ErrorAction SilentlyContinue)"
     ]
   }
 }

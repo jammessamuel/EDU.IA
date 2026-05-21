@@ -35,9 +35,18 @@ async function bootstrap() {
   // Sem isso, o navegador bloquearia as chamadas por segurança.
   // "credentials: true" é necessário para que os cookies de sessão
   // sejam enviados junto com as requisições do frontend.
+  const allowedOrigins = ['http://localhost:5173', 'http://localhost:4173'];
   app.enableCors({
-    origin: ['http://localhost:5173', 'http://localhost:4173'],
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept'],
   });
 
   // Sessão HTTP: guarda o histórico de conversa de cada usuário

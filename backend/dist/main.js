@@ -6,9 +6,19 @@ const app_module_1 = require("./app.module");
 const session = require('express-session');
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
+    const allowedOrigins = ['http://localhost:5173', 'http://localhost:4173'];
     app.enableCors({
-        origin: ['http://localhost:5173', 'http://localhost:4173'],
+        origin: (origin, callback) => {
+            if (!origin || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            }
+            else {
+                callback(null, false);
+            }
+        },
         credentials: true,
+        methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Accept'],
     });
     app.use(session({
         secret: process.env.JWT_SECRET ?? 'eduflow-secret',
