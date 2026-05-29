@@ -1,74 +1,43 @@
-// ============================================================
-// simulator.controller.ts — Rotas HTTP do simulador
-// ============================================================
-// O Controller é responsável apenas por receber as requisições
-// HTTP, extrair os dados necessários e chamar o Service.
-// Ele NÃO contém lógica de negócio — apenas faz a ponte entre
-// a requisição HTTP e o SimulatorService.
-//
-// Rotas disponíveis (prefixo "/simulator" definido em @Controller):
-//
-//   POST   /simulator/messages
-//     Body: { "text": "mensagem do aluno" }
-//     Resposta: { "reply": "resposta da IA", "lead": {...} ou null }
-//
-//   DELETE /simulator/session
-//     Limpa o histórico de conversa da sessão atual
-//     Resposta: { "ok": true }
-//
-//   GET    /simulator/leads
-//     Retorna todos os leads qualificados salvos no banco
-//     Resposta: [{ "id": "...", "name": "...", "course": "...", ... }]
-// ============================================================
-
-import { Controller, Post, Body, Delete, Get, Session } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Session } from '@nestjs/common';
 import { SimulatorService, ChatMessage } from './simulator.service';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
-// @Controller('simulator') → todas as rotas deste controller
-// começam com /simulator (ex: /simulator/messages)
 @Controller('simulator')
 export class SimulatorController {
-  // Injeção de dependência: o NestJS entrega automaticamente
-  // uma instância do SimulatorService. Não precisamos criar
-  // com "new SimulatorService()" — o NestJS faz isso por nós.
   constructor(private readonly simulatorService: SimulatorService) {}
 
-  // POST /simulator/messages
-  // Recebe a mensagem digitada pelo aluno no simulador.
   @Post('messages')
+  @RequirePermission('leads:create:school')
   send(
-    // @Body() extrai o corpo da requisição JSON.
-    // Esperamos: { "text": "oi, quero saber sobre os cursos" }
     @Body() body: { text: string },
-
-    // @Session() acessa a sessão HTTP deste cliente específico.
-    // Cada aba do navegador tem sua própria sessão, então
-    // cada "aluno" no simulador tem seu próprio histórico de conversa.
     @Session() session: Record<string, any>,
+    @CurrentUser() user: { id: string; schoolId: string },
   ) {
-    // Inicializa o array de histórico se for a primeira mensagem desta sessão
     if (!session.messages) session.messages = [];
-
-    // Delega para o service e retorna a resposta diretamente.
-    // O NestJS serializa o retorno automaticamente para JSON.
-    return this.simulatorService.chat(body.text, session.messages as ChatMessage[]);
+    return this.simulatorService.chat(body.text, session.messages as ChatMessage[], user.schoolId);
   }
 
-  // DELETE /simulator/session
-  // Reinicia a conversa zerando o histórico da sessão.
-  // Usado pelo botão "Reiniciar" no frontend.
   @Delete('session')
+  @RequirePermission('leads:create:school')
   reset(@Session() session: Record<string, any>) {
     session.messages = [];
     return { ok: true };
   }
 
-  // GET /simulator/leads
-  // Retorna todos os leads qualificados salvos no banco.
-  // O frontend usa essa rota para exibir o painel de leads
-  // ao lado do simulador de conversa.
   @Get('leads')
-  leads() {
-    return this.simulatorService.getAllLeads();
+  @RequirePermission('leads:read:school')
+  leads(@CurrentUser() user: { id: string; schoolId: string }) {
+    return this.simulatorService.getAllLeads(user.schoolId);
+  }
+
+  @Patch('leads/:id/status')
+  @RequirePermission('leads:update:school')
+  updateStatus(
+    @Param('id') id: string,
+    @Body() body: { status: string },
+    @CurrentUser() user: { id: string; schoolId: string },
+  ) {
+    return this.simulatorService.updateLeadStatus(id, body.status, user.schoolId);
   }
 }

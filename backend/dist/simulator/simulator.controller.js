@@ -15,35 +15,40 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SimulatorController = void 0;
 const common_1 = require("@nestjs/common");
 const simulator_service_1 = require("./simulator.service");
+const require_permission_decorator_1 = require("../common/decorators/require-permission.decorator");
+const current_user_decorator_1 = require("../common/decorators/current-user.decorator");
 let SimulatorController = class SimulatorController {
     simulatorService;
     constructor(simulatorService) {
         this.simulatorService = simulatorService;
     }
-    send(body, session) {
+    send(body, session, user) {
         if (!session.messages)
             session.messages = [];
-        return this.simulatorService.chat(body.text, session.messages);
+        return this.simulatorService.chat(body.text, session.messages, user.schoolId);
     }
     reset(session) {
         session.messages = [];
         return { ok: true };
     }
-    leads() {
-        return this.simulatorService.getAllLeads();
+    leads(user) {
+        return this.simulatorService.getAllLeads(user.schoolId);
     }
 };
 exports.SimulatorController = SimulatorController;
 __decorate([
     (0, common_1.Post)('messages'),
+    (0, require_permission_decorator_1.RequirePermission)('leads:create:school'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Session)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object, Object, Object]),
     __metadata("design:returntype", void 0)
 ], SimulatorController.prototype, "send", null);
 __decorate([
     (0, common_1.Delete)('session'),
+    (0, require_permission_decorator_1.RequirePermission)('leads:create:school'),
     __param(0, (0, common_1.Session)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -51,8 +56,10 @@ __decorate([
 ], SimulatorController.prototype, "reset", null);
 __decorate([
     (0, common_1.Get)('leads'),
+    (0, require_permission_decorator_1.RequirePermission)('leads:read:school'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], SimulatorController.prototype, "leads", null);
 exports.SimulatorController = SimulatorController = __decorate([

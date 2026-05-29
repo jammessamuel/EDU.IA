@@ -79,6 +79,12 @@ export const useSimulatorStore = defineStore('simulator', () => {
     }
   }
 
+  async function updateLeadStatus(id: string, status: string): Promise<void> {
+    const updated = await simulatorApi.updateLeadStatus(id, status)
+    const idx = leads.value.findIndex((l) => l.id === id)
+    if (idx >= 0) leads.value[idx] = updated
+  }
+
   return {
     messages,
     leads,
@@ -90,5 +96,6 @@ export const useSimulatorStore = defineStore('simulator', () => {
     sendMessage,
     resetSession,
     fetchLeads,
+    updateLeadStatus,
   }
 })

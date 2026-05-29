@@ -9,28 +9,32 @@ export declare class SimulatorService {
     private prisma;
     private client;
     constructor(config: ConfigService, prisma: PrismaService);
-    chat(text: string, history: ChatMessage[]): Promise<{
+    chat(text: string, history: ChatMessage[], schoolId: string): Promise<{
         reply: string;
         lead: {
             name: string;
             id: string;
+            schoolId: string;
             phone: string | null;
             course: string;
             unit: string;
             shift: string;
             qualified: boolean;
+            status: string;
             createdAt: Date;
         } | null;
     }>;
     private tryExtractAndSaveLead;
-    getAllLeads(): Promise<{
+    getAllLeads(schoolId: string): Promise<{
         name: string;
         id: string;
+        schoolId: string;
         phone: string | null;
         course: string;
         unit: string;
         shift: string;
         qualified: boolean;
+        status: string;
         createdAt: Date;
     }[]>;
 }

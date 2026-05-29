@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { NAvatar, NButton } from 'naive-ui'
-
+import { useAuthStore } from '../../stores/auth'
+import { useRouter } from 'vue-router'
 const emit = defineEmits<{ reset: [] }>()
+
+const authStore = useAuthStore()
+const router = useRouter()
+
+async function handleLogout() {
+  await authStore.logout()
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -20,10 +29,28 @@ const emit = defineEmits<{ reset: [] }>()
     <NButton
       size="small"
       ghost
-      style="color: #fff; border-color: rgba(255,255,255,0.5)"
+      style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
       @click="emit('reset')"
     >
       Reiniciar
+    </NButton>
+
+    <NButton
+      size="small"
+      ghost
+      style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
+      @click="router.push('/kanban')"
+    >
+      Pipeline →
+    </NButton>
+
+    <NButton
+      size="small"
+      ghost
+      style="color: rgba(255,255,255,0.7); border-color: rgba(255,255,255,0.3)"
+      @click="handleLogout"
+    >
+      Sair
     </NButton>
   </div>
 </template>

@@ -45,7 +45,7 @@ let SimulatorService = class SimulatorService {
         this.prisma = prisma;
         this.client = new openai_1.default({ apiKey: config.get('OPENAI_API_KEY') });
     }
-    async chat(text, history) {
+    async chat(text, history, schoolId) {
         history.push({ role: 'user', content: text });
         const response = await this.client.chat.completions.create({
             model: 'gpt-4o-mini',
@@ -58,10 +58,10 @@ let SimulatorService = class SimulatorService {
         });
         const reply = response.choices[0].message.content ?? '';
         history.push({ role: 'assistant', content: reply });
-        const lead = await this.tryExtractAndSaveLead(history);
+        const lead = await this.tryExtractAndSaveLead(history, schoolId);
         return { reply, lead };
     }
-    async tryExtractAndSaveLead(history) {
+    async tryExtractAndSaveLead(history, schoolId) {
         if (history.length < 8)
             return null;
         const extraction = await this.client.chat.completions.create({
@@ -90,13 +90,14 @@ Retorne APENAS o JSON, sem explicação.`,
             if (!data.qualified)
                 return null;
             const existing = await this.prisma.lead.findFirst({
-                where: { name: data.name, course: data.course },
+                where: { schoolId, name: data.name, course: data.course },
                 orderBy: { createdAt: 'desc' },
             });
             if (existing)
                 return existing;
             return await this.prisma.lead.create({
                 data: {
+                    schoolId,
                     name: data.name,
                     course: data.course,
                     unit: data.unit,
@@ -109,8 +110,9 @@ Retorne APENAS o JSON, sem explicação.`,
             return null;
         }
     }
-    async getAllLeads() {
+    async getAllLeads(schoolId) {
         return this.prisma.lead.findMany({
+            where: { schoolId },
             orderBy: { createdAt: 'desc' },
         });
     }

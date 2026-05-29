@@ -35,18 +35,24 @@ async function bootstrap() {
   // Sem isso, o navegador bloquearia as chamadas por segurança.
   // "credentials: true" é necessário para que os cookies de sessão
   // sejam enviados junto com as requisições do frontend.
-  const allowedOrigins = ['http://localhost:5173', 'http://localhost:4173'];
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(null, false);
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept'],
+  const allowedOrigins = ['http://localhost:5173', 'http://localhost:4173', 'http://localhost:5174'];
+
+  // Middleware CORS manual — o app.enableCors() do NestJS 11 tem um bug
+  // que envia Access-Control-Allow-Credentials vazio ao usar callback de origin.
+  // Usar Express raw resolve de forma garantida.
+  app.use((req: any, res: any, next: any) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Accept,Authorization');
+    }
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+      return;
+    }
+    next();
   });
 
   // Sessão HTTP: guarda o histórico de conversa de cada usuário
@@ -75,8 +81,8 @@ async function bootstrap() {
 
   // Inicia o servidor HTTP na porta 3000.
   // Acesse em: http://localhost:3000
-  await app.listen(3000);
-  console.log('Backend rodando em http://localhost:3000');
+  await app.listen(3001);
+  console.log('Backend rodando em http://localhost:3001');
 }
 
 // Chama a função principal para iniciar tudo.

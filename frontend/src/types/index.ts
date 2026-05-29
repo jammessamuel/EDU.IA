@@ -5,6 +5,7 @@ export interface Lead {
   unit: string
   shift: string
   qualified: boolean
+  status: string
   createdAt: string
 }
 

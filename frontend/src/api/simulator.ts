@@ -19,4 +19,10 @@ export const simulatorApi = {
       .get<Lead[]>('/simulator/leads')
       .then((res) => res.data)
   },
+
+  updateLeadStatus(id: string, status: string): Promise<Lead> {
+    return apiClient
+      .patch<Lead>(`/simulator/leads/${id}/status`, { status })
+      .then((res) => res.data)
+  },
 }
