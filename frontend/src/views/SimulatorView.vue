@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NScrollbar, NAlert } from 'naive-ui'
 import { useSimulatorStore } from '@/stores/simulator'
@@ -7,10 +7,23 @@ import AppNav from '@/components/layout/AppNav.vue'
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import ChatMessages from '@/components/chat/ChatMessages.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
+import QuickReplies from '@/components/chat/QuickReplies.vue'
+import { useQuickReplies } from '@/composables/useQuickReplies'
 import type { Lead } from '@/types'
 
 const store  = useSimulatorStore()
 const router = useRouter()
+
+const hasLead     = computed(() => store.leads.length > 0)
+const quickReplies = useQuickReplies(
+  computed(() => store.messages),
+  hasLead,
+  computed(() => store.isTyping),
+)
+
+function sendQuickReply(opt: string) {
+  store.sendMessage(opt)
+}
 
 const selectedLead = ref<Lead | null>(null)
 
@@ -65,6 +78,11 @@ function formattedDate(iso: string) {
         </div>
         <ChatHeader @reset="store.resetSession()" />
         <ChatMessages :messages="store.messages" :is-typing="store.isTyping" />
+        <QuickReplies
+          v-if="quickReplies && !store.isSending"
+          :options="quickReplies"
+          @select="sendQuickReply"
+        />
         <ChatInput :disabled="store.isSending" @send="store.sendMessage($event)" />
       </section>
 

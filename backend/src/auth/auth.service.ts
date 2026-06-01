@@ -89,10 +89,20 @@ export class AuthService {
   async login(dto: LoginDto, schoolId: string) {
     const normalizedEmail = dto.email.toLowerCase().trim();
 
-    const user = await this.prisma.user.findFirst({
+    // Em dev: tenta no schoolId do middleware; se não achar, busca globalmente pelo email.
+    // Em produção o subdomínio já resolve corretamente, então schoolId sempre bate.
+    let user = await this.prisma.user.findFirst({
       where: { email: normalizedEmail, schoolId, isActive: true },
-      include: { school: { select: { name: true, subdomain: true } } },
+      include: { school: { select: { name: true, subdomain: true, vertical: { select: { slug: true } } } } },
     });
+
+    if (!user && process.env.NODE_ENV !== 'production') {
+      user = await this.prisma.user.findFirst({
+        where: { email: normalizedEmail, isActive: true },
+        include: { school: { select: { name: true, subdomain: true, vertical: { select: { slug: true } } } } },
+        orderBy: { createdAt: 'asc' },
+      });
+    }
 
     if (!user) {
       throw new UnauthorizedException('Email ou senha incorretos');
@@ -112,8 +122,9 @@ export class AuthService {
         name: user.name,
         email: user.email,
         schoolId: user.schoolId,
-        schoolName: user.school.name,
-        subdomain: user.school.subdomain,
+        schoolName:   user.school.name,
+        subdomain:    user.school.subdomain,
+        verticalSlug: (user.school as any).vertical?.slug ?? null,
       },
     };
   }

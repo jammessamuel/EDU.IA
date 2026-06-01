@@ -1,11 +1,32 @@
 <script setup lang="ts">
 import { ref, computed, reactive, nextTick, onMounted } from 'vue'
 import AppNav from '@/components/layout/AppNav.vue'
+import QuickReplies from '@/components/chat/QuickReplies.vue'
 import { simulatorApi } from '@/api/simulator'
 import { useSimulatorStore } from '@/stores/simulator'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 const store = useSimulatorStore()
-onMounted(() => store.fetchLeads())
+const ws    = useWorkspaceStore()
+onMounted(() => { store.fetchLeads(); ws.load() })
+
+// Quick replies por conversa
+function getQuickReplies(contactId: string): string[] | null {
+  const conv = convs[contactId]
+  if (!conv || conv.lead || conv.isTyping || conv.isSending) return null
+
+  const sortedFields = [...ws.fields].sort((a, b) => a.order - b.order)
+  if (!sortedFields.length) return null
+
+  const aiQuestions = conv.messages.filter(
+    (m) => m.from === 'ai' && !m.id.startsWith('pre-') && !m.id.startsWith('welcome'),
+  )
+  if (!aiQuestions.length) return null
+
+  const fieldIdx = aiQuestions.length - 1
+  const field = sortedFields[fieldIdx]
+  return field?.type === 'select' && field.options?.length ? field.options : null
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos
@@ -341,6 +362,13 @@ const STATUS_COLOR: Record<string, string> = {
             </div>
           </div>
         </div>
+
+        <!-- Quick replies -->
+        <QuickReplies
+          v-if="getQuickReplies(selectedId)"
+          :options="getQuickReplies(selectedId)!"
+          @select="inputText = $event; send()"
+        />
 
         <!-- Banner de lead capturado -->
         <div v-if="current.lead" class="lead-banner">
