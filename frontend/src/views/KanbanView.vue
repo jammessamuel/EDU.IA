@@ -1,68 +1,32 @@
 <template>
   <div class="kanban-page">
-    <!-- Header -->
-    <div class="kanban-header">
-      <div class="kanban-header__left">
-        <span class="kanban-header__title">Pipeline de Matrículas</span>
-        <NTag type="success" size="small" round>{{ totalLeads }} leads</NTag>
+    <AppNav />
+
+    <!-- Sub-header do pipeline -->
+    <div class="kanban-subheader">
+      <div class="kanban-subheader__left">
+        <h1 class="kanban-subheader__title">Pipeline de Matrículas</h1>
+        <span class="kanban-subheader__badge">{{ totalLeads }} leads ativos</span>
       </div>
-      <NButton
-        size="small"
-        ghost
-        style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
-        @click="router.push('/dashboard')"
-      >
-        Dashboard
-      </NButton>
-
-      <NButton
-        size="small"
-        ghost
-        style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
-        @click="exportCsv"
-      >
-        Exportar CSV
-      </NButton>
-
-      <NButton
-        size="small"
-        ghost
-        style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
-        @click="router.push('/')"
-      >
-        ← Simulador
-      </NButton>
-
-      <NButton
-        size="small"
-        ghost
-        style="color: #fff; border-color: rgba(255,255,255,0.5)"
-        @click="handleLogout"
-      >
-        Sair
-      </NButton>
+      <button class="btn-csv" @click="exportCsv">
+        ↓ Exportar CSV
+      </button>
     </div>
 
     <!-- Banner de follow-up -->
     <div v-if="staleCount > 0" class="kanban-alert">
-      ⚠ {{ staleCount }} lead{{ staleCount > 1 ? 's' : '' }} sem contato há mais de 24h —
-      marque-{{ staleCount > 1 ? 'os' : 'o' }} como <strong>Em Contato</strong> para remover o alerta.
+      ⚠ {{ staleCount }} lead{{ staleCount > 1 ? 's' : '' }} em "Novo Lead" sem contato há mais de 24h —
+      avance-{{ staleCount > 1 ? 'os' : 'o' }} para <strong>Em Contato</strong>.
     </div>
 
     <!-- Board -->
     <div class="kanban-board">
-      <div
-        v-for="col in columns"
-        :key="col.status"
-        class="kanban-column"
-      >
-        <!-- Column header -->
+      <div v-for="col in columns" :key="col.status" class="kanban-column">
         <div class="kanban-column__header" :style="{ background: col.color }">
           <span class="kanban-column__title">{{ col.label }}</span>
           <span class="kanban-column__count">{{ leadsForStatus(col.status).length }}</span>
         </div>
 
-        <!-- Cards -->
         <NScrollbar class="kanban-column__body">
           <div class="kanban-column__cards">
             <TransitionGroup name="card">
@@ -73,7 +37,7 @@
               />
             </TransitionGroup>
             <div v-if="leadsForStatus(col.status).length === 0" class="kanban-column__empty">
-              <NEmpty description="Nenhum lead aqui" size="small" />
+              <NEmpty description="Vazio" size="small" />
             </div>
           </div>
         </NScrollbar>
@@ -84,22 +48,19 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { NTag, NButton, NScrollbar, NEmpty } from 'naive-ui'
+import { NScrollbar, NEmpty } from 'naive-ui'
 import KanbanCard from '../components/kanban/KanbanCard.vue'
+import AppNav from '../components/layout/AppNav.vue'
 import { useSimulatorStore } from '../stores/simulator'
-import { useAuthStore } from '../stores/auth'
 
 const store = useSimulatorStore()
-const authStore = useAuthStore()
-const router = useRouter()
 
 const columns = [
-  { status: 'NOVO',        label: 'Novo Lead',    color: '#2080f0' },
-  { status: 'CONTATO',     label: 'Em Contato',   color: '#f0a020' },
-  { status: 'INSCRITO',    label: 'Inscrito',     color: '#8a2be2' },
-  { status: 'MATRICULADO', label: 'Matriculado',  color: '#18a058' },
-  { status: 'PERDIDO',     label: 'Perdido',      color: '#999'    },
+  { status: 'NOVO',        label: 'Novo Lead',   color: '#2080f0' },
+  { status: 'CONTATO',     label: 'Em Contato',  color: '#f0a020' },
+  { status: 'INSCRITO',    label: 'Inscrito',    color: '#8a2be2' },
+  { status: 'MATRICULADO', label: 'Matriculado', color: '#18a058' },
+  { status: 'PERDIDO',     label: 'Perdido',     color: '#999'    },
 ]
 
 const totalLeads = computed(() =>
@@ -117,25 +78,14 @@ function leadsForStatus(status: string) {
   return store.leads.filter((l) => l.status === status)
 }
 
-async function handleLogout() {
-  await authStore.logout()
-  router.push('/login')
-}
-
 function exportCsv() {
   const header = ['Nome', 'Curso', 'Unidade', 'Turno', 'Status', 'Data']
   const STATUS_LABEL: Record<string, string> = {
-    NOVO: 'Novo Lead',
-    CONTATO: 'Em Contato',
-    INSCRITO: 'Inscrito',
-    MATRICULADO: 'Matriculado',
-    PERDIDO: 'Perdido',
+    NOVO: 'Novo Lead', CONTATO: 'Em Contato', INSCRITO: 'Inscrito',
+    MATRICULADO: 'Matriculado', PERDIDO: 'Perdido',
   }
   const rows = store.leads.map((l) => [
-    `"${l.name}"`,
-    `"${l.course}"`,
-    `"${l.unit}"`,
-    `"${l.shift}"`,
+    `"${l.name}"`, `"${l.course}"`, `"${l.unit}"`, `"${l.shift}"`,
     `"${STATUS_LABEL[l.status] ?? l.status}"`,
     `"${new Date(l.createdAt).toLocaleDateString('pt-BR')}"`,
   ])
@@ -161,38 +111,66 @@ onMounted(() => store.fetchLeads())
   overflow: hidden;
 }
 
-.kanban-header {
-  background: #075e54;
-  color: #fff;
-  padding: 10px 20px;
+/* Sub-header */
+.kanban-subheader {
+  background: #fff;
+  border-bottom: 1px solid #e9edef;
+  padding: 14px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
-.kanban-header__left {
+.kanban-subheader__left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.kanban-header__title {
-  font-size: 16px;
+.kanban-subheader__title {
+  font-size: 17px;
   font-weight: 700;
-  letter-spacing: -0.3px;
+  color: #111b21;
+  margin: 0;
 }
 
+.kanban-subheader__badge {
+  background: #075e54;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.btn-csv {
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #075e54;
+  background: #e8f5e9;
+  border: 1px solid #b2dfdb;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-csv:hover {
+  background: #c8e6c9;
+}
+
+/* Alert banner */
 .kanban-alert {
-  background: #fff3cd;
-  color: #856404;
-  border-left: 4px solid #ffc107;
-  padding: 10px 20px;
+  background: #fffbeb;
+  color: #92400e;
+  border-left: 4px solid #f59e0b;
+  padding: 10px 24px;
   font-size: 13px;
   flex-shrink: 0;
 }
 
+/* Board */
 .kanban-board {
   flex: 1;
   display: flex;
@@ -204,9 +182,9 @@ onMounted(() => store.fetchLeads())
 
 .kanban-column {
   flex: 1;
-  min-width: 220px;
-  max-width: 280px;
-  background: #e4e6ea;
+  min-width: 210px;
+  max-width: 270px;
+  background: #e8eaed;
   border-radius: 12px;
   display: flex;
   flex-direction: column;
@@ -222,19 +200,18 @@ onMounted(() => store.fetchLeads())
   font-weight: 600;
   font-size: 13px;
   flex-shrink: 0;
+  border-radius: 12px 12px 0 0;
 }
 
 .kanban-column__count {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255,255,255,0.3);
   border-radius: 10px;
   padding: 1px 8px;
   font-size: 12px;
   font-weight: 700;
 }
 
-.kanban-column__body {
-  flex: 1;
-}
+.kanban-column__body { flex: 1; }
 
 .kanban-column__cards {
   display: flex;
@@ -247,22 +224,11 @@ onMounted(() => store.fetchLeads())
 .kanban-column__empty {
   display: flex;
   justify-content: center;
-  padding: 20px 0;
-  opacity: 0.6;
+  padding: 24px 0;
+  opacity: 0.5;
 }
 
-/* Animação de movimentação de cards */
-.card-move,
-.card-enter-active,
-.card-leave-active {
-  transition: all 0.3s ease;
-}
-.card-enter-from,
-.card-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-.card-leave-active {
-  position: absolute;
-}
+.card-move, .card-enter-active, .card-leave-active { transition: all 0.3s ease; }
+.card-enter-from, .card-leave-to { opacity: 0; transform: translateY(-8px); }
+.card-leave-active { position: absolute; }
 </style>

@@ -1,16 +1,11 @@
 <template>
   <div class="dashboard-page">
-    <!-- Header -->
-    <div class="dash-header">
-      <div class="dash-header__left">
-        <span class="dash-header__title">Dashboard</span>
-        <NTag type="success" size="small" round>{{ metrics?.total ?? 0 }} leads ativos</NTag>
-      </div>
-      <div class="dash-header__nav">
-        <NButton size="small" ghost style="color:#fff;border-color:rgba(255,255,255,0.5);margin-right:8px" @click="router.push('/kanban')">Pipeline →</NButton>
-        <NButton size="small" ghost style="color:#fff;border-color:rgba(255,255,255,0.5);margin-right:8px" @click="router.push('/')">← Simulador</NButton>
-        <NButton size="small" ghost style="color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.3)" @click="handleLogout">Sair</NButton>
-      </div>
+    <AppNav />
+
+    <!-- Sub-header -->
+    <div class="dash-subheader">
+      <h1 class="dash-subheader__title">Dashboard</h1>
+      <span v-if="metrics" class="dash-subheader__badge">{{ metrics.total }} leads ativos</span>
     </div>
 
     <div v-if="loading" class="dash-loading">
@@ -100,14 +95,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { NButton, NTag, NSpin } from 'naive-ui'
+import { NSpin } from 'naive-ui'
 import { simulatorApi } from '@/api/simulator'
-import { useAuthStore } from '@/stores/auth'
+import AppNav from '@/components/layout/AppNav.vue'
 import type { Metrics } from '@/types'
 
-const router = useRouter()
-const authStore = useAuthStore()
 const metrics = ref<Metrics | null>(null)
 const loading = ref(true)
 
@@ -140,11 +132,6 @@ function dayHeight(count: number) {
   return Math.max(4, Math.round((count / dayMax.value) * 100))
 }
 
-async function handleLogout() {
-  await authStore.logout()
-  router.push('/login')
-}
-
 onMounted(async () => {
   try {
     metrics.value = await simulatorApi.getMetrics()
@@ -162,31 +149,30 @@ onMounted(async () => {
   flex-direction: column;
 }
 
-.dash-header {
+.dash-subheader {
+  background: #fff;
+  border-bottom: 1px solid #e9edef;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.dash-subheader__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111b21;
+  margin: 0;
+}
+
+.dash-subheader__badge {
   background: #075e54;
   color: #fff;
-  padding: 10px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-}
-
-.dash-header__left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.dash-header__title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.dash-header__nav {
-  display: flex;
-  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 20px;
 }
 
 .dash-loading {

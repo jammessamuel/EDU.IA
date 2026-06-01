@@ -1,8 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import SimulatorView from '../views/SimulatorView.vue'
-import LoginView from '../views/LoginView.vue'
-import KanbanView from '../views/KanbanView.vue'
-import DashboardView from '../views/DashboardView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -10,25 +6,25 @@ const router = createRouter({
     {
       path: '/',
       name: 'simulator',
-      component: SimulatorView,
+      component: () => import('../views/SimulatorView.vue'),
       meta: { requiresAuth: true },
     },
     {
       path: '/kanban',
       name: 'kanban',
-      component: KanbanView,
+      component: () => import('../views/KanbanView.vue'),
       meta: { requiresAuth: true },
     },
     {
       path: '/dashboard',
       name: 'dashboard',
-      component: DashboardView,
+      component: () => import('../views/DashboardView.vue'),
       meta: { requiresAuth: true },
     },
     {
       path: '/login',
       name: 'login',
-      component: LoginView,
+      component: () => import('../views/LoginView.vue'),
     },
   ],
 })

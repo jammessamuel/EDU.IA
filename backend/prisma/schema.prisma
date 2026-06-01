@@ -3,10 +3,11 @@ generator client {
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
+// Em desenvolvimento use DATABASE_URL="file:./dev.db" (SQLite).
+// Em produção (Supabase) mude para provider="postgresql" e adicione directUrl.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model School {
