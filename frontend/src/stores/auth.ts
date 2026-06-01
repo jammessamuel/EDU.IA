@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '../api/client'
+import { useWorkspaceStore } from './workspace'
 
 interface AuthUser {
   id: string
@@ -8,48 +9,41 @@ interface AuthUser {
   email: string
   schoolId: string
   schoolName?: string
+  verticalSlug?: string
 }
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('eduia_token'))
-  const user = ref<AuthUser | null>(JSON.parse(localStorage.getItem('eduia_user') ?? 'null'))
+  const user  = ref<AuthUser | null>(JSON.parse(localStorage.getItem('eduia_user') ?? 'null'))
 
   const isAuthenticated = computed(() => !!token.value)
 
   async function login(email: string, password: string) {
-    const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/login', {
-      email,
-      password,
-    })
-    token.value = data.token
-    user.value = data.user
-    localStorage.setItem('eduia_token', data.token)
-    localStorage.setItem('eduia_user', JSON.stringify(data.user))
+    const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/login', { email, password })
+    _persist(data)
   }
 
-  async function register(name: string, email: string, password: string, schoolName: string) {
+  async function register(name: string, email: string, password: string, workspaceName: string, verticalId: string) {
     const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/register', {
-      name,
-      email,
-      password,
-      schoolName,
+      name, email, password, workspaceName, verticalId,
     })
-    token.value = data.token
-    user.value = data.user
-    localStorage.setItem('eduia_token', data.token)
-    localStorage.setItem('eduia_user', JSON.stringify(data.user))
+    _persist(data)
   }
 
   async function logout() {
-    try {
-      await api.post('/auth/logout')
-    } catch {
-      // ignora erro de rede no logout
-    }
+    try { await api.post('/auth/logout') } catch { /* ignora */ }
     token.value = null
-    user.value = null
+    user.value  = null
     localStorage.removeItem('eduia_token')
     localStorage.removeItem('eduia_user')
+    useWorkspaceStore().clear()
+  }
+
+  function _persist(data: { token: string; user: AuthUser }) {
+    token.value = data.token
+    user.value  = data.user
+    localStorage.setItem('eduia_token', data.token)
+    localStorage.setItem('eduia_user',  JSON.stringify(data.user))
   }
 
   return { token, user, isAuthenticated, login, register, logout }

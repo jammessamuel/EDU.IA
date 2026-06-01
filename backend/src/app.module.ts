@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { SimulatorModule } from './simulator/simulator.module';
 import { AuthModule } from './auth/auth.module';
+import { VerticalModule } from './vertical/vertical.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt.guard';
 import { RbacGuard } from './common/guards/rbac.guard';
@@ -14,6 +15,7 @@ import { RbacGuard } from './common/guards/rbac.guard';
     PrismaModule,
     AuthModule,
     SimulatorModule,
+    VerticalModule,
   ],
   providers: [
     // JWT primeiro — popula req.user antes do RBAC verificar permissões

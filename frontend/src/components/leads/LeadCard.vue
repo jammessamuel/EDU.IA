@@ -1,38 +1,28 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useWorkspaceStore } from '@/stores/workspace'
 import type { Lead } from '@/types'
 
 const props = defineProps<{ lead: Lead }>()
+const ws    = useWorkspaceStore()
 
-const courseColor: Record<string, { bg: string; text: string }> = {
-  Enfermagem:     { bg: '#ffeaea', text: '#c0392b' },
-  Direito:        { bg: '#fff7e6', text: '#d97706' },
-  Administração:  { bg: '#e8f4fd', text: '#1d6fa4' },
-  Pedagogia:      { bg: '#e8f8f0', text: '#1e8449' },
-}
-
-const accent = computed(() => courseColor[props.lead.course] ?? { bg: '#f5f5f5', text: '#555' })
-const initial = computed(() => props.lead.name.charAt(0).toUpperCase())
+const initial      = computed(() => props.lead.name.charAt(0).toUpperCase())
+const dataEntries  = computed(() => Object.entries(props.lead.data ?? {}))
+const accentColor  = computed(() => ws.brandColor)
 
 const formattedDate = computed(() =>
   new Date(props.lead.createdAt).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit',
-    hour: '2-digit', minute: '2-digit',
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   }),
 )
-
-const shiftIcon: Record<string, string> = { manhã: '🌅', tarde: '☀️', noite: '🌙' }
-const shiftEmoji = computed(() => shiftIcon[props.lead.shift?.toLowerCase()] ?? '📅')
 </script>
 
 <template>
-  <div class="lead-card">
-    <div class="lead-card__bar" :style="{ background: accent.text }"></div>
+  <div class="lead-card" :style="{ '--accent': accentColor }">
+    <div class="lead-card__bar"></div>
     <div class="lead-card__body">
       <div class="lead-card__top">
-        <div class="lead-card__avatar" :style="{ background: accent.bg, color: accent.text }">
-          {{ initial }}
-        </div>
+        <div class="lead-card__avatar">{{ initial }}</div>
         <div class="lead-card__identity">
           <span class="lead-card__name">{{ lead.name }}</span>
           <span class="lead-card__time">{{ formattedDate }}</span>
@@ -40,11 +30,14 @@ const shiftEmoji = computed(() => shiftIcon[props.lead.shift?.toLowerCase()] ?? 
         <span class="lead-card__qualified">✓ Qualificado</span>
       </div>
       <div class="lead-card__tags">
-        <span class="tag tag--course" :style="{ background: accent.bg, color: accent.text }">
-          {{ lead.course }}
+        <span
+          v-for="[key, val] in dataEntries"
+          :key="key"
+          class="tag"
+          :title="ws.fieldLabel(key)"
+        >
+          {{ val }}
         </span>
-        <span class="tag">🏫 {{ lead.unit }}</span>
-        <span class="tag">{{ shiftEmoji }} {{ lead.shift }}</span>
       </div>
     </div>
   </div>
@@ -65,31 +58,37 @@ const shiftEmoji = computed(() => shiftIcon[props.lead.shift?.toLowerCase()] ?? 
   transform: translateY(-1px);
 }
 
-.lead-card__bar { width: 4px; flex-shrink: 0; }
+.lead-card__bar {
+  width: 4px;
+  flex-shrink: 0;
+  background: var(--accent, #075e54);
+}
 
 .lead-card__body {
   flex: 1;
-  padding: 12px 14px;
+  padding: 11px 13px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .lead-card__top {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
 }
 
 .lead-card__avatar {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
+  background: color-mix(in srgb, var(--accent, #075e54) 12%, white);
+  color: var(--accent, #075e54);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
@@ -115,28 +114,22 @@ const shiftEmoji = computed(() => shiftIcon[props.lead.shift?.toLowerCase()] ?? 
 .lead-card__qualified {
   font-size: 11px;
   font-weight: 600;
-  color: #18a058;
-  background: #e8f8f0;
+  color: var(--accent, #075e54);
+  background: color-mix(in srgb, var(--accent, #075e54) 10%, white);
   padding: 2px 8px;
   border-radius: 20px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.lead-card__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+.lead-card__tags { display: flex; flex-wrap: wrap; gap: 5px; }
 
 .tag {
-  font-size: 12px;
-  padding: 3px 10px;
+  font-size: 11px;
+  padding: 2px 8px;
   border-radius: 20px;
   background: #f5f7fa;
   color: #555;
   font-weight: 500;
 }
-
-.tag--course { font-weight: 600; }
 </style>

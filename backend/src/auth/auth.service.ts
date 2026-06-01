@@ -16,19 +16,20 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   async register(dto: RegisterDto) {
-    const { name, email, password, schoolName } = dto;
+    const { name, email, password, verticalId } = dto;
+    const workspaceName = dto.workspaceName ?? dto.schoolName ?? 'Meu Workspace';
 
-    // Gera subdomain a partir do nome da escola
-    const subdomain = this.generateSubdomain(schoolName);
+    // Valida vertical
+    const vertical = await this.prisma.vertical.findUnique({ where: { id: verticalId } });
+    if (!vertical) throw new BadRequestException('Vertical inválido. Selecione um setor válido.');
+
+    // Gera subdomain a partir do nome do workspace
+    const subdomain = this.generateSubdomain(workspaceName);
 
     // Verifica se subdomínio está disponível
-    const existingSchool = await this.prisma.school.findUnique({
-      where: { subdomain },
-    });
+    const existingSchool = await this.prisma.school.findUnique({ where: { subdomain } });
     if (existingSchool) {
-      throw new ConflictException(
-        `Escola com subdomain "${subdomain}" já existe. Escolha outro nome.`,
-      );
+      throw new ConflictException(`Workspace "${subdomain}" já existe. Escolha outro nome.`);
     }
 
     // Verifica unicidade do email (pode existir o mesmo email em escolas diferentes)
@@ -38,9 +39,9 @@ export class AuthService {
 
     // Cria escola + role SCHOOL_ADMIN + usuário em transação
     const result = await this.prisma.$transaction(async (tx) => {
-      // 1. Cria a escola
+      // 1. Cria o workspace com o vertical selecionado
       const school = await tx.school.create({
-        data: { name: schoolName, subdomain },
+        data: { name: workspaceName, subdomain, verticalId: vertical.id },
       });
 
       // 2. Busca role SCHOOL_ADMIN (role global do sistema)
@@ -79,6 +80,8 @@ export class AuthService {
         schoolId: result.school.id,
         schoolName: result.school.name,
         subdomain: result.school.subdomain,
+        verticalId: vertical.id,
+        verticalSlug: vertical.slug,
       },
     };
   }

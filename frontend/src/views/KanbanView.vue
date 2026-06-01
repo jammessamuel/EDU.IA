@@ -5,7 +5,7 @@
     <!-- Sub-header do pipeline -->
     <div class="kanban-subheader">
       <div class="kanban-subheader__left">
-        <h1 class="kanban-subheader__title">Pipeline de Matrículas</h1>
+        <h1 class="kanban-subheader__title">{{ ws.vertical ? `Pipeline — ${ws.vertical.name}` : 'Pipeline' }}</h1>
         <span class="kanban-subheader__badge">{{ totalLeads }} leads ativos</span>
       </div>
       <button class="btn-csv" @click="exportCsv">
@@ -21,7 +21,7 @@
 
     <!-- Board -->
     <div class="kanban-board">
-      <div v-for="col in columns" :key="col.status" class="kanban-column">
+      <div v-for="col in columns" :key="col.status" class="kanban-column" :style="{ '--stage': col.color }">
         <div class="kanban-column__header" :style="{ background: col.color }">
           <span class="kanban-column__title">{{ col.label }}</span>
           <span class="kanban-column__count">{{ leadsForStatus(col.status).length }}</span>
@@ -52,25 +52,22 @@ import { NScrollbar, NEmpty } from 'naive-ui'
 import KanbanCard from '../components/kanban/KanbanCard.vue'
 import AppNav from '../components/layout/AppNav.vue'
 import { useSimulatorStore } from '../stores/simulator'
+import { useWorkspaceStore } from '../stores/workspace'
 
 const store = useSimulatorStore()
+const ws    = useWorkspaceStore()
 
-const columns = [
-  { status: 'NOVO',        label: 'Novo Lead',   color: '#2080f0' },
-  { status: 'CONTATO',     label: 'Em Contato',  color: '#f0a020' },
-  { status: 'INSCRITO',    label: 'Inscrito',    color: '#8a2be2' },
-  { status: 'MATRICULADO', label: 'Matriculado', color: '#18a058' },
-  { status: 'PERDIDO',     label: 'Perdido',     color: '#999'    },
-]
+// Colunas dinâmicas vindas do vertical
+const columns = computed(() => ws.stages.map(s => ({ status: s.key, label: s.label, color: s.color })))
 
 const totalLeads = computed(() =>
-  store.leads.filter((l) => l.status !== 'PERDIDO').length,
+  store.leads.filter((l) => l.status !== ws.lostStage).length,
 )
 
 const staleCount = computed(() => {
   const cutoff = Date.now() - 24 * 3_600_000
   return store.leads.filter(
-    (l) => l.status === 'NOVO' && new Date(l.createdAt).getTime() < cutoff,
+    (l) => l.status === ws.firstStage && new Date(l.createdAt).getTime() < cutoff,
   ).length
 })
 

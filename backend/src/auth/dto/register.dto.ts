@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
@@ -13,6 +13,13 @@ export class RegisterDto {
   password: string;
 
   @IsString()
-  @MinLength(2, { message: 'Nome da escola deve ter pelo menos 2 caracteres' })
-  schoolName: string;
+  @MinLength(2, { message: 'Nome do workspace deve ter pelo menos 2 caracteres' })
+  workspaceName: string;
+
+  @IsOptional()
+  @IsString()
+  schoolName?: string; // alias retrocompatível
+
+  @IsString({ message: 'Selecione um vertical' })
+  verticalId: string;
 }
