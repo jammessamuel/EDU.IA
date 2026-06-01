@@ -19,6 +19,9 @@
       avance-{{ staleCount > 1 ? 'os' : 'o' }} para <strong>Em Contato</strong>.
     </div>
 
+    <!-- Modal de detalhe -->
+    <LeadDetailModal :lead="detailLead" @close="detailLead = null" />
+
     <!-- Board -->
     <div class="kanban-board">
       <div v-for="col in columns" :key="col.status" class="kanban-column" :style="{ '--stage': col.color }">
@@ -34,6 +37,7 @@
                 v-for="lead in leadsForStatus(col.status)"
                 :key="lead.id"
                 :lead="lead"
+                @open="detailLead = $event"
               />
             </TransitionGroup>
             <div v-if="leadsForStatus(col.status).length === 0" class="kanban-column__empty">
@@ -47,15 +51,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { NScrollbar, NEmpty } from 'naive-ui'
 import KanbanCard from '../components/kanban/KanbanCard.vue'
+import LeadDetailModal from '../components/leads/LeadDetailModal.vue'
 import AppNav from '../components/layout/AppNav.vue'
 import { useSimulatorStore } from '../stores/simulator'
 import { useWorkspaceStore } from '../stores/workspace'
+import type { Lead } from '../types'
 
-const store = useSimulatorStore()
-const ws    = useWorkspaceStore()
+const store      = useSimulatorStore()
+const ws         = useWorkspaceStore()
+const detailLead = ref<Lead | null>(null)
 
 // Colunas dinâmicas vindas do vertical
 const columns = computed(() => ws.stages.map(s => ({ status: s.key, label: s.label, color: s.color })))

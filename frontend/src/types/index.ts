@@ -23,11 +23,17 @@ export interface Vertical {
   stages: VerticalStage[]
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface Lead {
   id: string
   name: string
   phone?: string
   data: Record<string, string>
+  conversation: ConversationMessage[]
   qualified: boolean
   status: string
   createdAt: string

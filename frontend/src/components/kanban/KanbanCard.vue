@@ -12,7 +12,10 @@
         <span v-for="[, val] in dataEntries" :key="val" class="tag">{{ val }}</span>
       </div>
 
-      <div class="kanban-card__date">{{ formatDate(lead.createdAt) }}</div>
+      <div class="kanban-card__date-row">
+        <span class="kanban-card__date">{{ formatDate(lead.createdAt) }}</span>
+        <button class="btn-detail" title="Ver detalhes" @click.stop="emit('open', lead)">👁</button>
+      </div>
 
       <div v-if="!isLost" class="kanban-card__actions">
         <button v-if="nextStage" class="btn-advance" :disabled="loading" @click="advance">
@@ -34,6 +37,7 @@ import { useSimulatorStore } from '../../stores/simulator'
 import { useWorkspaceStore } from '../../stores/workspace'
 
 const props   = defineProps<{ lead: Lead }>()
+const emit    = defineEmits<{ open: [lead: Lead] }>()
 const store   = useSimulatorStore()
 const ws      = useWorkspaceStore()
 const loading = ref(false)
@@ -141,7 +145,26 @@ function formatDate(iso: string) {
   color: #555;
 }
 
+.kanban-card__date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .kanban-card__date { font-size: 11px; color: #bbb; }
+
+.btn-detail {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0.4;
+  padding: 0;
+  line-height: 1;
+  transition: opacity 0.15s;
+}
+
+.btn-detail:hover { opacity: 1; }
 
 .kanban-card__actions { display: flex; gap: 5px; flex-wrap: wrap; }
 

@@ -124,7 +124,8 @@ Retorne APENAS o JSON, sem explicação.`;
           schoolId,
           name,
           qualified: true,
-          data: JSON.stringify(dynamicFields),
+          data:         JSON.stringify(dynamicFields),
+          conversation: JSON.stringify(history.slice(-30)), // até 30 msgs
         },
       });
     } catch {
@@ -250,16 +251,19 @@ Retorne APENAS o JSON, sem explicação.`;
 
   private serializeLead(lead: any) {
     let data: Record<string, string> = {};
+    let conversation: { role: string; content: string }[] = [];
     try { data = JSON.parse(lead.data || '{}'); } catch { /* noop */ }
+    try { conversation = JSON.parse(lead.conversation || '[]'); } catch { /* noop */ }
     return {
-      id:        lead.id,
-      name:      lead.name,
-      phone:     lead.phone,
+      id:           lead.id,
+      name:         lead.name,
+      phone:        lead.phone,
       data,
-      qualified: lead.qualified,
-      status:    lead.status,
-      createdAt: lead.createdAt,
-      updatedAt: lead.updatedAt,
+      conversation,
+      qualified:    lead.qualified,
+      status:       lead.status,
+      createdAt:    lead.createdAt,
+      updatedAt:    lead.updatedAt,
     };
   }
 }

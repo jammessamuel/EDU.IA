@@ -4,6 +4,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import type { Lead } from '@/types'
 
 const props = defineProps<{ lead: Lead }>()
+const emit  = defineEmits<{ open: [lead: Lead] }>()
 const ws    = useWorkspaceStore()
 
 const initial      = computed(() => props.lead.name.charAt(0).toUpperCase())
@@ -18,7 +19,7 @@ const formattedDate = computed(() =>
 </script>
 
 <template>
-  <div class="lead-card" :style="{ '--accent': accentColor }">
+  <div class="lead-card" :style="{ '--accent': accentColor }" title="Clique para ver detalhes" @click="emit('open', lead)">
     <div class="lead-card__bar"></div>
     <div class="lead-card__body">
       <div class="lead-card__top">
