@@ -1,5 +1,7 @@
 .env
-.env.*
+.env.local
+.env.*.local
+!.env.production
 !.env.example
 
 # Dependencies
@@ -7,6 +9,18 @@ node_modules/
 frontend/node_modules/
 backend/node_modules/
 
+# Build outputs
+dist/
+backend/dist/
+frontend/dist/
+
+# Banco local (SQLite) — produção usa Supabase/Postgres
+*.db
+*.db-shm
+*.db-wal
+backend/prisma/*.db
+
 # IDE
 .vscode/
 *.local
+.claude/settings.local.json

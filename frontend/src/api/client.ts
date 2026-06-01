@@ -3,8 +3,9 @@ import router from '../router'
 
 export const api = axios.create({
   baseURL: (import.meta.env.VITE_API_URL as string) ?? 'http://localhost:3001',
-  withCredentials: true,
-  timeout: 30_000,
+  // Auth é via token JWT no header Authorization (não usamos cookies de sessão).
+  withCredentials: false,
+  timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
 

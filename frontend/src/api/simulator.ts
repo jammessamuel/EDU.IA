@@ -1,16 +1,15 @@
 import { apiClient } from './client'
-import type { SendMessageResponse, Lead, ResetSessionResponse } from '@/types'
+import type { SendMessageResponse, Lead } from '@/types'
+
+export interface HistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 export const simulatorApi = {
-  sendMessage(text: string): Promise<SendMessageResponse> {
+  sendMessage(text: string, history: HistoryMessage[]): Promise<SendMessageResponse> {
     return apiClient
-      .post<SendMessageResponse>('/simulator/messages', { text })
-      .then((res) => res.data)
-  },
-
-  resetSession(): Promise<ResetSessionResponse> {
-    return apiClient
-      .delete<ResetSessionResponse>('/simulator/session')
+      .post<SendMessageResponse>('/simulator/messages', { text, history })
       .then((res) => res.data)
   },
 

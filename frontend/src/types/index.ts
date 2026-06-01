@@ -22,7 +22,3 @@ export interface SendMessageResponse {
   reply: string
   lead: Lead | null
 }
-
-export interface ResetSessionResponse {
-  ok: boolean
-}

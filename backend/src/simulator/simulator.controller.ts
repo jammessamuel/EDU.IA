@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Session } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { SimulatorService, ChatMessage } from './simulator.service';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -10,19 +10,11 @@ export class SimulatorController {
   @Post('messages')
   @RequirePermission('leads:create:school')
   send(
-    @Body() body: { text: string },
-    @Session() session: Record<string, any>,
+    @Body() body: { text: string; history?: ChatMessage[] },
     @CurrentUser() user: { id: string; schoolId: string },
   ) {
-    if (!session.messages) session.messages = [];
-    return this.simulatorService.chat(body.text, session.messages as ChatMessage[], user.schoolId);
-  }
-
-  @Delete('session')
-  @RequirePermission('leads:create:school')
-  reset(@Session() session: Record<string, any>) {
-    session.messages = [];
-    return { ok: true };
+    // Histórico vem do cliente (serverless-friendly: sem estado no servidor).
+    return this.simulatorService.chat(body.text, body.history ?? [], user.schoolId);
   }
 
   @Get('leads')

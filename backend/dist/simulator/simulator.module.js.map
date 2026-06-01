@@ -1,1 +1,0 @@
-{"version":3,"file":"simulator.module.js","sourceRoot":"","sources":["../../src/simulator/simulator.module.ts"],"names":[],"mappings":";;;;;;;;;AAcA,2CAAwC;AACxC,iEAA6D;AAC7D,2DAAuD;AAahD,IAAM,eAAe,GAArB,MAAM,eAAe;CAAG,CAAA;AAAlB,0CAAe;0BAAf,eAAe;IAX3B,IAAA,eAAM,EAAC;QAIN,WAAW,EAAE,CAAC,0CAAmB,CAAC;QAKlC,SAAS,EAAE,CAAC,oCAAgB,CAAC;KAC9B,CAAC;GACW,eAAe,CAAG"}

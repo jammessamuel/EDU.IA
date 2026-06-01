@@ -26,6 +26,14 @@ export const useSimulatorStore = defineStore('simulator', () => {
     error.value = null
     isSending.value = true
 
+    // Histórico enviado ao backend (serverless não guarda estado).
+    // Montado ANTES de inserir a nova mensagem do usuário, pois o
+    // backend já adiciona o texto atual à conversa.
+    const history = messages.value.map((m) => ({
+      role: m.from === 'user' ? ('user' as const) : ('assistant' as const),
+      content: m.text,
+    }))
+
     messages.value.push({
       id: crypto.randomUUID(),
       from: 'user',
@@ -37,7 +45,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     isTyping.value = true
 
     try {
-      const response = await simulatorApi.sendMessage(text.trim())
+      const response = await simulatorApi.sendMessage(text.trim(), history)
 
       isTyping.value = false
       messages.value.push({
@@ -58,14 +66,9 @@ export const useSimulatorStore = defineStore('simulator', () => {
     }
   }
 
-  async function resetSession(): Promise<void> {
-    try {
-      await simulatorApi.resetSession()
-    } catch {
-      // reseta estado local mesmo se backend falhar
-    }
+  function resetSession(): void {
+    // Conversa é mantida no cliente — reset é puramente local.
     messages.value = [{ ...WELCOME, id: crypto.randomUUID(), timestamp: new Date() }]
-    leads.value = []
     error.value = null
     isTyping.value = false
     isSending.value = false
