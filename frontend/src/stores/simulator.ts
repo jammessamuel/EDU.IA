@@ -3,15 +3,17 @@ import { defineStore } from 'pinia'
 import { simulatorApi } from '@/api/simulator'
 import type { ChatMessage, Lead } from '@/types'
 
-const WELCOME: ChatMessage = {
-  id: 'welcome',
-  from: 'ai',
-  text: 'Olá! Seja bem-vindo ao Colégio Exemplo. Como posso te ajudar hoje?',
-  timestamp: new Date(),
+function makeWelcome(): ChatMessage {
+  return {
+    id: 'welcome',
+    from: 'ai',
+    text: 'Olá! 👋 Seja bem-vindo! Como posso te ajudar hoje?',
+    timestamp: new Date(),
+  }
 }
 
 export const useSimulatorStore = defineStore('simulator', () => {
-  const messages = ref<ChatMessage[]>([{ ...WELCOME }])
+  const messages = ref<ChatMessage[]>([makeWelcome()])
   const leads = ref<Lead[]>([])
   const isTyping = ref(false)
   const isSending = ref(false)
@@ -68,7 +70,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
   function resetSession(): void {
     // Conversa é mantida no cliente — reset é puramente local.
-    messages.value = [{ ...WELCOME, id: crypto.randomUUID(), timestamp: new Date() }]
+    messages.value = [makeWelcome()]
     error.value = null
     isTyping.value = false
     isSending.value = false

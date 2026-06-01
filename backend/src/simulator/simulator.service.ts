@@ -69,7 +69,8 @@ Quando coletar todos os campos, agradeça e diga que um consultor vai entrar em 
     const reply = response.choices[0].message.content ?? '';
     history.push({ role: 'assistant', content: reply });
 
-    const lead = await this.tryExtractAndSaveLead(history, schoolId);
+    const rawLead = await this.tryExtractAndSaveLead(history, schoolId);
+    const lead = rawLead ? this.serializeLead(rawLead) : null;
     return { reply, lead };
   }
 
