@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NScrollbar, NAlert } from 'naive-ui'
 import { useSimulatorStore } from '@/stores/simulator'
