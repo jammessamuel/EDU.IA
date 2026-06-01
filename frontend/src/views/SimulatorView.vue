@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NScrollbar, NAlert } from 'naive-ui'
 import { useSimulatorStore } from '@/stores/simulator'
@@ -14,10 +14,8 @@ import type { Lead } from '@/types'
 const store  = useSimulatorStore()
 const router = useRouter()
 
-const hasLead     = computed(() => store.leads.length > 0)
 const quickReplies = useQuickReplies(
   computed(() => store.messages),
-  hasLead,
   computed(() => store.isTyping),
 )
 

@@ -3,37 +3,42 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import type { ChatMessage } from '@/types'
 
 /**
- * Calcula as opções de quick reply para o estado atual da conversa.
+ * Retorna as opções de quick reply para o estado atual da conversa.
  *
- * Lógica: cada mensagem da IA (exceto a boas-vindas) corresponde a um
- * campo do vertical na ordem. Se esse campo for do tipo "select", retorna
- * suas opções para exibir como botões.
+ * Regras:
+ * - Só aparece quando a ÚLTIMA mensagem é da IA (ela está esperando resposta)
+ * - Conta TODAS as mensagens da IA para descobrir qual campo está sendo pedido
+ * - A primeira mensagem da IA é sempre a saudação — não conta como campo
+ * - Se o campo atual for do tipo "select", retorna suas opções; senão null
+ * - Desaparece automaticamente quando todos os campos foram coletados
  */
 export function useQuickReplies(
   messages: Ref<ChatMessage[]>,
-  hasLead:  Ref<boolean>,
-  isTyping: Ref<boolean>,
+  isTyping:  Ref<boolean>,
 ) {
   const ws = useWorkspaceStore()
 
   return computed((): string[] | null => {
-    if (hasLead.value || isTyping.value) return null
+    if (isTyping.value) return null
 
     const sortedFields = [...ws.fields].sort((a, b) => a.order - b.order)
     if (!sortedFields.length) return null
 
-    // Mensagens da IA depois da boas-vindas = perguntas sobre cada campo
-    const aiQuestions = messages.value.filter(
-      (m) => m.from === 'ai' && !m.id.startsWith('welcome') && !m.id.startsWith('pre-'),
-    )
+    const msgs = messages.value
+    if (!msgs.length) return null
 
-    // Ainda na boas-vindas, nenhuma pergunta feita ainda
-    if (!aiQuestions.length) return null
+    // Só mostra quando a última mensagem é da IA (aguardando input do usuário)
+    const lastMsg = msgs[msgs.length - 1]
+    if (lastMsg.from !== 'ai') return null
 
-    // fieldIdx = qual campo o bot acabou de perguntar
-    const fieldIdx = aiQuestions.length - 1
+    // Conta todas as mensagens da IA para saber em qual campo estamos
+    // A primeira = saudação, as seguintes = perguntas sobre os campos
+    const allAiMsgs = msgs.filter(m => m.from === 'ai')
+    const fieldIdx = allAiMsgs.length - 2 // -1 zero-index, -1 saudação
+
+    if (fieldIdx < 0) return null
+
     const field = sortedFields[fieldIdx]
-
     return field?.type === 'select' && field.options?.length ? field.options : null
   })
 }

@@ -569,12 +569,21 @@ function getQuickReplies(contactId: string): string[] | null {
   const sortedFields = [...ws.fields].sort((a, b) => a.order - b.order)
   if (!sortedFields.length) return null
 
-  const aiQuestions = conv.messages.filter(
-    m => m.from === 'ai' && !m.id.startsWith('pre-') && !m.id.startsWith('welcome'),
-  )
-  if (!aiQuestions.length) return null
+  const msgs = conv.messages
+  if (!msgs.length) return null
 
-  const field = sortedFields[aiQuestions.length - 1]
+  // Só mostra quando a última mensagem é da IA
+  const lastMsg = msgs[msgs.length - 1]
+  if (lastMsg.from !== 'ai') return null
+
+  // Conta TODAS as mensagens da IA (inclusive pré-carregadas)
+  // Primeira = saudação, demais = perguntas sobre campos
+  const allAiMsgs = msgs.filter(m => m.from === 'ai')
+  const fieldIdx  = allAiMsgs.length - 2 // -1 zero-index, -1 saudação
+
+  if (fieldIdx < 0) return null
+
+  const field = sortedFields[fieldIdx]
   return field?.type === 'select' && field.options?.length ? field.options : null
 }
 
