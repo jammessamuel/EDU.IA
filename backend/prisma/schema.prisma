@@ -11,11 +11,16 @@ datasource db {
 }
 
 model School {
-  id        String   @id @default(cuid())
-  name      String
-  subdomain String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  subdomain   String   @unique
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Configurações do chatbot (editáveis pelo admin da escola)
+  chatbotName String   @default("IA Atendente")
+  courses     String   @default("[\"Enfermagem\",\"Administração\",\"Direito\",\"Pedagogia\"]")
+  units       String   @default("[\"Centro\",\"Norte\",\"Sul\"]")
 
   users User[]
   leads Lead[]

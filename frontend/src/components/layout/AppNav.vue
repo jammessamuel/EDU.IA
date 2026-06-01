@@ -7,9 +7,11 @@ const route = useRoute()
 const auth = useAuthStore()
 
 const links = [
-  { to: '/',          label: 'Simulador' },
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/kanban',    label: 'Pipeline'  },
+  { to: '/whatsapp',  label: '💬 WhatsApp' },
+  { to: '/',          label: 'Simulador'   },
+  { to: '/dashboard', label: 'Dashboard'   },
+  { to: '/kanban',    label: 'Pipeline'    },
+  { to: '/settings',  label: 'Configurações' },
 ]
 
 async function logout() {

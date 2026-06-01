@@ -25,6 +25,14 @@ export const simulatorApi = {
     return apiClient.get<Lead[]>('/simulator/leads/stale').then((res) => res.data)
   },
 
+  getSchoolSettings(): Promise<{ name: string; chatbotName: string; courses: string[]; units: string[] }> {
+    return apiClient.get('/simulator/school/settings').then((r) => r.data)
+  },
+
+  updateSchoolSettings(data: { name?: string; chatbotName?: string; courses?: string[]; units?: string[] }) {
+    return apiClient.put('/simulator/school/settings', data).then((r) => r.data)
+  },
+
   updateLeadStatus(id: string, status: string): Promise<Lead> {
     return apiClient
       .patch<Lead>(`/simulator/leads/${id}/status`, { status })

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import { SimulatorService, ChatMessage } from './simulator.service';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -26,6 +26,21 @@ export class SimulatorController {
   @RequirePermission('leads:read:school')
   metrics(@CurrentUser() user: { id: string; schoolId: string }) {
     return this.simulatorService.getMetrics(user.schoolId);
+  }
+
+  @Get('school/settings')
+  @RequirePermission('leads:read:school')
+  getSettings(@CurrentUser() user: { id: string; schoolId: string }) {
+    return this.simulatorService.getSchoolSettings(user.schoolId);
+  }
+
+  @Put('school/settings')
+  @RequirePermission('leads:update:school')
+  updateSettings(
+    @Body() body: { name?: string; chatbotName?: string; courses?: string[]; units?: string[] },
+    @CurrentUser() user: { id: string; schoolId: string },
+  ) {
+    return this.simulatorService.updateSchoolSettings(user.schoolId, body);
   }
 
   @Get('leads/stale')

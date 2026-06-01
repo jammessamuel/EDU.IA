@@ -3,26 +3,23 @@ import OpenAI from 'openai';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 
-const SCHOOL_NAME = 'Colégio Exemplo';
-const COURSES = ['Enfermagem', 'Administração', 'Direito', 'Pedagogia'];
-const UNITS = ['Centro', 'Norte', 'Sul'];
-
-const SYSTEM_PROMPT = `
-Você é o atendente virtual do ${SCHOOL_NAME}, uma instituição de ensino.
+function buildSystemPrompt(schoolName: string, courses: string[], units: string[]): string {
+  return `
+Você é o atendente virtual da ${schoolName}, uma instituição de ensino.
 Seu objetivo é qualificar o interesse do aluno coletando as seguintes informações, UMA POR VEZ:
-1. Qual curso tem interesse (opções: ${COURSES.join(', ')})
-2. Qual unidade prefere (opções: ${UNITS.join(', ')})
+1. Qual curso tem interesse (opções: ${courses.join(', ')})
+2. Qual unidade prefere (opções: ${units.join(', ')})
 3. Qual turno prefere (manhã, tarde ou noite)
 4. Nome completo
-5. Se é maior de 18 anos
 
 REGRAS:
 - Seja cordial e objetivo, em português brasileiro
 - Faça APENAS UMA pergunta por mensagem
 - Não peça todas as informações de uma vez
-- Quando tiver todas as informações (curso + unidade + turno + nome), agradeça e diga que um atendente vai entrar em contato em breve
+- Quando tiver todas as informações (curso + unidade + turno + nome), agradeça e diga que um consultor vai entrar em contato em breve
 - Se o aluno pedir para falar com um humano, diga que vai transferir e encerre cordialmente
 `.trim();
+}
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -43,10 +40,15 @@ export class SimulatorService {
   async chat(text: string, history: ChatMessage[], schoolId: string) {
     history.push({ role: 'user', content: text });
 
+    const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    const courses = JSON.parse(school?.courses ?? '["Enfermagem","Administração","Direito","Pedagogia"]');
+    const units   = JSON.parse(school?.units   ?? '["Centro","Norte","Sul"]');
+    const prompt  = buildSystemPrompt(school?.name ?? 'Instituição de Ensino', courses, units);
+
     const response = await this.client.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: prompt },
         ...history.slice(-12),
       ],
       temperature: 0.4,
@@ -162,6 +164,35 @@ Retorne APENAS o JSON, sem explicação.`,
     }
 
     return { total: active, byStatus, byCourse, conversionRate, byDay };
+  }
+
+  async getSchoolSettings(schoolId: string) {
+    const s = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    return {
+      name: s?.name ?? '',
+      chatbotName: s?.chatbotName ?? 'IA Atendente',
+      courses: JSON.parse(s?.courses ?? '[]'),
+      units:   JSON.parse(s?.units   ?? '[]'),
+    };
+  }
+
+  async updateSchoolSettings(
+    schoolId: string,
+    data: { name?: string; chatbotName?: string; courses?: string[]; units?: string[] },
+  ) {
+    const update: any = {};
+    if (data.name)        update.name        = data.name;
+    if (data.chatbotName) update.chatbotName = data.chatbotName;
+    if (data.courses)     update.courses     = JSON.stringify(data.courses);
+    if (data.units)       update.units       = JSON.stringify(data.units);
+
+    const s = await this.prisma.school.update({ where: { id: schoolId }, data: update });
+    return {
+      name: s.name,
+      chatbotName: s.chatbotName,
+      courses: JSON.parse(s.courses),
+      units:   JSON.parse(s.units),
+    };
   }
 
   async getStaleLeds(schoolId: string, hoursThreshold = 24) {
