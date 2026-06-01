@@ -39,6 +39,15 @@ async function handleLogout() {
       size="small"
       ghost
       style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
+      @click="router.push('/dashboard')"
+    >
+      Dashboard
+    </NButton>
+
+    <NButton
+      size="small"
+      ghost
+      style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
       @click="router.push('/kanban')"
     >
       Pipeline →

@@ -1,6 +1,9 @@
 <template>
-  <div class="kanban-card" :class="`kanban-card--${lead.status.toLowerCase()}`">
-    <div class="kanban-card__name">{{ lead.name }}</div>
+  <div class="kanban-card" :class="[`kanban-card--${lead.status.toLowerCase()}`, { 'kanban-card--stale': isStale }]">
+    <div class="kanban-card__header">
+      <div class="kanban-card__name">{{ lead.name }}</div>
+      <NTag v-if="isStale" type="error" size="tiny" round>⚠ Sem contato</NTag>
+    </div>
 
     <div class="kanban-card__tags">
       <NTag :type="courseTagType" size="small" round>{{ lead.course }}</NTag>
@@ -45,6 +48,12 @@ import { useSimulatorStore } from '../../stores/simulator'
 const props = defineProps<{ lead: Lead }>()
 const store = useSimulatorStore()
 const loading = ref(false)
+
+const isStale = computed(() => {
+  if (props.lead.status !== 'NOVO') return false
+  const hours = (Date.now() - new Date(props.lead.createdAt).getTime()) / 3_600_000
+  return hours > 24
+})
 
 const FLOW = ['NOVO', 'CONTATO', 'INSCRITO', 'MATRICULADO']
 
@@ -116,6 +125,17 @@ function formatDate(iso: string) {
 .kanban-card--inscrito   { border-left-color: #8a2be2; }
 .kanban-card--matriculado{ border-left-color: #18a058; }
 .kanban-card--perdido    { border-left-color: #999; opacity: 0.6; }
+
+.kanban-card--stale {
+  border-left-color: #d03050 !important;
+}
+
+.kanban-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
 
 .kanban-card__name {
   font-weight: 600;

@@ -127,4 +127,48 @@ Retorne APENAS o JSON, sem explicação.`,
       data: { status },
     });
   }
+
+  async getMetrics(schoolId: string) {
+    const leads = await this.prisma.lead.findMany({ where: { schoolId } });
+
+    const byStatus: Record<string, number> = {
+      NOVO: 0, CONTATO: 0, INSCRITO: 0, MATRICULADO: 0, PERDIDO: 0,
+    };
+    const byCourse: Record<string, number> = {};
+
+    for (const lead of leads) {
+      byStatus[lead.status] = (byStatus[lead.status] ?? 0) + 1;
+      if (lead.status !== 'PERDIDO') {
+        byCourse[lead.course] = (byCourse[lead.course] ?? 0) + 1;
+      }
+    }
+
+    const active = leads.filter((l) => l.status !== 'PERDIDO').length;
+    const conversionRate = active > 0
+      ? Math.round((byStatus.MATRICULADO / active) * 100)
+      : 0;
+
+    // Leads por dia nos últimos 14 dias
+    const now = new Date();
+    const byDay: { date: string; count: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      byDay.push({
+        date: key,
+        count: leads.filter((l) => l.createdAt.toISOString().slice(0, 10) === key).length,
+      });
+    }
+
+    return { total: active, byStatus, byCourse, conversionRate, byDay };
+  }
+
+  async getStaleLeds(schoolId: string, hoursThreshold = 24) {
+    const cutoff = new Date(Date.now() - hoursThreshold * 60 * 60 * 1000);
+    return this.prisma.lead.findMany({
+      where: { schoolId, status: 'NOVO', createdAt: { lt: cutoff } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
 }

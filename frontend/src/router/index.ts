@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import SimulatorView from '../views/SimulatorView.vue'
 import LoginView from '../views/LoginView.vue'
 import KanbanView from '../views/KanbanView.vue'
+import DashboardView from '../views/DashboardView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -16,6 +17,12 @@ const router = createRouter({
       path: '/kanban',
       name: 'kanban',
       component: KanbanView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: DashboardView,
       meta: { requiresAuth: true },
     },
     {

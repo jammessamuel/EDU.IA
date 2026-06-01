@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { SendMessageResponse, Lead } from '@/types'
+import type { SendMessageResponse, Lead, Metrics } from '@/types'
 
 export interface HistoryMessage {
   role: 'user' | 'assistant'
@@ -14,9 +14,15 @@ export const simulatorApi = {
   },
 
   getLeads(): Promise<Lead[]> {
-    return apiClient
-      .get<Lead[]>('/simulator/leads')
-      .then((res) => res.data)
+    return apiClient.get<Lead[]>('/simulator/leads').then((res) => res.data)
+  },
+
+  getMetrics(): Promise<Metrics> {
+    return apiClient.get<Metrics>('/simulator/metrics').then((res) => res.data)
+  },
+
+  getStaleLeads(): Promise<Lead[]> {
+    return apiClient.get<Lead[]>('/simulator/leads/stale').then((res) => res.data)
   },
 
   updateLeadStatus(id: string, status: string): Promise<Lead> {

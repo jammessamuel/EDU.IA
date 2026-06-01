@@ -13,7 +13,6 @@ export class SimulatorController {
     @Body() body: { text: string; history?: ChatMessage[] },
     @CurrentUser() user: { id: string; schoolId: string },
   ) {
-    // Histórico vem do cliente (serverless-friendly: sem estado no servidor).
     return this.simulatorService.chat(body.text, body.history ?? [], user.schoolId);
   }
 
@@ -21,6 +20,18 @@ export class SimulatorController {
   @RequirePermission('leads:read:school')
   leads(@CurrentUser() user: { id: string; schoolId: string }) {
     return this.simulatorService.getAllLeads(user.schoolId);
+  }
+
+  @Get('metrics')
+  @RequirePermission('leads:read:school')
+  metrics(@CurrentUser() user: { id: string; schoolId: string }) {
+    return this.simulatorService.getMetrics(user.schoolId);
+  }
+
+  @Get('leads/stale')
+  @RequirePermission('leads:read:school')
+  stale(@CurrentUser() user: { id: string; schoolId: string }) {
+    return this.simulatorService.getStaleLeds(user.schoolId);
   }
 
   @Patch('leads/:id/status')

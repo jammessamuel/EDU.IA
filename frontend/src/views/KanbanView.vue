@@ -10,6 +10,24 @@
         size="small"
         ghost
         style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
+        @click="router.push('/dashboard')"
+      >
+        Dashboard
+      </NButton>
+
+      <NButton
+        size="small"
+        ghost
+        style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
+        @click="exportCsv"
+      >
+        Exportar CSV
+      </NButton>
+
+      <NButton
+        size="small"
+        ghost
+        style="color: #fff; border-color: rgba(255,255,255,0.5); margin-right: 8px"
         @click="router.push('/')"
       >
         ← Simulador
@@ -23,6 +41,12 @@
       >
         Sair
       </NButton>
+    </div>
+
+    <!-- Banner de follow-up -->
+    <div v-if="staleCount > 0" class="kanban-alert">
+      ⚠ {{ staleCount }} lead{{ staleCount > 1 ? 's' : '' }} sem contato há mais de 24h —
+      marque-{{ staleCount > 1 ? 'os' : 'o' }} como <strong>Em Contato</strong> para remover o alerta.
     </div>
 
     <!-- Board -->
@@ -82,6 +106,13 @@ const totalLeads = computed(() =>
   store.leads.filter((l) => l.status !== 'PERDIDO').length,
 )
 
+const staleCount = computed(() => {
+  const cutoff = Date.now() - 24 * 3_600_000
+  return store.leads.filter(
+    (l) => l.status === 'NOVO' && new Date(l.createdAt).getTime() < cutoff,
+  ).length
+})
+
 function leadsForStatus(status: string) {
   return store.leads.filter((l) => l.status === status)
 }
@@ -89,6 +120,33 @@ function leadsForStatus(status: string) {
 async function handleLogout() {
   await authStore.logout()
   router.push('/login')
+}
+
+function exportCsv() {
+  const header = ['Nome', 'Curso', 'Unidade', 'Turno', 'Status', 'Data']
+  const STATUS_LABEL: Record<string, string> = {
+    NOVO: 'Novo Lead',
+    CONTATO: 'Em Contato',
+    INSCRITO: 'Inscrito',
+    MATRICULADO: 'Matriculado',
+    PERDIDO: 'Perdido',
+  }
+  const rows = store.leads.map((l) => [
+    `"${l.name}"`,
+    `"${l.course}"`,
+    `"${l.unit}"`,
+    `"${l.shift}"`,
+    `"${STATUS_LABEL[l.status] ?? l.status}"`,
+    `"${new Date(l.createdAt).toLocaleDateString('pt-BR')}"`,
+  ])
+  const csv = [header, ...rows].map((r) => r.join(';')).join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 onMounted(() => store.fetchLeads())
@@ -124,6 +182,15 @@ onMounted(() => store.fetchLeads())
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.3px;
+}
+
+.kanban-alert {
+  background: #fff3cd;
+  color: #856404;
+  border-left: 4px solid #ffc107;
+  padding: 10px 20px;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .kanban-board {

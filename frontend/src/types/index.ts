@@ -22,3 +22,11 @@ export interface SendMessageResponse {
   reply: string
   lead: Lead | null
 }
+
+export interface Metrics {
+  total: number
+  conversionRate: number
+  byStatus: Record<string, number>
+  byCourse: Record<string, number>
+  byDay: { date: string; count: number }[]
+}
