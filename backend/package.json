@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "vercel-build": "prisma db push && prisma generate && nest build && node dist/seeds/permissions.seed.js",
+    "vercel-build": "prisma db push && prisma generate && nest build && pnpm exec ts-node --transpile-only -r tsconfig-paths/register src/seeds/permissions.seed.ts",
     "postinstall": "prisma generate",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
