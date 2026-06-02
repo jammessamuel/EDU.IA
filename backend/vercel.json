@@ -1,7 +1,6 @@
 {
   "functions": {
     "api/index.ts": {
-      "includeFiles": "{dist,node_modules/.prisma,node_modules/@prisma/client}/**",
       "maxDuration": 60
     }
   },
