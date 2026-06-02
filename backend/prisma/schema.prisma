@@ -3,10 +3,15 @@ generator client {
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
+// ──────────────────────────────────────────────────────────────
+// DEV LOCAL  → DATABASE_URL="file:./dev.db"  (provider sqlite)
+// PRODUÇÃO   → mude provider para "postgresql" e use as vars
+//              POSTGRES_PRISMA_URL e POSTGRES_URL_NON_POOLING
+//              do painel Vercel (já configuradas pelo colaborador)
+// ──────────────────────────────────────────────────────────────
 datasource db {
-  provider  = "postgresql"
-  url       = env("POSTGRES_PRISMA_URL")
-  directUrl = env("POSTGRES_URL_NON_POOLING")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model Vertical {
@@ -102,7 +107,7 @@ model Lead {
   name         String
   phone        String?
   data         String   @default("{}")
-  conversation String   @default("[]")  // snapshot da conversa que gerou o lead
+  conversation String   @default("[]")
   qualified    Boolean  @default(true)
   status       String   @default("NOVO")
   createdAt    DateTime @default(now())
