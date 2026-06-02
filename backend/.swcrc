@@ -1,0 +1,1 @@
+{"jsc":{"parser":{"syntax":"typescript","decorators":true},"transform":{"decoratorMetadata":true,"legacyDecorator":true},"target":"es2017"},"module":{"type":"commonjs"}}
