@@ -9,27 +9,17 @@ export class TenantMiddleware implements NestMiddleware {
     try {
       const host = (req.get('host') || '').split(':')[0].toLowerCase();
       const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+      const isVercelGeneratedHost = host.endsWith('.vercel.app');
+      const schoolIdOverride = req.get('X-School-Id') || (req.query?.schoolId as string);
+      const subdomainOverride =
+        req.get('X-School-Subdomain') ||
+        (req.query?.schoolSubdomain as string) ||
+        (req.query?.subdomain as string);
 
-      if (isLocalhost) {
-        const schoolIdOverride =
-          req.get('X-School-Id') || (req.query?.schoolId as string);
-
-        let school: { id: string; name: string; subdomain: string } | null = null;
-
-        if (schoolIdOverride) {
-          school = await this.prisma.school.findUnique({
-            where: { id: schoolIdOverride, isActive: true },
-            select: { id: true, name: true, subdomain: true },
-          });
-        }
-
-        if (!school) {
-          school = await this.prisma.school.findFirst({
-            where: { isActive: true },
-            select: { id: true, name: true, subdomain: true },
-          });
-        }
-
+      if (isLocalhost || isVercelGeneratedHost) {
+        const school =
+          (await this.findSchool({ id: schoolIdOverride, subdomain: subdomainOverride })) ??
+          (await this.findDefaultSchool());
         if (!school) {
           return res
             .status(503)
@@ -44,10 +34,7 @@ export class TenantMiddleware implements NestMiddleware {
       // Produção: resolve pelo subdomínio
       const subdomain = host.split('.')[0];
 
-      const school = await this.prisma.school.findUnique({
-        where: { subdomain },
-        select: { id: true, name: true, subdomain: true, isActive: true },
-      });
+      const school = await this.findSchool({ subdomain });
 
       if (!school) {
         return res.status(404).json({ error: 'Escola não encontrada', code: 'SCHOOL_NOT_FOUND' });
@@ -64,5 +51,33 @@ export class TenantMiddleware implements NestMiddleware {
       console.error('[Tenant] Erro ao resolver tenant:', error.message);
       return res.status(500).json({ error: 'Erro ao identificar escola', code: 'TENANT_ERROR' });
     }
+  }
+
+  private async findSchool({ id, subdomain }: { id?: string; subdomain?: string }) {
+    if (id) {
+      return this.prisma.school.findUnique({
+        where: { id, isActive: true },
+        select: { id: true, name: true, subdomain: true, isActive: true },
+      });
+    }
+
+    if (subdomain) {
+      return this.prisma.school.findUnique({
+        where: { subdomain },
+        select: { id: true, name: true, subdomain: true, isActive: true },
+      });
+    }
+
+    return null;
+  }
+
+  private async findDefaultSchool() {
+    return (
+      (await this.findSchool({ subdomain: 'demo' })) ??
+      this.prisma.school.findFirst({
+        where: { isActive: true },
+        select: { id: true, name: true, subdomain: true, isActive: true },
+      })
+    );
   }
 }
