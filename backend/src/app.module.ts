@@ -8,6 +8,7 @@ import { VerticalModule } from './vertical/vertical.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt.guard';
 import { RbacGuard } from './common/guards/rbac.guard';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { RbacGuard } from './common/guards/rbac.guard';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RbacGuard },
   ],
+  controllers: [AppController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
