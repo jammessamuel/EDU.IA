@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,14 +11,30 @@ export interface ChatMessage {
 
 @Injectable()
 export class SimulatorService {
-  private client: OpenAI;
+  // Client OpenAI criado sob demanda (lazy) — ver o getter abaixo.
+  private _client: OpenAI | null = null;
 
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
     private verticalService: VerticalService,
-  ) {
-    this.client = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
+  ) {}
+
+  // Só instancio o OpenAI quando o chat realmente vai ser usado.
+  // Assim o backend sobe mesmo sem OPENAI_API_KEY (login, Kanban, dashboard
+  // e leads continuam funcionando). Antes, chave vazia/ausente derrubava o
+  // NestJS inteiro no boot — em serverless isso significava o app todo fora do ar.
+  private get client(): OpenAI {
+    if (!this._client) {
+      const apiKey = this.config.get<string>('OPENAI_API_KEY');
+      if (!apiKey) {
+        throw new ServiceUnavailableException(
+          'OPENAI_API_KEY não configurada — o chat de IA está indisponível no momento.',
+        );
+      }
+      this._client = new OpenAI({ apiKey });
+    }
+    return this._client;
   }
 
   // ── Prompt dinâmico por vertical ─────────────────────────────────────────────

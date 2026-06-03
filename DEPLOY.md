@@ -106,22 +106,20 @@ EDU.IA/
    ```
    > Para gerar um JWT_SECRET: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
-7. Crie as tabelas no Supabase:
+7. Crie as tabelas no Supabase e popule os dados iniciais:
    ```bash
    cd backend
-   pnpm exec prisma db push
+   pnpm run db:setup     # = prisma db push + os 4 seeds na ordem certa
    ```
+   > `db:setup` roda `prisma db push` e depois `pnpm run seed` (verticais →
+   > permissões → workspaces demo → leads demo). Se as tabelas já existem e você
+   > só quer semear, rode `pnpm run seed`. (Antes o doc mandava rodar só um seed
+   > a partir de `dist/seeds/...`, mas hoje o build sai em `dist/src/seeds/` e são 4.)
 
-8. Popule os dados iniciais (permissões + usuários demo):
-   ```bash
-   pnpm run build
-   node dist/seeds/permissions.seed.js
-   ```
-
-   Isso cria:
+   Isso cria, entre outros, os logins demo:
    | E-mail | Senha | Perfil |
    |---|---|---|
-   | `admin@demo.edu` | `Admin@1234` | SCHOOL_ADMIN da escola demo |
+   | `admin@faculdade.demo` | `Demo@1234` | SCHOOL_ADMIN (workspace Faculdade) |
    | `super@eduia.com` | `Super@1234` | SUPER_ADMIN global |
 
 ---
@@ -130,22 +128,33 @@ EDU.IA/
 
 1. Acesse [vercel.com](https://vercel.com) → **Add New Project**
 2. Importe o repositório GitHub
-3. Configure:
+3. Configure (o `backend/vercel.json` já fixa Install/Build — confira o painel):
    - **Root Directory:** `backend`
    - **Framework Preset:** Other
-   - **Build Command:** `npm run vercel-build`
+   - **Install Command:** `pnpm install --frozen-lockfile`  ← é **pnpm**, NÃO npm!
+   - **Build Command:** `pnpm run vercel-build`
    - **Output Directory:** *(deixar vazio)*
+
+   > ⚠️ O backend usa **pnpm** (`pnpm-lock.yaml` + `.npmrc` com opções de pnpm).
+   > Se o Install Command do painel ficar como `npm install --legacy-peer-deps`, o
+   > build TRAVA por ~15 min e quebra com um crash interno do npm
+   > (`Cannot read properties of null (reading 'isDescendantOf')`). O `vercel.json`
+   > já força `pnpm install`, mas garanta que o painel não está sobrescrevendo.
 
 4. Em **Environment Variables**, adicione:
 
    | Variável | Valor |
    |---|---|
-   | `DATABASE_URL` | string pooler do Supabase (porta 6543) |
-   | `DIRECT_URL` | string direta do Supabase (porta 5432) |
-   | `OPENAI_API_KEY` | sua chave da OpenAI |
-   | `JWT_SECRET` | string aleatória longa (mín 32 chars) |
-   | `FRONTEND_URL` | URL do frontend no Vercel (definir depois do passo 3) |
-   | `NODE_ENV` | `production` |
+   | `POSTGRES_PRISMA_URL` | **já vem da integração Supabase** (pooled/pgbouncer) — o schema lê esta |
+   | `POSTGRES_URL_NON_POOLING` | **já vem da integração Supabase** (direta/5432) — usada por `db push` |
+   | `OPENAI_API_KEY` | sua chave da OpenAI (`sk-...`) — **precisa setar** |
+   | `JWT_SECRET` | string aleatória (`openssl rand -hex 32`) — **precisa setar (obrigatória em prod)** |
+   | `FRONTEND_URL` | URL do frontend no Vercel |
+
+   > O banco (`POSTGRES_*`) é injetado automaticamente pela integração Supabase↔Vercel
+   > — confira com `vercel env ls`. O schema lê `POSTGRES_PRISMA_URL` / `POSTGRES_URL_NON_POOLING`,
+   > então NÃO precisa criar `DATABASE_URL`/`DIRECT_URL`. As únicas que faltam setar à mão
+   > costumam ser `OPENAI_API_KEY` e `JWT_SECRET`. (NODE_ENV a Vercel já define como production.)
 
 5. Clique em **Deploy**. Aguarde — o build demora ~2 min na primeira vez.
 
@@ -159,8 +168,12 @@ EDU.IA/
 2. Configure:
    - **Root Directory:** `frontend`
    - **Framework Preset:** Vite
-   - **Build Command:** `npm run build`
+   - **Build Command:** `npm run vercel-build`  ← (`vite build`; NÃO use `npm run build`)
    - **Output Directory:** `dist`
+
+   > O script `build` roda `vue-tsc` (type-check) e hoje falha por erros de tipo
+   > pré-existentes em SettingsView/WhatsAppView. O `vercel-build` (`vite build`)
+   > não faz type-check, então o deploy passa. O `frontend/vercel.json` já fixa isso.
 
 3. Em **Environment Variables**:
 
@@ -185,7 +198,7 @@ EDU.IA/
 ### Passo 5 — Testar
 
 1. Acesse a URL do frontend
-2. Faça login com `admin@demo.edu` / `Admin@1234`
+2. Faça login com `admin@faculdade.demo` / `Demo@1234`
 3. Envie algumas mensagens no simulador — a IA deve responder e criar leads
 4. Clique em **Pipeline →** no header — os leads devem aparecer na coluna "Novo Lead"
 5. Avance um lead clicando **Contato →** e depois **Inscrito →** etc.
@@ -196,8 +209,10 @@ EDU.IA/
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| Login retorna 401 | Banco não tem usuários | Rodar `node dist/seeds/permissions.seed.js` |
-| Chat não responde | `OPENAI_API_KEY` errada ou vazia | Verificar a variável no Vercel |
+| Build trava ~15 min e falha (`isDescendantOf`) | Install Command como `npm` num projeto pnpm | Usar `pnpm install` (o `vercel.json` já força) |
+| Build falha em `prisma generate`/`nest build` | env do banco ausente ou tsconfig inválido | Conferir vars no painel; `ignoreDeprecations` já foi removido |
+| Login retorna 401 | Banco não tem usuários | Rodar `pnpm run seed` (popula tudo) |
+| Chat responde 503 | `OPENAI_API_KEY` ausente | Setar a chave no Vercel (o resto do app sobe normal sem ela) |
 | CORS error no browser | `FRONTEND_URL` desatualizada | Atualizar no backend e redeployar |
 | `prisma db push` falha | Credenciais do Supabase erradas | Verificar `DIRECT_URL` no `.env` |
 | Timeout no chat (>10s) | OpenAI lento + limite free Vercel | Atualizar para Vercel Pro ou usar `maxDuration: 60` |
@@ -206,11 +221,17 @@ EDU.IA/
 
 ## Desenvolvimento local
 
+O banco em dev agora é Postgres (mesma engine de produção), via docker-compose:
+
 ```bash
+# 0. Sobe Postgres + Redis local (rodar na raiz do projeto)
+docker compose up -d
+
 # Backend
 cd backend
 pnpm install
-pnpm run start:dev      # inicia em http://localhost:3001
+pnpm run db:setup                      # cria as tabelas + semeia (só na 1ª vez)
+node_modules/.bin/nest start --watch   # inicia em http://localhost:3001
 
 # Frontend (outro terminal)
 cd frontend
@@ -218,8 +239,10 @@ npm install
 npm run dev             # inicia em http://localhost:5173
 ```
 
-O arquivo `backend/.env` já contém as variáveis necessárias para dev local
-(incluindo a conexão com Supabase — use o mesmo banco ou crie um schema separado).
+> Por que `nest start --watch` direto, e não `pnpm run start:dev`? No pnpm 11 o
+> `pnpm run <script>` dispara um "deps check" que pode falhar no boot; chamar o
+> binário do nest direto evita isso. O `backend/.env` já aponta pro Postgres do
+> docker (`localhost:5432`). Login demo: `admin@faculdade.demo` / `Demo@1234`.
 
 ---
 

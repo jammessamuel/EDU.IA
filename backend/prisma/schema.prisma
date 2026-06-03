@@ -1,17 +1,25 @@
 generator client {
-  provider      = "prisma-client-js"
+  provider = "prisma-client-js"
+  // "native" = a minha máquina (dev); "rhel-openssl-3.0.x" = o runtime serverless da Vercel.
+  // Sem o target rhel o Prisma não acha o query engine em produção e quebra no boot.
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 // ──────────────────────────────────────────────────────────────
-// DEV LOCAL  → DATABASE_URL="file:./dev.db"  (provider sqlite)
-// PRODUÇÃO   → mude provider para "postgresql" e use as vars
-//              POSTGRES_PRISMA_URL e POSTGRES_URL_NON_POOLING
-//              do painel Vercel (já configuradas pelo colaborador)
+// Postgres nos DOIS ambientes — chega de trocar o provider na mão.
+// SQLite (file:) não sobrevive em serverless: o disco da Vercel é
+// efêmero/read-only, então o banco sumia a cada cold start.
+//
+// Uso os nomes que a integração Supabase↔Vercel JÁ injeta no painel
+// (confirmei com `vercel env ls`), pra não precisar criar var nenhuma:
+//   POSTGRES_PRISMA_URL      → pooled (pgbouncer), usada pela app em runtime
+//   POSTGRES_URL_NON_POOLING → direta (5432), usada por `prisma db push`/migrate
+// Em DEV, eu defino essas duas no backend/.env apontando pro meu Postgres local.
 // ──────────────────────────────────────────────────────────────
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 model Vertical {
