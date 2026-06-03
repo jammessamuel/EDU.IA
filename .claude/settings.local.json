@@ -23,7 +23,16 @@
       "Bash(npm install *)",
       "Bash(npm run *)",
       "Bash(node_modules/.bin/prisma generate *)",
-      "PowerShell(Get-Command docker -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Command docker -ErrorAction SilentlyContinue)",
+      "Bash(echo \"EXIT: $?\")",
+      "Read(//tmp/**)",
+      "Bash(echo \"vite dev subindo em background \\(pid $!\\)\")",
+      "Bash(xargs kill -9)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s -o /dev/null -w \"backend local :3001 -> HTTP %{http_code}\\\\n\" http://localhost:3001/ --max-time 4)",
+      "Bash(curl -s -o /dev/null -w \"prod /verticals -> HTTP %{http_code}\\\\n\" https://edu-ia-mu.vercel.app/verticals --max-time 15)",
+      "Bash(curl -s -X POST http://localhost:3001/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@demo.edu\",\"password\":\"Admin@1234\"}' --max-time 8 -w '\\\\nHTTP %{http_code}\\\\n')",
+      "Bash(curl -s -o /dev/null -w \"frontend :5173 -> HTTP %{http_code}\\\\n\" http://localhost:5173/ --max-time 5)"
     ]
   }
 }

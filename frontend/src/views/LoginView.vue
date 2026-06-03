@@ -1,291 +1,855 @@
-<template>
-  <div class="login-page">
-    <div class="login-card" :class="{ 'login-card--wide': activeTab === 'register' && !selectedVertical }">
-      <!-- Header -->
-      <div class="login-header">
-        <div class="logo-mark">SDR<span>.IA</span></div>
-        <p>Atendente de IA para qualificação de leads via WhatsApp</p>
-      </div>
-
-      <NTabs v-model:value="activeTab" type="line" animated @update:value="error = null">
-
-        <!-- LOGIN -->
-        <NTabPane name="login" tab="Entrar">
-          <NForm ref="loginFormRef" :model="loginForm" :rules="loginRules" label-placement="top" style="margin-top:16px">
-            <NFormItem label="Email" path="email">
-              <NInput v-model:value="loginForm.email" placeholder="admin@demo.edu"
-                :input-props="{ type: 'email', autocomplete: 'email' }" @keydown.enter="handleLogin" />
-            </NFormItem>
-            <NFormItem label="Senha" path="password">
-              <NInput v-model:value="loginForm.password" placeholder="••••••••" type="password"
-                show-password-on="click" @keydown.enter="handleLogin" />
-            </NFormItem>
-            <NAlert v-if="error" type="error" :title="error" style="margin-bottom:12px" />
-            <NButton type="primary" block :loading="loading" style="margin-top:8px" @click="handleLogin">
-              Entrar
-            </NButton>
-          </NForm>
-        </NTabPane>
-
-        <!-- CADASTRO -->
-        <NTabPane name="register" tab="Criar conta">
-
-          <!-- Passo 1: escolha do vertical -->
-          <div v-if="!selectedVertical" class="vertical-step">
-            <p class="vertical-step__label">Qual é o setor do seu negócio?</p>
-            <div v-if="loadingVerticals" class="vertical-loading">Carregando...</div>
-            <div v-else class="vertical-grid">
-              <button
-                v-for="v in verticals"
-                :key="v.id"
-                class="vcard"
-                @click="selectVertical(v)"
-              >
-                <span class="vcard__icon">{{ v.icon }}</span>
-                <span class="vcard__name">{{ v.name }}</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Passo 2: formulário com vertical selecionado -->
-          <div v-else>
-            <button class="back-btn" @click="selectedVertical = null">
-              ← Mudar setor
-            </button>
-            <div class="selected-vertical" :style="{ borderColor: selectedVertical.color, background: selectedVertical.color + '14' }">
-              <span class="selected-vertical__icon">{{ selectedVertical.icon }}</span>
-              <span class="selected-vertical__name" :style="{ color: selectedVertical.color }">{{ selectedVertical.name }}</span>
-            </div>
-
-            <NForm ref="registerFormRef" :model="registerForm" :rules="registerRules" label-placement="top" style="margin-top:16px">
-              <NFormItem label="Seu nome" path="name">
-                <NInput v-model:value="registerForm.name" placeholder="Maria Silva" />
-              </NFormItem>
-              <NFormItem label="Email" path="email">
-                <NInput v-model:value="registerForm.email" placeholder="maria@empresa.com"
-                  :input-props="{ type: 'email', autocomplete: 'email' }" />
-              </NFormItem>
-              <NFormItem label="Senha" path="password">
-                <NInput v-model:value="registerForm.password" placeholder="Mín. 8 caracteres"
-                  type="password" show-password-on="click" />
-              </NFormItem>
-              <NFormItem label="Nome do negócio" path="workspaceName">
-                <NInput v-model:value="registerForm.workspaceName" placeholder="Escritório Silva & Associados" />
-              </NFormItem>
-              <NAlert v-if="error" type="error" :title="error" style="margin-bottom:12px" />
-              <NButton type="primary" block :loading="loading" style="margin-top:8px" @click="handleRegister">
-                Criar conta
-              </NButton>
-            </NForm>
-          </div>
-        </NTabPane>
-      </NTabs>
-
-      <div class="demo-hint">
-        <span>Demo: admin@demo.edu / Admin@1234</span>
-      </div>
-    </div>
-  </div>
-</template>
-
+<!--
+  LoginView.vue — tela de autenticação (login + cadastro).
+  Layout split-screen: formulário (creme) à esquerda e, à direita, um painel
+  que simula o próprio produto — um atendente de IA digitando em tempo real.
+  Toda a lógica de login/cadastro multi-step (com seleção de vertical) foi
+  preservada; só a aparência mudou.
+-->
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NForm, NFormItem, NInput, NButton, NAlert, NTabs, NTabPane, type FormInst, type FormRules } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../api/client'
 import type { Vertical } from '../types'
+import TypewriterText from '../components/auth/TypewriterText.vue'
 
-const router    = useRouter()
+const router = useRouter()
 const authStore = useAuthStore()
 
-const activeTab      = ref<'login' | 'register'>('login')
-const loading        = ref(false)
-const error          = ref<string | null>(null)
-const loginFormRef   = ref<FormInst | null>(null)
-const registerFormRef= ref<FormInst | null>(null)
+const mode = ref<'login' | 'register'>('login')
+const loading = ref(false)
+const error = ref<string | null>(null)
+const showPass = ref(false)
 
-// Verticals
-const verticals        = ref<Vertical[]>([])
+// Verticais (setores) carregados do backend para o passo 1 do cadastro
+const verticals = ref<Vertical[]>([])
 const loadingVerticals = ref(false)
 const selectedVertical = ref<Vertical | null>(null)
+
+const loginForm = ref({ email: '', password: '' })
+const registerForm = ref({ name: '', email: '', password: '', workspaceName: '' })
 
 onMounted(async () => {
   loadingVerticals.value = true
   try {
     const { data } = await apiClient.get<Vertical[]>('/verticals')
     verticals.value = data
-  } catch { /* silencioso */ }
-  finally { loadingVerticals.value = false }
+  } catch {
+    /* silencioso — o cadastro só é necessário para novos negócios */
+  } finally {
+    loadingVerticals.value = false
+  }
 })
+
+function setMode(m: 'login' | 'register') {
+  if (mode.value === m) return
+  mode.value = m
+  error.value = null
+}
 
 function selectVertical(v: Vertical) {
   selectedVertical.value = v
   error.value = null
 }
 
-// Forms
-const loginForm    = ref({ email: '', password: '' })
-const registerForm = ref({ name: '', email: '', password: '', workspaceName: '' })
-
-const loginRules: FormRules = {
-  email:    [{ required: true, message: 'Email obrigatório',  trigger: 'blur' }],
-  password: [{ required: true, message: 'Senha obrigatória',  trigger: 'blur' }],
-}
-const registerRules: FormRules = {
-  name:          [{ required: true, min: 2, message: 'Nome obrigatório',           trigger: 'blur' }],
-  email:         [{ required: true, type: 'email', message: 'Email inválido',      trigger: 'blur' }],
-  password:      [{ required: true, min: 8, message: 'Mín. 8 caracteres',          trigger: 'blur' }],
-  workspaceName: [{ required: true, min: 2, message: 'Nome do negócio obrigatório', trigger: 'blur' }],
+function isEmail(s: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
 }
 
 async function handleLogin() {
-  try { await loginFormRef.value?.validate() } catch { return }
-  loading.value = true; error.value = null
+  const f = loginForm.value
+  if (!f.email || !f.password) return (error.value = 'Preencha e-mail e senha.')
+  if (!isEmail(f.email)) return (error.value = 'E-mail inválido.')
+  loading.value = true
+  error.value = null
   try {
-    await authStore.login(loginForm.value.email, loginForm.value.password)
+    await authStore.login(f.email, f.password)
     router.push('/')
   } catch (err: any) {
-    error.value = err?.response?.data?.message ?? 'Erro ao fazer login'
-  } finally { loading.value = false }
+    error.value = err?.response?.data?.message ?? 'E-mail ou senha incorretos.'
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleRegister() {
-  if (!selectedVertical.value) { error.value = 'Selecione um setor'; return }
-  try { await registerFormRef.value?.validate() } catch { return }
-  loading.value = true; error.value = null
+  if (!selectedVertical.value) return (error.value = 'Selecione um setor.')
+  const f = registerForm.value
+  if (!f.name || f.name.trim().length < 2) return (error.value = 'Informe o seu nome.')
+  if (!isEmail(f.email)) return (error.value = 'E-mail inválido.')
+  if (f.password.length < 8) return (error.value = 'A senha precisa ter no mínimo 8 caracteres.')
+  if (!f.workspaceName || f.workspaceName.trim().length < 2)
+    return (error.value = 'Informe o nome do negócio.')
+  loading.value = true
+  error.value = null
   try {
     await authStore.register(
-      registerForm.value.name,
-      registerForm.value.email,
-      registerForm.value.password,
-      registerForm.value.workspaceName,
+      f.name,
+      f.email,
+      f.password,
+      f.workspaceName,
       selectedVertical.value.id,
     )
     router.push('/')
   } catch (err: any) {
-    error.value = err?.response?.data?.message ?? 'Erro ao criar conta'
-  } finally { loading.value = false }
+    error.value = err?.response?.data?.message ?? 'Não foi possível criar a conta.'
+  } finally {
+    loading.value = false
+  }
 }
+
+// Conteúdo do painel da direita muda conforme entrar / criar conta
+const panel = computed(() =>
+  mode.value === 'login'
+    ? {
+        tag: 'Que bom te ver de novo.',
+        sub: 'Enquanto você esteve fora, seu atendente continuou qualificando leads.',
+        chat: [
+          'Período da manhã ou da noite? 😊',
+          'Posso já reservar a sua vaga?',
+          'Te mando os valores e as bolsas agora?',
+        ],
+      }
+    : {
+        tag: 'Comece em menos de um minuto.',
+        sub: 'Configure seu atendente de IA e deixe ele conversar e qualificar por você.',
+        chat: [
+          'Oi! Como posso te ajudar hoje?',
+          'Me conta: qual curso te interessa?',
+          'Já entendi seu perfil. Bora? 🚀',
+        ],
+      },
+)
 </script>
 
+<template>
+  <div class="auth">
+    <!-- ╭──────────────── ESQUERDA: formulário ────────────────╮ -->
+    <section class="pane pane--form">
+      <div class="form-wrap">
+        <!-- marca -->
+        <div class="brand">
+          <span class="brand__logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+              <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+            </svg>
+          </span>
+          <span class="brand__name">EDU<span>.IA</span></span>
+        </div>
+
+        <!-- alternância entrar / criar conta -->
+        <div class="seg" role="tablist" aria-label="Entrar ou criar conta">
+          <button role="tab" :aria-selected="mode === 'login'" :class="{ 'is-on': mode === 'login' }"
+            @click="setMode('login')">Entrar</button>
+          <button role="tab" :aria-selected="mode === 'register'" :class="{ 'is-on': mode === 'register' }"
+            @click="setMode('register')">Criar conta</button>
+          <span class="seg__thumb" :class="{ 'seg__thumb--right': mode === 'register' }" />
+        </div>
+
+        <Transition name="swap" mode="out-in">
+          <!-- ░░ LOGIN ░░ -->
+          <form v-if="mode === 'login'" key="login" class="stack" @submit.prevent="handleLogin">
+            <header class="head">
+              <h1>Bem-vindo de volta</h1>
+              <p>Entre para acompanhar seus leads em tempo real.</p>
+            </header>
+
+            <label class="field">
+              <span class="field__label">E-mail</span>
+              <input v-model="loginForm.email" type="email" autocomplete="email"
+                placeholder="voce@empresa.com" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Senha</span>
+              <div class="field__pw">
+                <input v-model="loginForm.password" :type="showPass ? 'text' : 'password'"
+                  autocomplete="current-password" placeholder="••••••••" @keyup.enter="handleLogin" />
+                <button type="button" class="eye" @click="showPass = !showPass"
+                  :aria-label="showPass ? 'Ocultar senha' : 'Mostrar senha'">
+                  <svg v-if="showPass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                    <line x1="2" x2="22" y1="2" y2="22" />
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
+            </label>
+
+            <p v-if="error" class="err">{{ error }}</p>
+
+            <button class="btn" type="submit" :disabled="loading">
+              <span v-if="!loading">Entrar</span>
+              <span v-else class="spin" />
+            </button>
+          </form>
+
+          <!-- ░░ CADASTRO ░░ -->
+          <div v-else key="register" class="stack">
+            <header class="head">
+              <h1>Crie sua conta</h1>
+              <p>{{ selectedVertical ? 'Agora é só preencher seus dados.' : 'Comece escolhendo o setor do seu negócio.' }}</p>
+            </header>
+
+            <!-- passo 1: escolher vertical -->
+            <div v-if="!selectedVertical">
+              <div v-if="loadingVerticals" class="vgrid">
+                <span v-for="n in 6" :key="n" class="vskel" />
+              </div>
+              <div v-else class="vgrid">
+                <button v-for="v in verticals" :key="v.id" class="vchip"
+                  :style="{ '--vc': v.color }" @click="selectVertical(v)">
+                  <span class="vchip__icon">{{ v.icon }}</span>
+                  <span class="vchip__name">{{ v.name }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- passo 2: dados -->
+            <form v-else class="stack" @submit.prevent="handleRegister">
+              <button type="button" class="back" @click="selectedVertical = null">← Trocar setor</button>
+              <div class="vsel" :style="{ '--vc': selectedVertical.color }">
+                <span class="vsel__icon">{{ selectedVertical.icon }}</span>
+                <strong>{{ selectedVertical.name }}</strong>
+              </div>
+
+              <label class="field">
+                <span class="field__label">Seu nome</span>
+                <input v-model="registerForm.name" placeholder="Maria Silva" autocomplete="name" />
+              </label>
+              <label class="field">
+                <span class="field__label">E-mail</span>
+                <input v-model="registerForm.email" type="email" placeholder="maria@empresa.com"
+                  autocomplete="email" />
+              </label>
+              <label class="field">
+                <span class="field__label">Senha</span>
+                <div class="field__pw">
+                  <input v-model="registerForm.password" :type="showPass ? 'text' : 'password'"
+                    placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+                  <button type="button" class="eye" @click="showPass = !showPass"
+                    :aria-label="showPass ? 'Ocultar senha' : 'Mostrar senha'">
+                    <svg v-if="showPass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                      <line x1="2" x2="22" y1="2" y2="22" />
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                </div>
+              </label>
+              <label class="field">
+                <span class="field__label">Nome do negócio</span>
+                <input v-model="registerForm.workspaceName" placeholder="Faculdade Horizonte" />
+              </label>
+
+              <p v-if="error" class="err">{{ error }}</p>
+
+              <button class="btn" type="submit" :disabled="loading">
+                <span v-if="!loading">Criar conta</span>
+                <span v-else class="spin" />
+              </button>
+            </form>
+          </div>
+        </Transition>
+
+        <!-- dica de demonstração -->
+        <div class="demo">
+          <span class="demo__dot" />
+          Demo: <code>admin@demo.edu</code> · <code>Admin@1234</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- ╭──────────────── DIREITA: painel da IA ────────────────╮ -->
+    <aside class="pane pane--show" aria-hidden="true">
+      <span class="glow" />
+      <span class="grain" />
+
+      <div class="show">
+        <div class="chat">
+          <div class="bubble bubble--in">Oi! Quero saber sobre o curso 👋</div>
+          <div class="bubble bubble--ai">
+            <span class="bubble__who">EDU.IA respondendo</span>
+            <TypewriterText :key="mode" :text="panel.chat" />
+          </div>
+        </div>
+
+        <div class="copy">
+          <h2>{{ panel.tag }}</h2>
+          <p>{{ panel.sub }}</p>
+        </div>
+
+        <div class="foot">
+          <span class="foot__mark">EDU<span>.IA</span></span>
+          <span class="foot__sep">·</span>
+          <span>Atendente de IA para qualificação de leads</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</template>
+
 <style scoped>
-.login-page {
-  min-height: 100vh;
+.auth {
+  --green-900: #053b33;
+  --green-800: #075e54;
+  --green-600: #0e8f7e;
+  --green-400: #25d366;
+  --cream: #f6f4ee;
+  --cream-2: #eeebe1;
+  --ink: #12211d;
+  --muted: #6a7a74;
+  --line: #e4dfd2;
+  --white: #fff;
+
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background: var(--cream);
+  overflow-y: auto;
+}
+@media (min-width: 920px) {
+  .auth {
+    grid-template-columns: 1.04fr 1fr;
+    overflow: hidden;
+  }
+}
+
+/* ── painéis ── */
+.pane {
+  position: relative;
+}
+.pane--form {
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #075e54 100%);
+  padding: 44px 28px;
+  overflow-y: auto;
+}
+/* textura de pontos discreta no creme */
+.pane--form::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 25%, transparent 75%);
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 25%, transparent 75%);
+  opacity: 0.6;
+  pointer-events: none;
 }
 
-.login-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 32px;
+.form-wrap {
+  position: relative;
   width: 100%;
-  max-width: 420px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.25);
-  transition: max-width 0.3s ease;
+  max-width: 380px;
+  animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-.login-card--wide { max-width: 560px; }
-
-/* Brand */
-.login-header { text-align: center; margin-bottom: 24px; }
-
-.logo-mark {
-  font-size: 32px;
-  font-weight: 900;
-  color: #0f172a;
-  letter-spacing: -1px;
-  line-height: 1;
-  margin-bottom: 6px;
+/* ── marca ── */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 30px;
+}
+.brand__logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(150deg, var(--green-600), var(--green-800));
+  box-shadow: 0 7px 18px rgba(7, 94, 84, 0.3);
+}
+.brand__name {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 800;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.brand__name span {
+  color: var(--green-600);
 }
 
-.logo-mark span { color: #075e54; }
-
-.login-header p {
-  margin: 0;
-  font-size: 13px;
-  color: #888;
-  line-height: 1.4;
+/* ── segmented toggle ── */
+.seg {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: var(--cream-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 26px;
 }
-
-/* Vertical grid */
-.vertical-step { margin-top: 16px; }
-
-.vertical-step__label {
+.seg button {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: #333;
-  margin: 0 0 14px;
-  text-align: center;
+  color: var(--muted);
+  padding: 9px 0;
+  border-radius: 10px;
+  transition: color 0.25s;
+}
+.seg button.is-on {
+  color: var(--ink);
+}
+.seg__thumb {
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  background: var(--white);
+  border-radius: 10px;
+  box-shadow: 0 2px 9px rgba(18, 33, 29, 0.1);
+  transition: transform 0.34s cubic-bezier(0.4, 1.2, 0.4, 1);
+}
+.seg__thumb--right {
+  transform: translateX(100%);
 }
 
-.vertical-loading { text-align: center; color: #aaa; padding: 20px; }
+/* ── cabeçalho do form ── */
+.head {
+  margin-bottom: 4px;
+}
+.head h1 {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 700;
+  font-size: 27px;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+.head p {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
 
-.vertical-grid {
+/* ── pilha de campos ── */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.field__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.field input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 14.5px;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.field input::placeholder {
+  color: #aab2ad;
+}
+.field input:focus {
+  border-color: var(--green-600);
+  box-shadow: 0 0 0 3px rgba(14, 143, 126, 0.15);
+}
+
+.field__pw {
+  position: relative;
+}
+.field__pw input {
+  padding-right: 46px;
+}
+.eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #97a19c;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.15s;
+}
+.eye:hover {
+  color: var(--green-800);
+}
+
+/* ── botão principal ── */
+.btn {
+  position: relative;
+  height: 48px;
+  margin-top: 6px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(150deg, var(--green-600), var(--green-800));
+  box-shadow: 0 9px 22px rgba(7, 94, 84, 0.28);
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s, box-shadow 0.2s, filter 0.2s;
+}
+.btn:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 12px 28px rgba(7, 94, 84, 0.36);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+.spin {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ── erro ── */
+.err {
+  font-size: 13px;
+  color: #b23b2e;
+  background: #fdecea;
+  border: 1px solid #f3c7c1;
+  padding: 9px 12px;
+  border-radius: 10px;
+}
+
+/* ── grid de verticais ── */
+.vgrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 9px;
 }
-
-.vcard {
+.vchip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 14px 8px;
-  border-radius: 12px;
-  border: 1.5px solid #e8e8e8;
-  background: #fafafa;
+  gap: 7px;
+  padding: 15px 6px;
+  background: var(--white);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.vchip:hover {
+  transform: translateY(-3px);
+  border-color: var(--vc, var(--green-600));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--vc, #0e8f7e) 22%, transparent);
+}
+.vchip__icon {
+  font-size: 24px;
+  line-height: 1;
+}
+.vchip__name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: center;
+  line-height: 1.2;
+}
+.vskel {
+  height: 76px;
+  border-radius: 14px;
+  background: linear-gradient(100deg, var(--cream-2) 30%, #f2efe7 50%, var(--cream-2) 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.3s infinite;
 }
 
-.vcard:hover {
-  border-color: #075e54;
-  background: #e8f5e9;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(7,94,84,0.12);
-}
-
-.vcard__icon { font-size: 26px; line-height: 1; }
-.vcard__name { font-size: 12px; font-weight: 600; color: #333; text-align: center; }
-
-/* Selected vertical badge */
-.back-btn {
-  background: none;
-  border: none;
-  color: #888;
+/* ── vertical selecionado ── */
+.back {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
   font-size: 13px;
   cursor: pointer;
   padding: 0;
-  margin-bottom: 10px;
+  transition: color 0.15s;
+}
+.back:hover {
+  color: var(--ink);
+}
+.vsel {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 13px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--vc) 10%, var(--white));
+  border: 1.5px solid color-mix(in srgb, var(--vc) 38%, transparent);
+}
+.vsel__icon {
+  font-size: 18px;
+}
+.vsel strong {
+  font-size: 13.5px;
+  color: var(--ink);
 }
 
-.back-btn:hover { color: #333; }
-
-.selected-vertical {
+/* ── dica de demo ── */
+.demo {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 1.5px solid;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.demo code {
+  background: var(--cream-2);
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+.demo__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green-400);
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.2);
+  animation: pulse 2s infinite;
+}
+
+/* ╭─────────── painel da direita ───────────╮ */
+.pane--show {
+  display: none;
+}
+@media (min-width: 920px) {
+  .pane--show {
+    display: block;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(125% 125% at 72% 8%, #0e8f7e 0%, #075e54 44%, #053b33 100%);
+  }
+}
+.glow {
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  max-width: 680px;
+  max-height: 680px;
+  top: -16%;
+  right: -14%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(37, 211, 102, 0.42), transparent 60%);
+  pointer-events: none;
+}
+.grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.show {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 42px;
+  padding: 64px;
+  color: #eafff5;
+}
+
+/* mini chat */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+.bubble {
+  padding: 13px 17px;
+  border-radius: 19px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  max-width: 90%;
+  animation: bubble 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.bubble--in {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom-left-radius: 5px;
+  color: #eafff5;
+  animation-delay: 0.3s;
+}
+.bubble--ai {
+  align-self: flex-end;
+  min-width: 220px;
+  min-height: 48px;
+  background: #25d366;
+  color: #053b33;
+  font-weight: 500;
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 12px 34px rgba(37, 211, 102, 0.32);
+  animation-delay: 0.6s;
+}
+.bubble__who {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  opacity: 0.5;
   margin-bottom: 4px;
 }
 
-.selected-vertical__icon { font-size: 20px; }
-.selected-vertical__name { font-size: 14px; font-weight: 700; }
+/* tagline */
+.copy {
+  max-width: 470px;
+}
+.copy h2 {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 700;
+  font-size: 39px;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  color: #fff;
+  animation: rise 0.7s 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.copy p {
+  margin-top: 15px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: rgba(234, 255, 245, 0.74);
+  animation: rise 0.7s 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
 
-/* Demo hint */
-.demo-hint {
-  text-align: center;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #f0f0f0;
-  font-size: 12px;
-  color: #aaa;
+/* rodapé */
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: rgba(234, 255, 245, 0.55);
+}
+.foot__mark {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 800;
+  font-size: 15px;
+  color: #fff;
+}
+.foot__mark span {
+  color: #25d366;
+}
+.foot__sep {
+  opacity: 0.4;
+}
+
+/* ── transições / keyframes ── */
+.swap-enter-active,
+.swap-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.swap-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.swap-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes bubble {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 6px rgba(37, 211, 102, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .form-wrap,
+  .bubble,
+  .copy h2,
+  .copy p {
+    animation: none;
+  }
 }
 </style>
