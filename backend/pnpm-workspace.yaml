@@ -1,7 +1,14 @@
+# O pnpm 11 NÃO roda build scripts de dependências por padrão (questão de segurança).
+# Os pacotes abaixo têm binário nativo / postinstall que PRECISA compilar
+# (Prisma query engine, SWC, NestJS) — sem isso o build quebra no deploy.
+# O pnpm gera este arquivo com placeholders ("set this to true or false");
+# o valor TEM que ser o booleano `true`. Antes estava como string-placeholder,
+# então os builds eram ignorados e o `pnpm install` saía com erro
+# (ERR_PNPM_IGNORED_BUILDS), derrubando o deploy.
 allowBuilds:
-  '@nestjs/core': set this to true or false
-  '@prisma/client': set this to true or false
-  '@prisma/engines': set this to true or false
-  '@swc/core': set this to true or false
-  prisma: set this to true or false
-  unrs-resolver: set this to true or false
+  '@nestjs/core': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@swc/core': true
+  prisma: true
+  unrs-resolver: true
