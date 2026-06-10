@@ -9,6 +9,6 @@ import { PrismaModule } from '../prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [EnrollmentController],
   providers: [EnrollmentService, EnrollmentChatService, PaymentProvider],
-  exports: [EnrollmentService], // a IA (SimulatorService) pode reutilizar
+  exports: [EnrollmentService, EnrollmentChatService], // o Simulador reutiliza o fluxo completo
 })
 export class EnrollmentModule {}

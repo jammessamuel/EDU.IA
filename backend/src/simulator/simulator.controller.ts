@@ -10,10 +10,15 @@ export class SimulatorController {
   @Post('messages')
   @RequirePermission('leads:create:school')
   send(
-    @Body() body: { text: string; history?: ChatMessage[] },
+    @Body() body: { text: string; history?: ChatMessage[]; enrollmentDraft?: Record<string, any> },
     @CurrentUser() user: { id: string; schoolId: string },
   ) {
-    return this.simulatorService.chat(body.text, body.history ?? [], user.schoolId);
+    return this.simulatorService.chat(
+      body.text,
+      body.history ?? [],
+      user.schoolId,
+      body.enrollmentDraft ?? {},
+    );
   }
 
   @Get('leads')

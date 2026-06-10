@@ -57,6 +57,9 @@ export interface ChatMessage {
 export interface SendMessageResponse {
   reply: string
   lead: Lead | null
+  mode?: 'lead' | 'enrollment'
+  enrollmentDraft?: Record<string, unknown> | null
+  enrollment?: Enrollment | null
 }
 
 export interface Metrics {

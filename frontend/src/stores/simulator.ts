@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { simulatorApi } from '@/api/simulator'
-import type { ChatMessage, Lead } from '@/types'
+import type { ChatMessage, Enrollment, Lead } from '@/types'
 
 function makeWelcome(): ChatMessage {
   return {
@@ -18,9 +18,13 @@ export const useSimulatorStore = defineStore('simulator', () => {
   const isTyping = ref(false)
   const isSending = ref(false)
   const error = ref<string | null>(null)
+  const enrollmentDraft = ref<Record<string, unknown>>({})
+  const createdEnrollment = ref<Enrollment | null>(null)
+  const mode = ref<'lead' | 'enrollment'>('lead')
 
   const hasLeads = computed(() => leads.value.length > 0)
   const leadCount = computed(() => leads.value.length)
+  const isEnrollmentMode = computed(() => mode.value === 'enrollment')
 
   async function sendMessage(text: string): Promise<void> {
     if (!text.trim() || isSending.value) return
@@ -47,7 +51,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     isTyping.value = true
 
     try {
-      const response = await simulatorApi.sendMessage(text.trim(), history)
+      const response = await simulatorApi.sendMessage(text.trim(), history, enrollmentDraft.value)
 
       isTyping.value = false
       messages.value.push({
@@ -59,6 +63,15 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
       if (response.lead) {
         leads.value.unshift(response.lead)
+      }
+
+      if (response.mode === 'enrollment') {
+        mode.value = 'enrollment'
+        enrollmentDraft.value = response.enrollmentDraft ?? enrollmentDraft.value
+      }
+
+      if (response.enrollment) {
+        createdEnrollment.value = response.enrollment
       }
     } catch {
       isTyping.value = false
@@ -74,6 +87,9 @@ export const useSimulatorStore = defineStore('simulator', () => {
     error.value = null
     isTyping.value = false
     isSending.value = false
+    enrollmentDraft.value = {}
+    createdEnrollment.value = null
+    mode.value = 'lead'
   }
 
   async function fetchLeads(): Promise<void> {
@@ -98,6 +114,9 @@ export const useSimulatorStore = defineStore('simulator', () => {
     error,
     hasLeads,
     leadCount,
+    isEnrollmentMode,
+    enrollmentDraft,
+    createdEnrollment,
     sendMessage,
     resetSession,
     fetchLeads,

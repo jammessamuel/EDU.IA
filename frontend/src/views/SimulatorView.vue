@@ -39,7 +39,7 @@ onMounted(() => store.fetchLeads())
         <ChatHeader @reset="store.resetSession()" />
         <ChatMessages :messages="store.messages" :is-typing="store.isTyping" />
         <QuickReplies
-          v-if="quickReplies && !store.isSending"
+          v-if="quickReplies && !store.isSending && !store.isEnrollmentMode"
           :options="quickReplies"
           @select="store.sendMessage($event)"
         />
@@ -61,6 +61,14 @@ onMounted(() => store.fetchLeads())
         <NAlert v-if="store.error" type="error" closable style="margin: 0 16px 8px" @close="store.error = null">
           {{ store.error }}
         </NAlert>
+
+        <div v-if="store.createdEnrollment" class="enrollment-result">
+          <div>
+            <strong>Matrícula {{ store.createdEnrollment.number }} confirmada</strong>
+            <span>{{ store.createdEnrollment.studentName }} · {{ store.createdEnrollment.course }}</span>
+          </div>
+          <button @click="router.push('/enrollments')">Ver matrícula</button>
+        </div>
 
         <NScrollbar class="leads-scroll">
           <div class="leads-list">
@@ -168,6 +176,46 @@ onMounted(() => store.fetchLeads())
 }
 
 .btn-pipeline:hover { background: #c8e6c9; }
+
+.enrollment-result {
+  margin: 12px 16px 0;
+  padding: 12px;
+  border: 1px solid #b2dfdb;
+  border-radius: 8px;
+  background: #ecfdf5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.enrollment-result strong,
+.enrollment-result span {
+  display: block;
+}
+
+.enrollment-result strong {
+  color: #064e3b;
+  font-size: 13px;
+}
+
+.enrollment-result span {
+  color: #047857;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.enrollment-result button {
+  border: 1px solid #10b981;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
 
 .leads-scroll { flex: 1; }
 

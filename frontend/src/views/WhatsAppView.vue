@@ -615,7 +615,7 @@ async function send() {
   await nextTick(); scrollToBottom()
 
   try {
-    const res = await simulatorApi.sendMessage(text, history)
+    const res = await simulatorApi.sendMessage(text, history, {})
     conv.isTyping = false
     conv.messages.push({ id: crypto.randomUUID(), from: 'ai', text: res.reply, ts: new Date() })
     if (res.lead && !conv.lead) {

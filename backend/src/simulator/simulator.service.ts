@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerticalService, VerticalField } from '../vertical/vertical.service';
+import { EnrollmentChatService } from '../enrollment/enrollment-chat.service';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -18,6 +19,7 @@ export class SimulatorService {
     private config: ConfigService,
     private prisma: PrismaService,
     private verticalService: VerticalService,
+    private enrollmentChat: EnrollmentChatService,
   ) {}
 
   // Só instancio o OpenAI quando o chat realmente vai ser usado.
@@ -67,7 +69,23 @@ Quando coletar todos os campos, agradeça e diga que um consultor vai entrar em 
 
   // ── Chat ──────────────────────────────────────────────────────────────────────
 
-  async chat(text: string, history: ChatMessage[], schoolId: string) {
+  async chat(
+    text: string,
+    history: ChatMessage[],
+    schoolId: string,
+    enrollmentDraft: Record<string, any> = {},
+  ) {
+    if (this.shouldUseEnrollmentFlow(text, history, enrollmentDraft)) {
+      const result = await this.enrollmentChat.chat(text, history, enrollmentDraft, schoolId);
+      return {
+        reply: result.reply,
+        lead: null,
+        mode: 'enrollment',
+        enrollmentDraft: result.draft,
+        enrollment: result.enrollment,
+      };
+    }
+
     history.push({ role: 'user', content: text });
 
     const systemPrompt = await this.buildPrompt(schoolId);
@@ -87,7 +105,26 @@ Quando coletar todos os campos, agradeça e diga que um consultor vai entrar em 
 
     const rawLead = await this.tryExtractAndSaveLead(history, schoolId);
     const lead = rawLead ? this.serializeLead(rawLead) : null;
-    return { reply, lead };
+    return { reply, lead, mode: 'lead', enrollmentDraft: null, enrollment: null };
+  }
+
+  private shouldUseEnrollmentFlow(
+    text: string,
+    history: ChatMessage[],
+    enrollmentDraft: Record<string, any>,
+  ): boolean {
+    if (Object.keys(enrollmentDraft ?? {}).length > 0) return true;
+
+    const enrollmentIntent = /\b(matr[ií]cula|matricular|matricule|inscri[cç][aã]o|inscrever|inscrev)/i;
+    if (enrollmentIntent.test(text)) return true;
+
+    // Mantém o usuário no mesmo fluxo depois que ele iniciou matrícula,
+    // mesmo se a próxima resposta for só "sim", "Centro" ou um CPF.
+    const recentText = history
+      .slice(-8)
+      .map((m) => m.content)
+      .join('\n');
+    return enrollmentIntent.test(recentText);
   }
 
   // ── Extração de lead dinâmica ─────────────────────────────────────────────────

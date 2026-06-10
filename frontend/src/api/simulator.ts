@@ -7,9 +7,13 @@ export interface HistoryMessage {
 }
 
 export const simulatorApi = {
-  sendMessage(text: string, history: HistoryMessage[]): Promise<SendMessageResponse> {
+  sendMessage(
+    text: string,
+    history: HistoryMessage[],
+    enrollmentDraft: Record<string, unknown>,
+  ): Promise<SendMessageResponse> {
     return apiClient
-      .post<SendMessageResponse>('/simulator/messages', { text, history })
+      .post<SendMessageResponse>('/simulator/messages', { text, history, enrollmentDraft })
       .then((res) => res.data)
   },
 
