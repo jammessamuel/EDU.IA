@@ -282,6 +282,7 @@ function formatFileSize(value?: number | null) {
             <h3>Documentos</h3>
             <div class="upload-row">
               <select v-model="docType">
+                <option value="PACOTE_COMPLETO">PDF completo da matrícula</option>
                 <option>RG</option>
                 <option>CPF</option>
                 <option>HISTORICO</option>
@@ -289,11 +290,14 @@ function formatFileSize(value?: number | null) {
                 <option>FOTO</option>
                 <option>OUTRO</option>
               </select>
-              <input id="document-file" type="file" @change="onFileChange" />
+              <input id="document-file" type="file" accept=".pdf,image/*" @change="onFileChange" />
               <button :disabled="!docFile || uploadBusy" @click="uploadDocument">
                 {{ uploadBusy ? 'Enviando...' : 'Enviar' }}
               </button>
             </div>
+            <p class="upload-help">
+              Pode enviar um PDF com todos os documentos ou enviar RG, CPF, histórico e comprovante um por um.
+            </p>
 
             <div class="document-list">
               <button
@@ -614,9 +618,16 @@ function formatFileSize(value?: number | null) {
 
 .upload-row {
   display: grid;
-  grid-template-columns: 120px 1fr 86px;
+  grid-template-columns: 170px 1fr 86px;
   gap: 8px;
   align-items: center;
+}
+
+.upload-help {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .upload-row select,

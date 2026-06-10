@@ -92,6 +92,144 @@ export interface ValidationError {
   message: string;
 }
 
+function normalizeKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+const SELECT_ALIASES: Record<string, Record<string, string>> = {
+  sexo: {
+    f: 'Feminino',
+    fem: 'Feminino',
+    feminino: 'Feminino',
+    m: 'Masculino',
+    masc: 'Masculino',
+    masculino: 'Masculino',
+    homem: 'Masculino',
+    mulher: 'Feminino',
+    outro: 'Outro',
+    prefironaoinformar: 'Prefiro não informar',
+    naoinformar: 'Prefiro não informar',
+  },
+  estadoCivil: {
+    solteiro: 'Solteiro(a)',
+    solteira: 'Solteiro(a)',
+    solteiroa: 'Solteiro(a)',
+    casado: 'Casado(a)',
+    casada: 'Casado(a)',
+    casadoa: 'Casado(a)',
+    divorciado: 'Divorciado(a)',
+    divorciada: 'Divorciado(a)',
+    viuvo: 'Viúvo(a)',
+    viuva: 'Viúvo(a)',
+    uniaoestavel: 'União estável',
+  },
+  paymentMethod: {
+    pix: 'PIX',
+    cartao: 'Cartão de crédito',
+    cartaocredito: 'Cartão de crédito',
+    cartaodecredito: 'Cartão de crédito',
+    credito: 'Cartão de crédito',
+    boleto: 'Boleto',
+  },
+};
+
+const FIELD_ALIASES: Record<string, string> = {
+  nome: 'studentName',
+  nomecompleto: 'studentName',
+  aluno: 'studentName',
+  cpfaluno: 'cpf',
+  registrogeral: 'rg',
+  orgaoemissor: 'rgOrgao',
+  orgaoemissorrg: 'rgOrgao',
+  rgorgao: 'rgOrgao',
+  rgemissor: 'rgOrgao',
+  data: 'birthDate',
+  nascimento: 'birthDate',
+  datanascimento: 'birthDate',
+  datadenascimento: 'birthDate',
+  gender: 'sexo',
+  sex: 'sexo',
+  estadocivil: 'estadoCivil',
+  civilstate: 'estadoCivil',
+  civilstatus: 'estadoCivil',
+  maritalstatus: 'estadoCivil',
+  nacionalidadealuno: 'nacionalidade',
+  nationality: 'nacionalidade',
+  cidadenatal: 'naturalidade',
+  naturalidadeuf: 'naturalidade',
+  telefone: 'phone',
+  celular: 'phone',
+  whatsapp: 'phone',
+  rua: 'logradouro',
+  endereco: 'logradouro',
+  numeroendereco: 'numero',
+  estado: 'uf',
+  curso: 'course',
+  cursodeinteresse: 'course',
+  turno: 'shift',
+  unidade: 'unit',
+  formadeingresso: 'ingresso',
+  periodo: 'periodoLetivo',
+  periodoletivoingresso: 'periodoLetivo',
+  escola: 'escolaAnterior',
+  escolaensinomedio: 'escolaAnterior',
+  anoconclusaoensinomedio: 'anoConclusao',
+  pagamento: 'paymentMethod',
+  formapagamento: 'paymentMethod',
+  formadepagamento: 'paymentMethod',
+};
+
+function canonicalFieldName(name: string): string {
+  return FIELD_ALIASES[normalizeKey(name)] ?? name;
+}
+
+function normalizeSelectValue(field: EnrollmentField, value: string): string {
+  const key = normalizeKey(value);
+  const alias = SELECT_ALIASES[field.name]?.[key];
+  if (alias) return alias;
+
+  const option = field.options?.find((candidate) => {
+    const optionKey = normalizeKey(candidate);
+    return optionKey === key || optionKey.startsWith(key) || key.startsWith(optionKey);
+  });
+  return option ?? value.trim();
+}
+
+export function normalizeEnrollmentData(
+  fields: EnrollmentField[],
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    normalized[canonicalFieldName(key)] = value;
+  }
+
+  for (const field of fields) {
+    const raw = normalized[field.name];
+    if (raw == null) continue;
+
+    const value = String(raw).trim();
+    if (!value) continue;
+
+    if (field.type === 'select') {
+      normalized[field.name] = normalizeSelectValue(field, value);
+    } else if (field.name === 'uf') {
+      normalized[field.name] = value.toUpperCase().slice(0, 2);
+    } else if (field.type === 'email') {
+      normalized[field.name] = value.toLowerCase();
+    } else {
+      normalized[field.name] = value;
+    }
+  }
+
+  return normalized;
+}
+
 /**
  * Valida os dados coletados contra a lista de campos.
  * Trata os condicionais (responsável obrigatório se menor de idade) e os

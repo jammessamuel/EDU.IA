@@ -10,6 +10,7 @@ import { onlyDigits } from '../common/lib/validation';
 import {
   EDUCATION_ENROLLMENT_FIELDS,
   DEFAULT_ENROLLMENT_FEE,
+  normalizeEnrollmentData,
   validateEnrollment,
 } from './enrollment-fields';
 import { gerarComprovantePdf } from './comprovante-pdf';
@@ -36,7 +37,9 @@ export class EnrollmentService {
     data: Record<string, any>,
     opts: { leadId?: string; simulatePayment?: boolean } = {},
   ) {
-    const errors = validateEnrollment(this.fieldsFor(schoolId), data);
+    const fields = this.fieldsFor(schoolId);
+    const normalized = normalizeEnrollmentData(fields, data) as Record<string, any>;
+    const errors = validateEnrollment(fields, normalized);
     if (errors.length) {
       throw new BadRequestException({ message: 'Dados incompletos ou inválidos.', errors });
     }
@@ -45,12 +48,13 @@ export class EnrollmentService {
     const authCode = this.genAuthCode();
 
     const simulate = opts.simulatePayment ?? true;
+    const textOrNull = (value: unknown) => (value == null || value === '' ? null : String(value));
     const payment = simulate
       ? await this.payments.charge({
           amount: DEFAULT_ENROLLMENT_FEE,
-          method: data.paymentMethod ?? null,
-          customerName: String(data.studentName),
-          customerEmail: data.email ?? null,
+          method: textOrNull(normalized.paymentMethod),
+          customerName: String(normalized.studentName),
+          customerEmail: textOrNull(normalized.email),
         })
       : {
           status: 'PENDENTE' as const,
@@ -64,16 +68,16 @@ export class EnrollmentService {
         leadId: opts.leadId ?? null,
         number,
         status: paymentStatus === 'APROVADO' ? 'CONFIRMADA' : 'AGUARDANDO_PAGAMENTO',
-        studentName: String(data.studentName),
-        cpf: onlyDigits(String(data.cpf)),
-        email: data.email ?? null,
-        phone: data.phone ?? null,
-        course: data.course ?? null,
-        shift: data.shift ?? null,
-        unit: data.unit ?? null,
-        data: JSON.stringify(data),
+        studentName: String(normalized.studentName),
+        cpf: onlyDigits(String(normalized.cpf)),
+        email: textOrNull(normalized.email),
+        phone: textOrNull(normalized.phone),
+        course: textOrNull(normalized.course),
+        shift: textOrNull(normalized.shift),
+        unit: textOrNull(normalized.unit),
+        data: JSON.stringify(normalized),
         paymentStatus,
-        paymentMethod: data.paymentMethod ?? null,
+        paymentMethod: textOrNull(normalized.paymentMethod),
         paymentAmount: DEFAULT_ENROLLMENT_FEE,
         paymentRef: payment.reference,
         authCode,

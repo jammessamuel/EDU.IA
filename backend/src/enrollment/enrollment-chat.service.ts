@@ -13,6 +13,8 @@ import { EnrollmentService } from './enrollment.service';
 import {
   EDUCATION_ENROLLMENT_FIELDS,
   DEFAULT_ENROLLMENT_FEE,
+  normalizeEnrollmentData,
+  type EnrollmentField,
   validateEnrollment,
 } from './enrollment-fields';
 import {
@@ -62,12 +64,17 @@ export class EnrollmentChatService {
     schoolId: string,
   ): Promise<{ reply: string; draft: Record<string, any>; enrollment: any | null }> {
     const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    const fields = EDUCATION_ENROLLMENT_FIELDS;
+    const initialDraft = normalizeEnrollmentData(fields, {
+      ...draft,
+      ...this.extractObviousFields(text, fields),
+    });
 
     const systemPrompt = buildEnrollmentPrompt({
       chatbotName: school?.chatbotName ?? 'Atendente de Matrículas',
       schoolName: school?.name ?? 'nossa instituição',
       fee: DEFAULT_ENROLLMENT_FEE,
-      draft,
+      draft: initialDraft,
     });
 
     const messages: any[] = [
@@ -76,7 +83,7 @@ export class EnrollmentChatService {
       { role: 'user', content: text },
     ];
 
-    let current = { ...draft };
+    let current = { ...initialDraft };
     let enrollment: any = null;
 
     // Loop de tool-calling. Teto de voltas pra nunca rodar infinito.
@@ -152,7 +159,7 @@ export class EnrollmentChatService {
     }
 
     if (name === 'salvar_dados') {
-      const novo = { ...draft, ...(args.campos || {}) };
+      const novo = normalizeEnrollmentData(fields, { ...draft, ...(args.campos || {}) });
       const erros = validateEnrollment(fields, novo);
       const faltando = camposFaltando(fields, novo);
       return {
@@ -166,12 +173,13 @@ export class EnrollmentChatService {
     }
 
     if (name === 'efetivar_matricula') {
-      const erros = validateEnrollment(fields, draft);
-      const faltando = camposFaltando(fields, draft);
+      const normalized = normalizeEnrollmentData(fields, draft);
+      const erros = validateEnrollment(fields, normalized);
+      const faltando = camposFaltando(fields, normalized);
       if (erros.length || faltando.length) {
         return { ok: false, faltando, erros: erros.map((e) => e.message) };
       }
-      const e = await this.enrollments.enroll(schoolId, draft);
+      const e = await this.enrollments.enroll(schoolId, normalized);
       return {
         ok: true,
         numero: e.number,
@@ -182,5 +190,26 @@ export class EnrollmentChatService {
     }
 
     return { ok: false, erro: `Ferramenta desconhecida: ${name}` };
+  }
+
+  private extractObviousFields(text: string, fields: EnrollmentField[]): Record<string, string> {
+    const found: Record<string, string> = {};
+    const haystack = this.normalizeText(text);
+
+    for (const fieldName of ['course', 'shift', 'unit', 'modalidade', 'ingresso', 'paymentMethod']) {
+      const field = fields.find((candidate) => candidate.name === fieldName);
+      const option = field?.options?.find((candidate) => haystack.includes(this.normalizeText(candidate)));
+      if (option) found[fieldName] = option;
+    }
+
+    if (!found.paymentMethod && /\bcart[aã]o\b/i.test(text)) found.paymentMethod = 'Cartão de crédito';
+    return found;
+  }
+
+  private normalizeText(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
   }
 }
