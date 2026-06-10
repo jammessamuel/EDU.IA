@@ -216,7 +216,20 @@ function formatFileSize(value?: number | null) {
         </div>
 
         <ChatMessages :messages="messages" :is-typing="isTyping" />
-        <ChatInput :disabled="isSending" @send="sendEnrollmentMessage" />
+
+        <div v-if="messages.length === 1 && !isSending" class="quick-start">
+          <button class="quick-btn" @click="sendEnrollmentMessage('Sim, quero fazer minha matrícula!')">
+            ✅ Sim, quero começar
+          </button>
+          <button class="quick-btn" @click="sendEnrollmentMessage('Quais cursos estão disponíveis?')">
+            📋 Ver cursos disponíveis
+          </button>
+          <button class="quick-btn" @click="sendEnrollmentMessage('Tenho dúvidas sobre o processo')">
+            ❓ Tenho dúvidas
+          </button>
+        </div>
+
+        <ChatInput :disabled="isSending" placeholder="Responda aqui ou clique em uma opção acima..." @send="sendEnrollmentMessage" />
       </section>
 
       <section class="enrollment-list">
@@ -387,6 +400,31 @@ function formatFileSize(value?: number | null) {
   color: #6b7280;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.quick-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+
+.quick-btn {
+  padding: 8px 14px;
+  border-radius: 20px;
+  border: 1.5px solid #25D366;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.quick-btn:hover {
+  background: #25D366;
+  color: #fff;
 }
 
 .icon-action {

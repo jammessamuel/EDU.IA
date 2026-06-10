@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { NInput, NButton, NIcon } from 'naive-ui'
 import { SendOutline } from '@vicons/ionicons5'
 
-const props = defineProps<{ disabled: boolean }>()
+const props = defineProps<{ disabled: boolean; placeholder?: string }>()
 const emit = defineEmits<{ send: [text: string] }>()
 
 const inputText = ref('')
@@ -27,7 +27,7 @@ function handleKeydown(event: KeyboardEvent) {
   <div class="chat-input">
     <NInput
       v-model:value="inputText"
-      placeholder="Digite uma mensagem..."
+      :placeholder="placeholder ?? 'Digite uma mensagem...'"
       round
       :disabled="disabled"
       style="flex: 1"
