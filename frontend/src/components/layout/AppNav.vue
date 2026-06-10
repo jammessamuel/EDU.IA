@@ -14,6 +14,7 @@ onMounted(() => ws.load())
 const links = [
   { to: '/whatsapp',  label: 'WhatsApp'     },
   { to: '/',          label: 'Simulador'    },
+  { to: '/enrollments', label: 'Matrículas' },
   { to: '/dashboard', label: 'Dashboard'    },
   { to: '/kanban',    label: 'Pipeline'     },
   { to: '/settings',  label: 'Configurações'},

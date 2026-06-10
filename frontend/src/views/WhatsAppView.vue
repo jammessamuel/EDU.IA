@@ -525,6 +525,7 @@ const messagesEl = ref<HTMLElement>()
 function initContacts(contacts: ContactDef[]) {
   // Limpa convs anteriores
   Object.keys(convs).forEach(k => delete convs[k])
+  if (!contacts.length) return
   contacts.forEach(c => {
     convs[c.id] = {
       messages:  buildMessages(c.history),
@@ -533,23 +534,25 @@ function initContacts(contacts: ContactDef[]) {
       lead:      c.lead,
     }
   })
-  selectedId.value = contacts[0].id
+  selectedId.value = contacts[0]!.id
   nextTick(scrollToBottom)
+}
+
+function contactsForSlug(slug?: string): ContactDef[] {
+  return CONTACTS_BY_VERTICAL[slug ?? 'education'] ?? CONTACTS_BY_VERTICAL.education ?? []
 }
 
 // Inicializa quando o vertical carrega
 watch(() => ws.vertical?.slug, (slug) => {
-  const contacts = CONTACTS_BY_VERTICAL[slug ?? 'education'] ?? CONTACTS_BY_VERTICAL.education
-  initContacts(contacts)
+  initContacts(contactsForSlug(slug))
 }, { immediate: true })
 
 const activeContacts = computed(() => {
-  const slug = ws.vertical?.slug ?? 'education'
-  return CONTACTS_BY_VERTICAL[slug] ?? CONTACTS_BY_VERTICAL.education
+  return contactsForSlug(ws.vertical?.slug)
 })
 
 const current = computed(() => convs[selectedId.value])
-const contact = computed(() => activeContacts.value.find(c => c.id === selectedId.value)!)
+const contact = computed(() => activeContacts.value.find(c => c.id === selectedId.value) ?? activeContacts.value[0] ?? null)
 
 function select(id: string) {
   selectedId.value = id
@@ -574,6 +577,7 @@ function getQuickReplies(contactId: string): string[] | null {
 
   // Só mostra quando a última mensagem é da IA
   const lastMsg = msgs[msgs.length - 1]
+  if (!lastMsg) return null
   if (lastMsg.from !== 'ai') return null
 
   // Conta TODAS as mensagens da IA (inclusive pré-carregadas)
@@ -594,7 +598,7 @@ const inputText = ref('')
 async function send() {
   const text = inputText.value.trim()
   const conv = current.value
-  if (!text || conv.isSending) return
+  if (!text || !conv || conv.isSending) return
 
   inputText.value = ''
   conv.isSending  = true

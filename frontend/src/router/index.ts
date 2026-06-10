@@ -28,6 +28,17 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/enrollments',
+      name: 'enrollments',
+      component: () => import('../views/EnrollmentsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/validar/:authCode',
+      name: 'validate-enrollment',
+      component: () => import('../views/ValidateEnrollmentView.vue'),
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('../views/SettingsView.vue'),

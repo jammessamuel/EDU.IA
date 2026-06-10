@@ -53,6 +53,7 @@ model School {
   vertical Vertical? @relation(fields: [verticalId], references: [id])
   users    User[]
   leads    Lead[]
+  enrollments Enrollment[]
 
   @@map("schools")
 }
@@ -125,4 +126,71 @@ model Lead {
 
   @@index([schoolId])
   @@map("leads")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Matrícula — diferente do Lead (que é só captação). Aqui a IA
+// efetiva a matrícula completa do aluno e o sistema emite um
+// comprovante (PDF). O Lead de origem fica ligado em leadId.
+// ──────────────────────────────────────────────────────────────
+model Enrollment {
+  id       String  @id @default(cuid())
+  schoolId String
+  leadId   String? // lead de origem, se a matrícula veio de uma conversa
+
+  number String // nº de matrícula legível: "2026-0042"
+  status String @default("RASCUNHO") // RASCUNHO, AGUARDANDO_PAGAMENTO, CONFIRMADA, CANCELADA
+
+  // Identificação principal (colunas diretas p/ busca e p/ o comprovante)
+  studentName String
+  cpf         String
+  email       String?
+  phone       String?
+
+  // Acadêmico (chaves usadas em relatórios)
+  course String?
+  shift  String?
+  unit   String?
+
+  // Todo o resto dos campos coletados (endereço, responsável,
+  // escolaridade…) fica neste JSON — flexível por vertical.
+  data String @default("{}")
+
+  // Pagamento (simulado por enquanto; estruturado p/ gateway real depois)
+  paymentStatus String   @default("PENDENTE") // PENDENTE, APROVADO, RECUSADO
+  paymentMethod String?
+  paymentAmount Decimal? @db.Decimal(10, 2)
+  paymentRef    String? // id do gateway ("SIMULADO-…" por ora)
+
+  // Código de autenticação do comprovante (vai dentro do QR Code)
+  authCode String
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  confirmedAt DateTime?
+
+  school    School               @relation(fields: [schoolId], references: [id])
+  documents EnrollmentDocument[]
+
+  @@unique([schoolId, number])
+  @@index([schoolId])
+  @@index([cpf])
+  @@map("enrollments")
+}
+
+model EnrollmentDocument {
+  id           String   @id @default(cuid())
+  enrollmentId String
+  type         String // RG, CPF, HISTORICO, COMPROVANTE_RESIDENCIA, FOTO…
+  fileName     String
+  storagePath  String // "db:<id>" na demo; depois pode virar caminho no Supabase Storage
+  content      Bytes? // demo robusta em Vercel/local sem bucket externo
+  mimeType     String?
+  size         Int?
+  uploadedAt   DateTime @default(now())
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([enrollmentId])
+  @@map("enrollment_documents")
 }

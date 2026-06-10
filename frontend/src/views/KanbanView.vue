@@ -89,7 +89,7 @@ function exportCsv() {
     MATRICULADO: 'Matriculado', PERDIDO: 'Perdido',
   }
   const rows = store.leads.map((l) => [
-    `"${l.name}"`, `"${l.course}"`, `"${l.unit}"`, `"${l.shift}"`,
+    `"${l.name}"`, `"${l.data.course ?? ''}"`, `"${l.data.unit ?? ''}"`, `"${l.data.shift ?? ''}"`,
     `"${STATUS_LABEL[l.status] ?? l.status}"`,
     `"${new Date(l.createdAt).toLocaleDateString('pt-BR')}"`,
   ])

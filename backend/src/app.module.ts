@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { SimulatorModule } from './simulator/simulator.module';
 import { AuthModule } from './auth/auth.module';
 import { VerticalModule } from './vertical/vertical.module';
+import { EnrollmentModule } from './enrollment/enrollment.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt.guard';
 import { RbacGuard } from './common/guards/rbac.guard';
@@ -18,6 +19,7 @@ import { AppService } from './app.service';
     AuthModule,
     SimulatorModule,
     VerticalModule,
+    EnrollmentModule,
   ],
   providers: [
     AppService,

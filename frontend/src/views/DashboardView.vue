@@ -55,7 +55,7 @@
         <div class="dash-chart-box">
           <div class="dash-chart-box__title">Leads por Curso</div>
           <div class="bar-chart">
-            <div v-for="(count, course) in metrics.byCourse" :key="course" class="bar-chart__row">
+            <div v-for="(count, course) in courseMetrics" :key="course" class="bar-chart__row">
               <div class="bar-chart__label">{{ course }}</div>
               <div class="bar-chart__bar-wrap">
                 <div
@@ -118,8 +118,9 @@ function funnelWidth(status: string) {
   return Math.round(((metrics.value.byStatus[status] ?? 0) / funnelMax.value) * 100)
 }
 
+const courseMetrics = computed<Record<string, number>>(() => metrics.value?.byField?.course ?? {})
 const courseMax = computed(() =>
-  metrics.value ? Math.max(1, ...Object.values(metrics.value.byCourse)) : 1,
+  Math.max(1, ...Object.values(courseMetrics.value)),
 )
 function courseWidth(count: number) {
   return Math.round((count / courseMax.value) * 100)

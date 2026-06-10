@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { SendMessageResponse, Lead, Metrics } from '@/types'
+import type { SendMessageResponse, Lead, Metrics, VerticalField, VerticalStage } from '@/types'
 
 export interface HistoryMessage {
   role: 'user' | 'assistant'
@@ -25,11 +25,21 @@ export const simulatorApi = {
     return apiClient.get<Lead[]>('/simulator/leads/stale').then((res) => res.data)
   },
 
-  getSchoolSettings(): Promise<{ name: string; chatbotName: string; courses: string[]; units: string[] }> {
+  getSchoolSettings(): Promise<{
+    name: string
+    chatbotName: string
+    fields: VerticalField[]
+    stages: VerticalStage[]
+  }> {
     return apiClient.get('/simulator/school/settings').then((r) => r.data)
   },
 
-  updateSchoolSettings(data: { name?: string; chatbotName?: string; courses?: string[]; units?: string[] }) {
+  updateSchoolSettings(data: {
+    name?: string
+    chatbotName?: string
+    customFields?: VerticalField[]
+    customStages?: VerticalStage[]
+  }) {
     return apiClient.put('/simulator/school/settings', data).then((r) => r.data)
   },
 

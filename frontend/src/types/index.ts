@@ -28,6 +28,11 @@ export interface ConversationMessage {
   content: string
 }
 
+export interface HistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface Lead {
   id: string
   name: string
@@ -60,4 +65,72 @@ export interface Metrics {
   byStatus: Record<string, number>
   byField: Record<string, Record<string, number>>
   byDay: { date: string; count: number }[]
+}
+
+export type EnrollmentFieldType = 'text' | 'select' | 'cpf' | 'email' | 'date' | 'cep' | 'phone'
+
+export type EnrollmentSection =
+  | 'pessoais'
+  | 'contato'
+  | 'endereco'
+  | 'academico'
+  | 'escolaridade'
+  | 'responsavel'
+  | 'pagamento'
+
+export type EnrollmentSections = Record<EnrollmentSection, string>
+
+export interface EnrollmentField {
+  name: string
+  label: string
+  section: EnrollmentSection
+  type: EnrollmentFieldType
+  options?: string[]
+  required: boolean
+  requiredIf?: 'menor_de_idade'
+}
+
+export interface Enrollment {
+  id: string
+  number: string
+  status: string
+  studentName: string
+  cpf: string
+  email?: string | null
+  phone?: string | null
+  course?: string | null
+  shift?: string | null
+  unit?: string | null
+  data: Record<string, unknown>
+  paymentStatus: string
+  paymentMethod?: string | null
+  paymentAmount?: number | null
+  paymentRef?: string | null
+  authCode: string
+  createdAt: string
+  confirmedAt?: string | null
+  schoolName?: string
+  documentsCount?: number
+}
+
+export interface EnrollmentDocument {
+  id: string
+  enrollmentId: string
+  type: string
+  fileName: string
+  storagePath: string
+  mimeType?: string | null
+  size?: number | null
+  uploadedAt: string
+}
+
+export interface EnrollmentChatResponse {
+  reply: string
+  draft: Record<string, unknown>
+  enrollment: Enrollment | null
+}
+
+export interface EnrollmentVerifyResponse {
+  valid: boolean
+  enrollment: Enrollment
 }

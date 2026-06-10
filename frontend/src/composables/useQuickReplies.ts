@@ -29,6 +29,7 @@ export function useQuickReplies(
 
     // Só mostra quando a última mensagem é da IA (aguardando input do usuário)
     const lastMsg = msgs[msgs.length - 1]
+    if (!lastMsg) return null
     if (lastMsg.from !== 'ai') return null
 
     // Conta todas as mensagens da IA para saber em qual campo estamos

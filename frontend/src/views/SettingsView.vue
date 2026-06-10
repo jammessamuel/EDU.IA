@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { defineComponent, ref, onMounted } from 'vue'
 import { NInput, NSpin } from 'naive-ui'
 import AppNav from '@/components/layout/AppNav.vue'
 import { simulatorApi } from '@/api/simulator'
@@ -48,6 +48,23 @@ async function save() {
   saved.value  = true
   setTimeout(() => (saved.value = false), 2500)
 }
+
+const AddOptionInput = defineComponent({
+  props: { field: { type: Object as () => VerticalField, required: true } },
+  emits: ['add'],
+  setup(_, { emit }) {
+    const val = ref('')
+    function add() {
+      if (val.value.trim()) {
+        emit('add', val.value)
+        val.value = ''
+      }
+    }
+    return { val, add }
+  },
+  template:
+    '<div class="add-option"><input v-model="val" class="add-option__input" placeholder="Nova opção..." @keydown.enter="add" /><button class="add-option__btn" @click="add">+</button></div>',
+})
 </script>
 
 <template>
@@ -135,23 +152,6 @@ async function save() {
     </div>
   </div>
 </template>
-
-<!-- Sub-component inline para adicionar opção -->
-<script lang="ts">
-import { defineComponent, ref } from 'vue'
-import type { VerticalField } from '@/types'
-
-export const AddOptionInput = defineComponent({
-  props: { field: { type: Object as () => VerticalField, required: true } },
-  emits: ['add'],
-  setup(_, { emit }) {
-    const val = ref('')
-    function add() { if (val.value.trim()) { emit('add', val.value); val.value = '' } }
-    return { val, add }
-  },
-  template: `<div class="add-option"><input v-model="val" class="add-option__input" placeholder="Nova opção..." @keydown.enter="add" /><button class="add-option__btn" @click="add">+</button></div>`,
-})
-</script>
 
 <style scoped>
 .page { height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: #f5f7fa; }
