@@ -1,12 +1,17 @@
 <script setup lang="ts">
+withDefaults(defineProps<{ name?: string; avatar?: string }>(), {
+  name: 'IA Atendente',
+  avatar: 'E',
+})
+
 defineEmits<{ reset: [] }>()
 </script>
 
 <template>
   <div class="chat-header">
-    <div class="chat-header__avatar">E</div>
+    <div class="chat-header__avatar">{{ avatar }}</div>
     <div class="chat-header__info">
-      <span class="chat-header__name">IA Atendente</span>
+      <span class="chat-header__name">{{ name }}</span>
       <span class="chat-header__status"><span class="dot"></span> online agora</span>
     </div>
     <button class="chat-header__reset" @click="$emit('reset')" title="Reiniciar conversa">

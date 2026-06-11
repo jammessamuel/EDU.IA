@@ -46,6 +46,14 @@ const missingEnrollmentFields = computed(() =>
     .filter((field) => !String(store.enrollmentDraft[field.name] ?? '').trim())
     .slice(0, 6),
 )
+const compactLeads = computed(() => store.leads.slice(0, 5))
+
+function leadSummary(lead: Lead) {
+  return Object.values(lead.data ?? {})
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(' · ') || lead.status
+}
 
 onMounted(async () => {
   store.fetchLeads()
@@ -66,9 +74,13 @@ onMounted(async () => {
       <!-- ── Chat ── -->
       <section class="chat-col">
         <div class="chat-purpose">
-          🧪 <strong>Modo Teste</strong> — simule a conversa para testar a IA antes de conectar ao WhatsApp real.
+          <strong>Modo Teste</strong> — simule o atendimento antes de conectar ao WhatsApp real.
         </div>
-        <ChatHeader @reset="store.resetSession()" />
+        <ChatHeader
+          :name="store.isEnrollmentMode ? 'Secretaria' : 'IA Atendente'"
+          :avatar="store.isEnrollmentMode ? 'S' : 'E'"
+          @reset="store.resetSession()"
+        />
         <ChatMessages :messages="store.messages" :is-typing="store.isTyping" />
         <QuickReplies
           v-if="quickReplies && !store.isSending && !store.isEnrollmentMode"
@@ -113,7 +125,7 @@ onMounted(async () => {
 
             <div class="enrollment-tip">
               <strong>Como fica mais fácil para o aluno</strong>
-              <p>A IA pergunta uma etapa por vez. Se ele já tiver documentos, pode mandar tudo em um PDF ou enviar um por um na aba Matrículas depois da confirmação.</p>
+              <p>O atendimento pergunta uma etapa por vez. Se ele já tiver documentos, pode mandar tudo em um PDF ou enviar um por um na aba Matrículas depois da confirmação.</p>
             </div>
 
             <div class="enrollment-block">
@@ -133,6 +145,33 @@ onMounted(async () => {
                 <span v-for="field in missingEnrollmentFields" :key="field.name">{{ field.label }}</span>
               </div>
               <p v-else class="enrollment-muted">Tudo obrigatório foi coletado. Falta só revisar e confirmar.</p>
+            </div>
+
+            <div class="secondary-leads">
+              <div class="secondary-leads__head">
+                <div>
+                  <h3>Leads Capturados</h3>
+                  <span>{{ store.leadCount }} contatos no pipeline</span>
+                </div>
+                <button @click="router.push('/kanban')">Pipeline</button>
+              </div>
+
+              <div v-if="compactLeads.length" class="lead-mini-list">
+                <button
+                  v-for="lead in compactLeads"
+                  :key="lead.id"
+                  class="lead-mini"
+                  @click="detailLead = lead"
+                >
+                  <span class="lead-mini__avatar">{{ lead.name.charAt(0).toUpperCase() }}</span>
+                  <span class="lead-mini__body">
+                    <strong>{{ lead.name }}</strong>
+                    <small>{{ leadSummary(lead) }}</small>
+                  </span>
+                  <span class="lead-mini__status">{{ lead.status }}</span>
+                </button>
+              </div>
+              <p v-else class="enrollment-muted">Nenhum lead capturado ainda.</p>
             </div>
           </div>
         </template>
@@ -166,7 +205,7 @@ onMounted(async () => {
               <div v-if="!store.hasLeads" class="empty-state">
                 <div class="empty-state__steps">
                   <div class="step"><span class="step__num">1</span><span class="step__text">Digite uma mensagem no chat ao lado como se fosse o cliente</span></div>
-                  <div class="step"><span class="step__num">2</span><span class="step__text">A IA vai coletar os dados necessários do seu vertical</span></div>
+                  <div class="step"><span class="step__num">2</span><span class="step__text">O atendimento vai coletar os dados necessários do seu vertical</span></div>
                   <div class="step"><span class="step__num">3</span><span class="step__text">O lead aparece aqui — clique para ver os detalhes e a conversa</span></div>
                 </div>
               </div>
@@ -269,6 +308,7 @@ onMounted(async () => {
 .btn-pipeline:hover { background: #c8e6c9; }
 
 .enrollment-panel {
+  flex: 1;
   padding: 16px;
   overflow-y: auto;
 }
@@ -370,6 +410,116 @@ onMounted(async () => {
   padding: 5px 9px;
   font-size: 12px;
   font-weight: 700;
+}
+
+.secondary-leads {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.secondary-leads__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.secondary-leads__head h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+}
+
+.secondary-leads__head span {
+  display: block;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.secondary-leads__head button {
+  border: 1px solid #b2dfdb;
+  border-radius: 8px;
+  background: #e8f5e9;
+  color: #075e54;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.lead-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lead-mini {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lead-mini:hover {
+  border-color: #b2dfdb;
+  background: #f0fdf8;
+}
+
+.lead-mini__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e0f2f1;
+  color: #075e54;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lead-mini__body {
+  min-width: 0;
+}
+
+.lead-mini__body strong,
+.lead-mini__body small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-mini__body strong {
+  font-size: 13px;
+}
+
+.lead-mini__body small {
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.lead-mini__status {
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .enrollment-result {

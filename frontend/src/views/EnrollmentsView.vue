@@ -12,7 +12,7 @@ const messages = ref<ChatMessage[]>([
     id: 'welcome',
     from: 'ai',
     text:
-      'Oi! Eu sou da secretaria de matrículas. Posso fazer sua matrícula completa por aqui, com validação dos dados, pagamento simulado e comprovante em PDF. Quer começar?',
+      'Oi! Sou da secretaria de matrículas. Posso fazer sua matrícula por aqui e, no final, deixar o comprovante pronto para baixar. Quer começar?',
     timestamp: new Date(),
   },
 ])
@@ -205,7 +205,7 @@ function formatFileSize(value?: number | null) {
         <div class="chat-strip">
           <div>
             <strong>Matrícula assistida</strong>
-            <span>IA coleta dados, valida CPF/e-mail e finaliza com comprovante.</span>
+            <span>Atendimento guiado, pagamento demo e comprovante em PDF.</span>
           </div>
           <button class="icon-action" title="Nova matrícula" @click="resetChat">↺</button>
         </div>
@@ -218,18 +218,18 @@ function formatFileSize(value?: number | null) {
         <ChatMessages :messages="messages" :is-typing="isTyping" />
 
         <div v-if="messages.length === 1 && !isSending" class="quick-start">
-          <button class="quick-btn" @click="sendEnrollmentMessage('Sim, quero fazer minha matrícula!')">
-            ✅ Sim, quero começar
+          <button class="quick-btn" @click="sendEnrollmentMessage('Quero começar minha matrícula')">
+            Começar matrícula
           </button>
           <button class="quick-btn" @click="sendEnrollmentMessage('Quais cursos estão disponíveis?')">
-            📋 Ver cursos disponíveis
+            Ver cursos
           </button>
           <button class="quick-btn" @click="sendEnrollmentMessage('Tenho dúvidas sobre o processo')">
-            ❓ Tenho dúvidas
+            Tirar dúvidas
           </button>
         </div>
 
-        <ChatInput :disabled="isSending" placeholder="Responda aqui ou clique em uma opção acima..." @send="sendEnrollmentMessage" />
+        <ChatInput :disabled="isSending" placeholder="Escreva sua resposta aqui..." @send="sendEnrollmentMessage" />
       </section>
 
       <section class="enrollment-list">
