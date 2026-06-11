@@ -55,7 +55,7 @@ function handleKeydown(event: KeyboardEvent) {
   align-items: center;
   gap: 10px;
   padding: 12px 16px 14px;
-  background: rgba(248, 250, 249, 0.94);
+  background: var(--surface-raised);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   backdrop-filter: blur(14px);
@@ -68,7 +68,7 @@ function handleKeydown(event: KeyboardEvent) {
 
 :deep(.n-input) {
   min-height: 42px;
-  background: #fff;
+  background: var(--input-bg);
   border-radius: 999px;
   box-shadow: var(--shadow-xs);
 }

@@ -157,7 +157,7 @@ const AddOptionInput = defineComponent({
 .page { height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: #f5f7fa; }
 
 .settings-subheader {
-  background: #fff;
+  background: var(--surface);
   border-bottom: 1px solid #e9edef;
   padding: 14px 24px;
   display: flex;
@@ -189,7 +189,7 @@ const AddOptionInput = defineComponent({
 }
 
 .settings-card {
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
@@ -311,7 +311,7 @@ const AddOptionInput = defineComponent({
 }
 
 .settings-subheader {
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--surface-raised);
   border-bottom-color: var(--border);
   backdrop-filter: blur(12px);
 }
@@ -331,7 +331,7 @@ const AddOptionInput = defineComponent({
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: var(--shadow-xs);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
 }
 
 .settings-section {
@@ -374,7 +374,7 @@ const AddOptionInput = defineComponent({
 }
 
 :deep(.add-option__btn) {
-  background: #fff;
+  background: var(--surface);
   color: var(--brand);
   border-color: color-mix(in srgb, var(--brand) 24%, white);
 }

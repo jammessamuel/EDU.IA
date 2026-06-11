@@ -16,7 +16,7 @@
 }
 
 .bubble {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--chat-ai-bg);
   border: 1px solid rgba(221, 231, 228, 0.86);
   border-radius: 16px 16px 16px 5px;
   box-shadow: var(--shadow-xs);

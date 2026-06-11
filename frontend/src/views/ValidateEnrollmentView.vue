@@ -99,7 +99,7 @@ function formatDate(value?: string | null) {
 
 .verify-panel {
   width: min(560px, 100%);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 28px;

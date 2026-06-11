@@ -22,7 +22,7 @@ defineEmits<{ select: [value: string] }>()
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 14px 12px;
-  background: rgba(248, 250, 249, 0.94);
+  background: var(--surface-raised);
   border-top: 1px solid var(--border);
 }
 
@@ -30,7 +30,7 @@ defineEmits<{ select: [value: string] }>()
   padding: 7px 13px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--brand) 28%, white);
-  background: #fff;
+  background: var(--surface);
   color: var(--brand);
   font-size: 13px;
   font-weight: 800;

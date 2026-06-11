@@ -158,7 +158,7 @@ onMounted(async () => {
 }
 
 .dash-subheader {
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--surface-raised);
   border-bottom: 1px solid var(--border);
   padding: 16px 24px;
   display: flex;
@@ -217,7 +217,7 @@ onMounted(async () => {
 .dash-card {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
   border-radius: 8px;
   padding: 17px 18px;
   box-shadow: var(--shadow-xs);
@@ -261,7 +261,7 @@ onMounted(async () => {
 }
 
 .dash-chart-box {
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 20px;

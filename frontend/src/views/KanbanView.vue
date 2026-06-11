@@ -118,7 +118,7 @@ onMounted(() => store.fetchLeads())
 }
 
 .kanban-subheader {
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--surface-raised);
   border-bottom: 1px solid var(--border);
   padding: 16px 24px;
   display: flex;
@@ -159,7 +159,7 @@ onMounted(() => store.fetchLeads())
   font-size: 13px;
   font-weight: 800;
   color: var(--brand);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--brand) 24%, white);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
@@ -196,7 +196,7 @@ onMounted(() => store.fetchLeads())
   flex: 1;
   min-width: 230px;
   max-width: 270px;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   display: flex;
@@ -215,7 +215,7 @@ onMounted(() => store.fetchLeads())
   font-size: 13px;
   flex-shrink: 0;
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--stage) 16%, white), rgba(255,255,255,0.75)) !important;
+    linear-gradient(90deg, color-mix(in srgb, var(--stage) 16%, var(--surface)), var(--surface-raised)) !important;
   border-bottom: 1px solid color-mix(in srgb, var(--stage) 20%, white);
 }
 

@@ -44,14 +44,14 @@ const time = computed(() =>
 }
 
 .bubble--user {
-  background: linear-gradient(135deg, #25d366, #14b866);
+  background: var(--chat-user-bg);
   color: #fff;
   border-radius: 16px 16px 5px 16px;
   box-shadow: 0 8px 20px rgba(37, 211, 102, 0.22);
 }
 
 .bubble--ai {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--chat-ai-bg);
   color: var(--text);
   border-color: rgba(221, 231, 228, 0.86);
   border-radius: 16px 16px 16px 5px;

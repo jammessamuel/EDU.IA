@@ -33,7 +33,7 @@ watch(() => [props.messages.length, props.isTyping], scrollToBottom, { immediate
 .chat-messages {
   flex: 1;
   background:
-    linear-gradient(rgba(238, 243, 241, 0.88), rgba(238, 243, 241, 0.88)),
+    linear-gradient(color-mix(in srgb, var(--app-bg) 88%, transparent), color-mix(in srgb, var(--app-bg) 88%, transparent)),
     radial-gradient(circle at 1px 1px, rgba(7, 94, 84, 0.14) 1px, transparent 0);
   background-size: auto, 22px 22px;
   min-height: 0;

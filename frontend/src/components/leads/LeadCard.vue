@@ -46,7 +46,7 @@ const formattedDate = computed(() =>
 
 <style scoped>
 .lead-card {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: var(--shadow-xs);

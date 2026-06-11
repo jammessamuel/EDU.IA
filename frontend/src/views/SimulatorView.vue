@@ -276,13 +276,13 @@ onMounted(async () => {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-xs);
 }
 
 .leads-header {
   padding: 16px 18px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--surface-raised);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -314,7 +314,7 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 800;
   color: var(--brand);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--brand) 24%, white);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
@@ -370,7 +370,7 @@ onMounted(async () => {
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-xs);
 }
 
@@ -441,7 +441,7 @@ onMounted(async () => {
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-xs);
 }
 
@@ -470,7 +470,7 @@ onMounted(async () => {
 .secondary-leads__head button {
   border: 1px solid color-mix(in srgb, var(--brand) 24%, white);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   color: var(--brand);
   font-size: 12px;
   font-weight: 800;
@@ -502,7 +502,7 @@ onMounted(async () => {
 
 .lead-mini:hover {
   border-color: color-mix(in srgb, var(--brand) 26%, white);
-  background: #fff;
+  background: var(--surface);
   transform: translateY(-1px);
 }
 
@@ -584,7 +584,7 @@ onMounted(async () => {
 
 .enrollment-result button {
   border: 1px solid color-mix(in srgb, var(--brand) 28%, white);
-  background: #fff;
+  background: var(--surface);
   color: var(--brand);
   border-radius: 8px;
   padding: 6px 10px;

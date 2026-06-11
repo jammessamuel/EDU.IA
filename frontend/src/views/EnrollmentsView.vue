@@ -792,7 +792,7 @@ function formatFileSize(value?: number | null) {
 .detail-panel {
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
@@ -803,7 +803,7 @@ function formatFileSize(value?: number | null) {
 
 .chat-strip,
 .section-head {
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--surface-raised);
   border-bottom-color: var(--border);
 }
 
@@ -830,13 +830,14 @@ function formatFileSize(value?: number | null) {
 }
 
 .quick-start {
-  background: rgba(248, 250, 249, 0.94);
+  background: var(--surface-raised);
   border-top-color: var(--border);
 }
 
 .quick-btn {
   border: 1px solid color-mix(in srgb, var(--brand) 26%, white);
   border-radius: 999px;
+  background: var(--surface);
   color: var(--brand);
   font-weight: 800;
   box-shadow: var(--shadow-xs);
@@ -851,6 +852,7 @@ function formatFileSize(value?: number | null) {
   display: grid;
   place-items: center;
   border-color: var(--border);
+  background: var(--surface);
   color: var(--brand);
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
@@ -894,7 +896,7 @@ function formatFileSize(value?: number | null) {
 
 .enrollment-card {
   border-color: var(--border);
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--surface-raised);
   color: var(--text-soft);
   box-shadow: var(--shadow-xs);
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
@@ -903,7 +905,7 @@ function formatFileSize(value?: number | null) {
 .enrollment-card:hover,
 .enrollment-card--active {
   border-color: color-mix(in srgb, var(--brand) 34%, white);
-  background: linear-gradient(135deg, var(--brand-soft), #fff);
+  background: linear-gradient(135deg, var(--brand-soft), var(--surface));
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
@@ -950,12 +952,12 @@ function formatFileSize(value?: number | null) {
 .upload-row input {
   border-color: var(--border);
   color: var(--text);
-  background: #fff;
+  background: var(--input-bg);
 }
 
 .document-row {
   border-color: var(--border);
-  background: #fff;
+  background: var(--surface);
   transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
 

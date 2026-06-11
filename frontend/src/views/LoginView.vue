@@ -8,13 +8,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { NIcon } from 'naive-ui'
+import { MoonOutline, SunnyOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../api/client'
 import type { Vertical } from '../types'
 import TypewriterText from '../components/auth/TypewriterText.vue'
+import { useTheme } from '../composables/useTheme'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const { isDark, themeLabel, toggleTheme } = useTheme()
 
 const mode = ref<'login' | 'register'>('login')
 const loading = ref(false)
@@ -28,6 +32,7 @@ const selectedVertical = ref<Vertical | null>(null)
 
 const loginForm = ref({ email: '', password: '' })
 const registerForm = ref({ name: '', email: '', password: '', workspaceName: '' })
+const registerStep = computed(() => (selectedVertical.value ? 2 : 1))
 
 onMounted(async () => {
   loadingVerticals.value = true
@@ -124,6 +129,11 @@ const panel = computed(() =>
 
 <template>
   <div class="auth">
+    <button type="button" class="auth-theme" :title="themeLabel" @click="toggleTheme">
+      <NIcon :component="isDark ? SunnyOutline : MoonOutline" size="16" />
+      <span>{{ themeLabel }}</span>
+    </button>
+
     <!-- ╭──────────────── ESQUERDA: formulário ────────────────╮ -->
     <section class="pane pane--form">
       <div class="form-wrap">
@@ -199,6 +209,12 @@ const panel = computed(() =>
               <p>{{ selectedVertical ? 'Agora é só preencher seus dados.' : 'Comece escolhendo o setor do seu negócio.' }}</p>
             </header>
 
+            <div class="register-steps" aria-label="Progresso do cadastro">
+              <span :class="{ 'is-done': registerStep > 1, 'is-on': registerStep === 1 }">1. Setor</span>
+              <i></i>
+              <span :class="{ 'is-on': registerStep === 2 }">2. Dados</span>
+            </div>
+
             <!-- passo 1: escolher vertical -->
             <div v-if="!selectedVertical">
               <div v-if="loadingVerticals" class="vgrid">
@@ -211,6 +227,9 @@ const panel = computed(() =>
                   <span class="vchip__name">{{ v.name }}</span>
                 </button>
               </div>
+              <p class="register-helper">
+                O setor define as perguntas iniciais, etapas do pipeline e exemplos da demonstração.
+              </p>
             </div>
 
             <!-- passo 2: dados -->
@@ -219,6 +238,11 @@ const panel = computed(() =>
               <div class="vsel" :style="{ '--vc': selectedVertical.color }">
                 <span class="vsel__icon">{{ selectedVertical.icon }}</span>
                 <strong>{{ selectedVertical.name }}</strong>
+              </div>
+
+              <div class="register-checks">
+                <span>Workspace configurado para {{ selectedVertical.name }}</span>
+                <span>Você pode ajustar campos e etapas depois em Configurações</span>
               </div>
 
               <label class="field">
@@ -306,16 +330,15 @@ const panel = computed(() =>
 
 <style scoped>
 .auth {
-  --green-900: #053b33;
-  --green-800: #075e54;
-  --green-600: #0e8f7e;
-  --green-400: #25d366;
-  --cream: #eef3f1;
-  --cream-2: #dfe8e5;
-  --ink: #12211d;
-  --muted: #6a7a74;
-  --line: #d6e2de;
-  --white: #fff;
+  --green-900: var(--brand-strong);
+  --green-800: var(--brand);
+  --green-600: color-mix(in srgb, var(--brand) 74%, var(--accent));
+  --green-400: var(--accent);
+  --cream: var(--app-bg);
+  --cream-2: var(--surface-muted);
+  --ink: var(--text);
+  --line: var(--border);
+  --white: var(--surface);
 
   position: fixed;
   inset: 0;
@@ -325,6 +348,33 @@ const panel = computed(() =>
   color: var(--ink);
   background: var(--cream);
   overflow-y: auto;
+}
+
+.auth-theme {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 6;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, var(--border));
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--brand);
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.auth-theme:hover {
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
+  transform: translateY(-1px);
 }
 @media (min-width: 920px) {
   .auth {
@@ -488,7 +538,7 @@ const panel = computed(() =>
   transition: border-color 0.18s, box-shadow 0.18s;
 }
 .field input::placeholder {
-  color: #aab2ad;
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
 }
 .field input:focus {
   border-color: var(--green-600);
@@ -512,7 +562,7 @@ const panel = computed(() =>
   place-items: center;
   border: 0;
   background: transparent;
-  color: #97a19c;
+  color: var(--muted);
   cursor: pointer;
   border-radius: 8px;
   transition: color 0.15s;
@@ -562,11 +612,66 @@ const panel = computed(() =>
 /* ── erro ── */
 .err {
   font-size: 13px;
-  color: #b23b2e;
-  background: #fdecea;
-  border: 1px solid #f3c7c1;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--surface));
   padding: 9px 12px;
-  border-radius: 10px;
+  border-radius: 8px;
+}
+
+.register-steps {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--white) 82%, transparent);
+}
+
+.register-steps span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.register-steps span.is-on,
+.register-steps span.is-done {
+  color: var(--green-800);
+}
+
+.register-steps i {
+  height: 1px;
+  background: var(--line);
+}
+
+.register-helper {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.register-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--green-800) 18%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--green-800) 8%, var(--white));
+}
+
+.register-checks span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.register-checks span:first-child {
+  color: var(--ink);
+  font-weight: 800;
 }
 
 /* ── grid de verticais ── */
@@ -606,7 +711,7 @@ const panel = computed(() =>
 .vskel {
   height: 76px;
   border-radius: 8px;
-  background: linear-gradient(100deg, var(--cream-2) 30%, #f2efe7 50%, var(--cream-2) 70%);
+  background: linear-gradient(100deg, var(--cream-2) 30%, var(--surface-soft) 50%, var(--cream-2) 70%);
   background-size: 220% 100%;
   animation: shimmer 1.3s infinite;
 }
@@ -680,8 +785,7 @@ const panel = computed(() =>
     display: block;
     height: 100%;
     overflow: hidden;
-    background:
-      linear-gradient(145deg, #0e8f7e 0%, #075e54 46%, #053b33 100%);
+    background: var(--auth-panel-bg);
   }
 }
 .glow {
@@ -717,7 +821,7 @@ const panel = computed(() =>
 }
 .bubble {
   padding: 13px 17px;
-  border-radius: 19px;
+  border-radius: 8px;
   font-size: 14.5px;
   line-height: 1.45;
   max-width: 90%;
@@ -735,8 +839,8 @@ const panel = computed(() =>
   align-self: flex-end;
   min-width: 220px;
   min-height: 48px;
-  background: #25d366;
-  color: #053b33;
+  background: var(--accent);
+  color: var(--brand-strong);
   font-weight: 500;
   border-bottom-right-radius: 5px;
   box-shadow: 0 12px 34px rgba(37, 211, 102, 0.32);
@@ -788,7 +892,7 @@ const panel = computed(() =>
   color: #fff;
 }
 .foot__mark span {
-  color: #25d366;
+  color: var(--accent);
 }
 .foot__sep {
   opacity: 0.4;
@@ -842,6 +946,20 @@ const panel = computed(() =>
   .copy h2,
   .copy p {
     animation: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-theme span {
+    display: none;
+  }
+
+  .pane--form {
+    padding: 72px 20px 32px;
+  }
+
+  .vgrid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>

@@ -962,7 +962,7 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 .wa-sidebar {
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
   border-right: 1px solid var(--border);
 }
 
@@ -1018,14 +1018,14 @@ const STATUS_COLOR: Record<string, string> = {
 
 .wa-chat {
   background:
-    linear-gradient(rgba(238, 243, 241, 0.88), rgba(238, 243, 241, 0.88)),
+    linear-gradient(color-mix(in srgb, var(--app-bg) 88%, transparent), color-mix(in srgb, var(--app-bg) 88%, transparent)),
     radial-gradient(circle at 1px 1px, rgba(7, 94, 84, 0.14) 1px, transparent 0);
   background-size: auto, 22px 22px;
 }
 
 .wa-date-sep {
   color: var(--muted-strong);
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
 }
 
@@ -1036,11 +1036,12 @@ const STATUS_COLOR: Record<string, string> = {
 
 .bubble--ai {
   border-color: rgba(221, 231, 228, 0.86);
+  background: var(--chat-ai-bg);
   color: var(--text);
 }
 
 .bubble--user {
-  background: linear-gradient(135deg, #dff9cf, #c7f0b1);
+  background: var(--chat-user-bg);
   color: var(--text);
 }
 
@@ -1055,12 +1056,13 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 .wa-input {
-  background: rgba(248, 250, 249, 0.94);
+  background: var(--surface-raised);
   border-top-color: var(--border);
 }
 
 .wa-input__field {
   border: 1px solid var(--border);
+  background: var(--input-bg);
   color: var(--text);
   box-shadow: var(--shadow-xs);
 }
@@ -1071,7 +1073,7 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 .lead-panel {
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-raised);
   border-left: 1px solid var(--border);
 }
 

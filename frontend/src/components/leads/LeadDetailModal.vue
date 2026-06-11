@@ -119,7 +119,7 @@ const hasConversation = computed(() =>
 }
 
 .modal {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   width: 100%;
@@ -295,7 +295,7 @@ const hasConversation = computed(() =>
   max-width: 85%;
 }
 
-.conv-msg--ai   .conv-msg__text { background: #fff; color: var(--text); border-radius: 5px 8px 8px 8px; box-shadow: var(--shadow-xs); }
+.conv-msg--ai   .conv-msg__text { background: var(--surface); color: var(--text); border-radius: 5px 8px 8px 8px; box-shadow: var(--shadow-xs); }
 .conv-msg--user .conv-msg__text { background: #dff9cf; color: var(--text); border-radius: 8px 8px 5px 8px; }
 
 .modal-empty {

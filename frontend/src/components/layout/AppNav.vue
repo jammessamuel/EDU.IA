@@ -7,17 +7,21 @@ import {
   GitNetworkOutline,
   LogOutOutline,
   LogoWhatsapp,
+  MoonOutline,
   PlayCircleOutline,
   SchoolOutline,
   SettingsOutline,
+  SunnyOutline,
 } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useTheme } from '@/composables/useTheme'
 
 const router   = useRouter()
 const route    = useRoute()
 const auth     = useAuthStore()
 const ws       = useWorkspaceStore()
+const { isDark, themeLabel, toggleTheme } = useTheme()
 
 onMounted(() => ws.load())
 
@@ -66,6 +70,10 @@ async function logout() {
       <div v-if="ws.vertical" class="topbar__vertical-badge">
         {{ ws.vertical.icon }} {{ ws.vertical.name }}
       </div>
+      <button type="button" class="topbar__theme" :title="themeLabel" @click="toggleTheme">
+        <NIcon :component="isDark ? SunnyOutline : MoonOutline" size="15" />
+        <span>{{ themeLabel }}</span>
+      </button>
       <div class="topbar__user">
         <div class="topbar__avatar">{{ auth.user?.name?.charAt(0).toUpperCase() }}</div>
         <span class="topbar__username">{{ auth.user?.name }}</span>
@@ -81,7 +89,7 @@ async function logout() {
 <style scoped>
 .topbar {
   height: 64px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(16px);
   display: flex;
@@ -229,6 +237,7 @@ async function logout() {
   white-space: nowrap;
 }
 
+.topbar__theme,
 .topbar__logout {
   min-height: 32px;
   display: inline-flex;
@@ -243,6 +252,17 @@ async function logout() {
   border: 1px solid var(--border);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.topbar__theme {
+  color: var(--brand, #075e54);
+  background: color-mix(in srgb, var(--brand, #075e54) 9%, transparent);
+  border-color: color-mix(in srgb, var(--brand, #075e54) 22%, var(--border));
+}
+
+.topbar__theme:hover {
+  background: color-mix(in srgb, var(--brand, #075e54) 16%, transparent);
+  border-color: color-mix(in srgb, var(--brand, #075e54) 36%, var(--border));
 }
 
 .topbar__logout:hover {
@@ -282,6 +302,10 @@ async function logout() {
   }
 
   .topbar__logout span {
+    display: none;
+  }
+
+  .topbar__theme span {
     display: none;
   }
 }

@@ -93,7 +93,7 @@ function formatDate(iso: string) {
 
 <style scoped>
 .kanban-card {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   display: flex;
@@ -180,7 +180,7 @@ function formatDate(iso: string) {
 }
 
 .btn-detail:hover {
-  background: #fff;
+  background: var(--surface);
   color: var(--brand);
   border-color: color-mix(in srgb, var(--brand) 28%, white);
 }
