@@ -4,7 +4,10 @@
 
     <!-- Sub-header -->
     <div class="dash-subheader">
-      <h1 class="dash-subheader__title">Dashboard</h1>
+      <div>
+        <h1 class="dash-subheader__title">Dashboard</h1>
+        <p class="dash-subheader__subtitle">Visão comercial dos leads, conversão e volume diário.</p>
+      </div>
       <span v-if="metrics" class="dash-subheader__badge">{{ metrics.total }} leads ativos</span>
     </div>
 
@@ -16,18 +19,22 @@
       <!-- Metric cards -->
       <div class="dash-cards">
         <div class="dash-card dash-card--blue">
+          <span class="dash-card__eyebrow">Base</span>
           <div class="dash-card__value">{{ metrics.total }}</div>
           <div class="dash-card__label">Leads Ativos</div>
         </div>
         <div class="dash-card dash-card--green">
+          <span class="dash-card__eyebrow">Receita</span>
           <div class="dash-card__value">{{ metrics.byStatus.MATRICULADO }}</div>
           <div class="dash-card__label">Matriculados</div>
         </div>
         <div class="dash-card dash-card--purple">
+          <span class="dash-card__eyebrow">Performance</span>
           <div class="dash-card__value">{{ metrics.conversionRate }}%</div>
           <div class="dash-card__label">Taxa de Conversão</div>
         </div>
         <div class="dash-card dash-card--red">
+          <span class="dash-card__eyebrow">Atenção</span>
           <div class="dash-card__value">{{ metrics.byStatus.PERDIDO }}</div>
           <div class="dash-card__label">Leads Perdidos</div>
         </div>
@@ -145,35 +152,44 @@ onMounted(async () => {
 <style scoped>
 .dashboard-page {
   min-height: 100vh;
-  background: #f0f2f5;
+  background: var(--app-bg);
   display: flex;
   flex-direction: column;
 }
 
 .dash-subheader {
-  background: #fff;
-  border-bottom: 1px solid #e9edef;
-  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
+  backdrop-filter: blur(12px);
 }
 
 .dash-subheader__title {
-  font-size: 17px;
-  font-weight: 700;
-  color: #111b21;
+  font-size: 19px;
+  font-weight: 900;
+  color: var(--text);
   margin: 0;
 }
 
+.dash-subheader__subtitle {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .dash-subheader__badge {
-  background: #075e54;
+  background: var(--brand);
   color: #fff;
   font-size: 12px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 20px;
+  font-weight: 800;
+  padding: 5px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .dash-loading {
@@ -184,10 +200,11 @@ onMounted(async () => {
 }
 
 .dash-content {
-  padding: 20px;
+  padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
 }
 
 /* Cards */
@@ -198,30 +215,42 @@ onMounted(async () => {
 }
 
 .dash-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  border-top: 4px solid #d0d0d0;
-  text-align: center;
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 8px;
+  padding: 17px 18px;
+  box-shadow: var(--shadow-xs);
+  border: 1px solid var(--border);
+  border-left: 4px solid #d0d0d0;
+  text-align: left;
 }
 
-.dash-card--blue   { border-top-color: #2080f0; }
-.dash-card--green  { border-top-color: #18a058; }
-.dash-card--purple { border-top-color: #8a2be2; }
-.dash-card--red    { border-top-color: #d03050; }
+.dash-card--blue   { border-left-color: #2563eb; }
+.dash-card--green  { border-left-color: var(--accent-strong); }
+.dash-card--purple { border-left-color: #7c3aed; }
+.dash-card--red    { border-left-color: var(--danger); }
+
+.dash-card__eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
 
 .dash-card__value {
-  font-size: 36px;
-  font-weight: 700;
-  color: #111b21;
+  margin-top: 12px;
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--text);
   line-height: 1;
 }
 
 .dash-card__label {
   font-size: 13px;
-  color: #666;
+  color: var(--muted);
   margin-top: 6px;
+  font-weight: 700;
 }
 
 /* Charts row */
@@ -232,10 +261,11 @@ onMounted(async () => {
 }
 
 .dash-chart-box {
-  background: #fff;
-  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 20px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-xs);
 }
 
 .dash-chart-box--wide {
@@ -244,8 +274,8 @@ onMounted(async () => {
 
 .dash-chart-box__title {
   font-size: 14px;
-  font-weight: 600;
-  color: #333;
+  font-weight: 900;
+  color: var(--text);
   margin-bottom: 16px;
 }
 
@@ -259,22 +289,22 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.funnel__label { font-size: 12px; color: #555; text-align: right; }
+.funnel__label { font-size: 12px; color: var(--muted-strong); text-align: right; font-weight: 700; }
 
 .funnel__bar-wrap {
-  background: #f0f2f5;
-  border-radius: 4px;
-  height: 20px;
+  background: var(--surface-muted);
+  border-radius: 999px;
+  height: 22px;
   overflow: hidden;
 }
 
 .funnel__bar {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 999px;
   transition: width 0.4s ease;
 }
 
-.funnel__count { font-size: 13px; font-weight: 600; color: #333; }
+.funnel__count { font-size: 13px; font-weight: 800; color: var(--text); }
 
 /* Bar chart */
 .bar-chart { display: flex; flex-direction: column; gap: 10px; }
@@ -286,23 +316,23 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.bar-chart__label { font-size: 12px; color: #555; text-align: right; }
+.bar-chart__label { font-size: 12px; color: var(--muted-strong); text-align: right; font-weight: 700; }
 
 .bar-chart__bar-wrap {
-  background: #f0f2f5;
-  border-radius: 4px;
-  height: 20px;
+  background: var(--surface-muted);
+  border-radius: 999px;
+  height: 22px;
   overflow: hidden;
 }
 
 .bar-chart__bar {
   height: 100%;
-  background: #2080f0;
-  border-radius: 4px;
+  background: linear-gradient(90deg, var(--brand), var(--accent-strong));
+  border-radius: 999px;
   transition: width 0.4s ease;
 }
 
-.bar-chart__count { font-size: 13px; font-weight: 600; color: #333; }
+.bar-chart__count { font-size: 13px; font-weight: 800; color: var(--text); }
 
 /* Line chart (colunas verticais) */
 .line-chart {
@@ -330,7 +360,7 @@ onMounted(async () => {
 
 .line-chart__bar {
   width: 100%;
-  background: #075e54;
+  background: linear-gradient(180deg, var(--accent), var(--brand));
   border-radius: 3px 3px 0 0;
   min-height: 4px;
   transition: height 0.4s ease;
@@ -338,7 +368,7 @@ onMounted(async () => {
 
 .line-chart__label {
   font-size: 10px;
-  color: #999;
+  color: var(--muted);
   white-space: nowrap;
 }
 

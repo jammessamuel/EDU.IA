@@ -25,14 +25,16 @@ function handleKeydown(event: KeyboardEvent) {
 
 <template>
   <div class="chat-input">
-    <NInput
-      v-model:value="inputText"
-      :placeholder="placeholder ?? 'Digite uma mensagem...'"
-      round
-      :disabled="disabled"
-      style="flex: 1"
-      @keydown="handleKeydown"
-    />
+    <div class="chat-input__box">
+      <NInput
+        v-model:value="inputText"
+        :placeholder="placeholder ?? 'Digite uma mensagem...'"
+        round
+        :disabled="disabled"
+        style="flex: 1"
+        @keydown="handleKeydown"
+      />
+    </div>
     <NButton
       circle
       type="primary"
@@ -51,10 +53,38 @@ function handleKeydown(event: KeyboardEvent) {
 .chat-input {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #f0f2f5;
-  border-top: 1px solid #e9edef;
+  gap: 10px;
+  padding: 12px 16px 14px;
+  background: rgba(248, 250, 249, 0.94);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
+  backdrop-filter: blur(14px);
+}
+
+.chat-input__box {
+  flex: 1;
+  min-width: 0;
+}
+
+:deep(.n-input) {
+  min-height: 42px;
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: var(--shadow-xs);
+}
+
+:deep(.n-input .n-input__input-el) {
+  font-size: 14px;
+  color: var(--text);
+}
+
+:deep(.n-button) {
+  width: 42px;
+  height: 42px;
+  box-shadow: 0 10px 20px rgba(37, 211, 102, 0.22);
+}
+
+:deep(.n-button:disabled) {
+  box-shadow: none;
 }
 </style>

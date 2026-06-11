@@ -14,7 +14,9 @@
 
       <div class="kanban-card__date-row">
         <span class="kanban-card__date">{{ formatDate(lead.createdAt) }}</span>
-        <button class="btn-detail" title="Ver detalhes" @click.stop="emit('open', lead)">👁</button>
+        <button class="btn-detail" title="Ver detalhes" @click.stop="emit('open', lead)">
+          <NIcon :component="EyeOutline" size="14" />
+        </button>
       </div>
 
       <div v-if="!isLost" class="kanban-card__actions">
@@ -32,6 +34,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { NIcon } from 'naive-ui'
+import { EyeOutline } from '@vicons/ionicons5'
 import type { Lead } from '../../types'
 import { useSimulatorStore } from '../../stores/simulator'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -89,15 +93,20 @@ function formatDate(iso: string) {
 
 <style scoped>
 .kanban-card {
-  background: #fff;
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   display: flex;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-xs);
   overflow: hidden;
-  transition: box-shadow 0.15s;
+  transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s;
 }
 
-.kanban-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.12); }
+.kanban-card:hover {
+  border-color: color-mix(in srgb, var(--stage-color, #aaa) 28%, white);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
 
 .kanban-card--stale .kanban-card__bar { background: #d03050 !important; }
 .kanban-card--lost { opacity: 0.55; }
@@ -124,9 +133,9 @@ function formatDate(iso: string) {
 }
 
 .kanban-card__name {
-  font-weight: 600;
+  font-weight: 800;
   font-size: 13px;
-  color: #111b21;
+  color: var(--text);
   line-height: 1.3;
 }
 
@@ -139,10 +148,11 @@ function formatDate(iso: string) {
 
 .tag {
   font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 10px;
-  background: #f0f2f5;
-  color: #555;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  font-weight: 700;
 }
 
 .kanban-card__date-row {
@@ -151,26 +161,35 @@ function formatDate(iso: string) {
   justify-content: space-between;
 }
 
-.kanban-card__date { font-size: 11px; color: #bbb; }
+.kanban-card__date { font-size: 11px; color: var(--muted); }
 
 .btn-detail {
-  background: none;
-  border: none;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted-strong);
   cursor: pointer;
-  font-size: 13px;
-  opacity: 0.4;
   padding: 0;
   line-height: 1;
-  transition: opacity 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.btn-detail:hover { opacity: 1; }
+.btn-detail:hover {
+  background: #fff;
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 28%, white);
+}
 
 .kanban-card__actions { display: flex; gap: 5px; flex-wrap: wrap; }
 
 .btn-advance {
   font-size: 11px;
-  padding: 3px 9px;
+  padding: 5px 9px;
   border-radius: 6px;
   background: var(--stage-color, #2080f0);
   color: #fff;
@@ -184,7 +203,7 @@ function formatDate(iso: string) {
 
 .btn-lost {
   font-size: 11px;
-  padding: 3px 9px;
+  padding: 5px 9px;
   border-radius: 6px;
   background: transparent;
   color: #d03050;

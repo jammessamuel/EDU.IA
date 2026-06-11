@@ -64,7 +64,7 @@ const hasConversation = computed(() =>
 
           <!-- Dados coletados -->
           <section class="modal-section">
-            <h3 class="modal-section__title">📋 Dados qualificados</h3>
+            <h3 class="modal-section__title">Dados qualificados</h3>
             <div class="data-grid">
               <div v-for="entry in dataEntries" :key="entry.label" class="data-item">
                 <span class="data-item__label">{{ entry.label }}</span>
@@ -79,7 +79,7 @@ const hasConversation = computed(() =>
 
           <!-- Conversa qualificadora -->
           <section v-if="hasConversation" class="modal-section">
-            <h3 class="modal-section__title">💬 Por que foi qualificado</h3>
+            <h3 class="modal-section__title">Conversa de qualificação</h3>
             <p class="modal-section__sub">Conversa que levou à qualificação deste lead</p>
             <div class="conv-thread">
               <div
@@ -88,14 +88,14 @@ const hasConversation = computed(() =>
                 class="conv-msg"
                 :class="msg.role === 'user' ? 'conv-msg--user' : 'conv-msg--ai'"
               >
-                <span class="conv-msg__who">{{ msg.role === 'user' ? '👤 Cliente' : '🤖 IA' }}</span>
+                <span class="conv-msg__who">{{ msg.role === 'user' ? 'Cliente' : 'Atendimento' }}</span>
                 <p class="conv-msg__text">{{ msg.content }}</p>
               </div>
             </div>
           </section>
 
           <section v-else class="modal-section">
-            <h3 class="modal-section__title">💬 Conversa</h3>
+            <h3 class="modal-section__title">Conversa</h3>
             <p class="modal-empty">Leads criados antes desta atualização não têm histórico salvo.</p>
           </section>
 
@@ -109,7 +109,8 @@ const hasConversation = computed(() =>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.45);
+  background: rgba(16, 32, 28, 0.48);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -119,19 +120,21 @@ const hasConversation = computed(() =>
 
 .modal {
   background: #fff;
-  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   width: 100%;
   max-width: 580px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
 /* Header */
 .modal-header {
-  background: var(--brand, #075e54);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand, #075e54) 90%, #0f766e), var(--brand, #075e54));
   padding: 18px 20px;
   display: flex;
   align-items: center;
@@ -142,7 +145,7 @@ const hasConversation = computed(() =>
 .modal-header__avatar {
   width: 46px;
   height: 46px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: rgba(255,255,255,0.2);
   color: #fff;
   font-size: 20px;
@@ -160,7 +163,7 @@ const hasConversation = computed(() =>
 
 .modal-header__name {
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 900;
   color: #fff;
   margin: 0;
   overflow: hidden;
@@ -180,7 +183,7 @@ const hasConversation = computed(() =>
   font-weight: 700;
   color: #fff;
   padding: 3px 11px;
-  border-radius: 20px;
+  border-radius: 999px;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -188,7 +191,7 @@ const hasConversation = computed(() =>
 .modal-close {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: rgba(255,255,255,0.15);
   border: none;
   color: #fff;
@@ -215,14 +218,14 @@ const hasConversation = computed(() =>
 
 .modal-section__title {
   font-size: 14px;
-  font-weight: 700;
-  color: #111b21;
+  font-weight: 900;
+  color: var(--text);
   margin: 0 0 12px;
 }
 
 .modal-section__sub {
   font-size: 12px;
-  color: #888;
+  color: var(--muted);
   margin: -8px 0 12px;
 }
 
@@ -234,8 +237,9 @@ const hasConversation = computed(() =>
 }
 
 .data-item {
-  background: #f8f9fa;
-  border-radius: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 10px 13px;
   display: flex;
   flex-direction: column;
@@ -244,16 +248,16 @@ const hasConversation = computed(() =>
 
 .data-item__label {
   font-size: 11px;
-  color: #888;
-  font-weight: 500;
+  color: var(--muted);
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
 }
 
 .data-item__value {
   font-size: 14px;
-  font-weight: 600;
-  color: #111b21;
+  font-weight: 800;
+  color: var(--text);
 }
 
 /* Conversa */
@@ -261,8 +265,9 @@ const hasConversation = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: #f5f7fa;
-  border-radius: 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 14px;
 }
 
@@ -277,8 +282,8 @@ const hasConversation = computed(() =>
 
 .conv-msg__who {
   font-size: 11px;
-  font-weight: 600;
-  color: #888;
+  font-weight: 800;
+  color: var(--muted);
 }
 
 .conv-msg__text {
@@ -286,16 +291,16 @@ const hasConversation = computed(() =>
   font-size: 13px;
   line-height: 1.5;
   padding: 8px 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   max-width: 85%;
 }
 
-.conv-msg--ai   .conv-msg__text { background: #fff; color: #111b21; border-radius: 4px 12px 12px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-.conv-msg--user .conv-msg__text { background: #dcf8c6; color: #111b21; border-radius: 12px 12px 4px 12px; }
+.conv-msg--ai   .conv-msg__text { background: #fff; color: var(--text); border-radius: 5px 8px 8px 8px; box-shadow: var(--shadow-xs); }
+.conv-msg--user .conv-msg__text { background: #dff9cf; color: var(--text); border-radius: 8px 8px 5px 8px; }
 
 .modal-empty {
   font-size: 13px;
-  color: #aaa;
+  color: var(--muted);
   font-style: italic;
   margin: 0;
 }

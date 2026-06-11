@@ -304,4 +304,89 @@ const AddOptionInput = defineComponent({
 
 .btn-save:hover:not(:disabled) { background: #128c7e; }
 .btn-save:disabled { opacity: 0.7; }
+
+/* Premium shell */
+.page {
+  background: var(--app-bg);
+}
+
+.settings-subheader {
+  background: rgba(255, 255, 255, 0.84);
+  border-bottom-color: var(--border);
+  backdrop-filter: blur(12px);
+}
+
+.settings-subheader__title {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.settings-body {
+  max-width: 760px;
+  padding: 22px 24px 28px;
+}
+
+.settings-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-xs);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.settings-section {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.settings-desc,
+.field__hint,
+.field-text-note {
+  color: var(--muted);
+}
+
+.field__label,
+.field-row__label {
+  color: var(--text-soft);
+  font-weight: 800;
+}
+
+.field-row {
+  border-color: var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.field-row__type {
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+:deep(.add-option__input) {
+  border-color: var(--border);
+}
+
+:deep(.add-option__input:focus) {
+  border-color: var(--brand);
+  box-shadow: var(--focus-ring);
+}
+
+:deep(.add-option__btn) {
+  background: #fff;
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 24%, white);
+}
+
+.btn-save {
+  border-radius: 8px;
+  background: var(--brand);
+  box-shadow: var(--shadow-xs);
+}
+
+.btn-save:hover:not(:disabled) {
+  background: var(--brand-strong);
+  box-shadow: var(--shadow-sm);
+}
 </style>

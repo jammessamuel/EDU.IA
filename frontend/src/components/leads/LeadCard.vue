@@ -46,16 +46,18 @@ const formattedDate = computed(() =>
 
 <style scoped>
 .lead-card {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-xs);
   display: flex;
   overflow: hidden;
-  transition: box-shadow 0.15s, transform 0.15s;
+  transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s;
 }
 
 .lead-card:hover {
-  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  border-color: color-mix(in srgb, var(--accent, #075e54) 32%, white);
+  box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
 
@@ -67,7 +69,7 @@ const formattedDate = computed(() =>
 
 .lead-card__body {
   flex: 1;
-  padding: 11px 13px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -82,7 +84,7 @@ const formattedDate = computed(() =>
 .lead-card__avatar {
   width: 34px;
   height: 34px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--accent, #075e54) 12%, white);
   color: var(--accent, #075e54);
   display: flex;
@@ -103,34 +105,35 @@ const formattedDate = computed(() =>
 
 .lead-card__name {
   font-size: 14px;
-  font-weight: 600;
-  color: #111b21;
+  font-weight: 800;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.lead-card__time { font-size: 11px; color: #aaa; }
+.lead-card__time { font-size: 11px; color: var(--muted); }
 
 .lead-card__qualified {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 800;
   color: var(--accent, #075e54);
   background: color-mix(in srgb, var(--accent, #075e54) 10%, white);
-  padding: 2px 8px;
-  border-radius: 20px;
+  padding: 3px 8px;
+  border-radius: 999px;
   white-space: nowrap;
   flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--accent, #075e54) 18%, white);
 }
 
 .lead-card__tags { display: flex; flex-wrap: wrap; gap: 5px; }
 
 .tag {
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: #f5f7fa;
-  color: #555;
-  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  font-weight: 700;
 }
 </style>

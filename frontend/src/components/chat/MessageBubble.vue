@@ -27,7 +27,7 @@ const time = computed(() =>
 .msg-row {
   display: flex;
   justify-content: flex-start;
-  padding: 2px 12px;
+  padding: 2px 14px;
 }
 
 .msg-row--user {
@@ -35,30 +35,34 @@ const time = computed(() =>
 }
 
 .bubble {
-  max-width: 72%;
-  padding: 8px 12px 4px;
-  border-radius: 18px;
+  max-width: min(76%, 520px);
+  padding: 9px 12px 5px;
+  border-radius: 16px;
   position: relative;
   word-break: break-word;
+  border: 1px solid transparent;
 }
 
 .bubble--user {
-  background: #25d366;
+  background: linear-gradient(135deg, #25d366, #14b866);
   color: #fff;
-  border-radius: 18px 18px 4px 18px;
+  border-radius: 16px 16px 5px 16px;
+  box-shadow: 0 8px 20px rgba(37, 211, 102, 0.22);
 }
 
 .bubble--ai {
-  background: #fff;
-  color: #111b21;
-  border-radius: 18px 18px 18px 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text);
+  border-color: rgba(221, 231, 228, 0.86);
+  border-radius: 16px 16px 16px 5px;
+  box-shadow: var(--shadow-xs);
 }
 
 .bubble__text {
   display: block;
   font-size: 14px;
   line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .bubble__time {

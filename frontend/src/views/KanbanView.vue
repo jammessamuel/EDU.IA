@@ -9,7 +9,8 @@
         <span class="kanban-subheader__badge">{{ totalLeads }} leads ativos</span>
       </div>
       <button class="btn-csv" @click="exportCsv">
-        ↓ Exportar CSV
+        <NIcon :component="DownloadOutline" size="15" />
+        Exportar CSV
       </button>
     </div>
 
@@ -52,7 +53,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { NScrollbar, NEmpty } from 'naive-ui'
+import { NIcon, NScrollbar, NEmpty } from 'naive-ui'
+import { DownloadOutline } from '@vicons/ionicons5'
 import KanbanCard from '../components/kanban/KanbanCard.vue'
 import LeadDetailModal from '../components/leads/LeadDetailModal.vue'
 import AppNav from '../components/layout/AppNav.vue'
@@ -111,19 +113,19 @@ onMounted(() => store.fetchLeads())
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f0f2f5;
+  background: var(--app-bg);
   overflow: hidden;
 }
 
-/* Sub-header */
 .kanban-subheader {
-  background: #fff;
-  border-bottom: 1px solid #e9edef;
-  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  backdrop-filter: blur(12px);
 }
 
 .kanban-subheader__left {
@@ -133,86 +135,98 @@ onMounted(() => store.fetchLeads())
 }
 
 .kanban-subheader__title {
-  font-size: 17px;
-  font-weight: 700;
-  color: #111b21;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--text);
   margin: 0;
 }
 
 .kanban-subheader__badge {
-  background: #075e54;
+  background: var(--brand);
   color: #fff;
   font-size: 12px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 20px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
 }
 
 .btn-csv {
-  padding: 7px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
-  color: #075e54;
-  background: #e8f5e9;
-  border: 1px solid #b2dfdb;
+  font-weight: 800;
+  color: var(--brand);
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, white);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: var(--shadow-xs);
 }
 
 .btn-csv:hover {
-  background: #c8e6c9;
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+  box-shadow: var(--shadow-sm);
 }
 
-/* Alert banner */
 .kanban-alert {
-  background: #fffbeb;
-  color: #92400e;
-  border-left: 4px solid #f59e0b;
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-bottom: 1px solid #f7df9b;
   padding: 10px 24px;
   font-size: 13px;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
-/* Board */
 .kanban-board {
   flex: 1;
   display: flex;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 18px;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .kanban-column {
   flex: 1;
-  min-width: 210px;
+  min-width: 230px;
   max-width: 270px;
-  background: #e8eaed;
-  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: var(--shadow-xs);
 }
 
 .kanban-column__header {
-  padding: 10px 14px;
+  padding: 11px 13px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #fff;
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 900;
   font-size: 13px;
   flex-shrink: 0;
-  border-radius: 12px 12px 0 0;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--stage) 16%, white), rgba(255,255,255,0.75)) !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--stage) 20%, white);
 }
 
 .kanban-column__count {
-  background: rgba(255,255,255,0.3);
-  border-radius: 10px;
-  padding: 1px 8px;
+  background: color-mix(in srgb, var(--stage) 15%, white);
+  color: color-mix(in srgb, var(--stage) 70%, #10201c);
+  border: 1px solid color-mix(in srgb, var(--stage) 25%, white);
+  border-radius: 999px;
+  padding: 2px 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 900;
 }
 
 .kanban-column__body { flex: 1; }
@@ -220,7 +234,7 @@ onMounted(() => store.fetchLeads())
 .kanban-column__cards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
   padding: 10px;
   min-height: 60px;
 }

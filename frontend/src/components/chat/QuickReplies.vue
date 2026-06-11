@@ -20,29 +20,32 @@ defineEmits<{ select: [value: string] }>()
 .qr-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
-  padding: 6px 12px 10px;
+  gap: 8px;
+  padding: 8px 14px 12px;
+  background: rgba(248, 250, 249, 0.94);
+  border-top: 1px solid var(--border);
 }
 
 .qr-btn {
-  padding: 7px 16px;
-  border-radius: 20px;
-  border: 1.5px solid #25d366;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, white);
   background: #fff;
-  color: #075e54;
+  color: var(--brand);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 800;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   white-space: nowrap;
+  box-shadow: var(--shadow-xs);
 }
 
 .qr-btn:hover {
-  background: #25d366;
+  background: var(--brand);
   color: #fff;
-  border-color: #25d366;
+  border-color: var(--brand);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(37,211,102,0.25);
+  box-shadow: 0 8px 18px rgba(7, 94, 84, 0.16);
 }
 
 .qr-btn:active {

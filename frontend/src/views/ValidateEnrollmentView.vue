@@ -91,28 +91,30 @@ function formatDate(value?: string | null) {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #f3f4f6;
+  background:
+    linear-gradient(135deg, rgba(7, 94, 84, 0.08), transparent 36%),
+    var(--app-bg);
   padding: 24px;
 }
 
 .verify-panel {
   width: min(560px, 100%);
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 28px;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-md);
 }
 
 .brand-mark {
-  color: #111827;
+  color: var(--text);
   font-size: 18px;
   font-weight: 900;
   margin-bottom: 24px;
 }
 
 .brand-mark span {
-  color: #075e54;
+  color: var(--brand);
 }
 
 .success-mark {
@@ -121,8 +123,8 @@ function formatDate(value?: string | null) {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: #dcfce7;
-  color: #166534;
+  background: var(--brand-soft);
+  color: var(--brand);
   font-size: 26px;
   font-weight: 900;
   margin-bottom: 14px;
@@ -130,12 +132,12 @@ function formatDate(value?: string | null) {
 
 h1 {
   margin: 0;
-  color: #111827;
+  color: var(--text);
   font-size: 28px;
 }
 
 p {
-  color: #6b7280;
+  color: var(--muted);
   margin: 8px 0 22px;
 }
 
@@ -147,20 +149,21 @@ p {
 }
 
 .verify-data div {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
+  background: var(--surface-soft);
 }
 
 dt {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 11px;
   margin-bottom: 4px;
 }
 
 dd {
   margin: 0;
-  color: #111827;
+  color: var(--text);
   font-size: 14px;
   font-weight: 800;
   overflow-wrap: anywhere;

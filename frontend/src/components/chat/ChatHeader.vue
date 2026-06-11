@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { NIcon } from 'naive-ui'
+import { RefreshOutline } from '@vicons/ionicons5'
+
 withDefaults(defineProps<{ name?: string; avatar?: string }>(), {
   name: 'IA Atendente',
   avatar: 'E',
@@ -15,26 +18,27 @@ defineEmits<{ reset: [] }>()
       <span class="chat-header__status"><span class="dot"></span> online agora</span>
     </div>
     <button class="chat-header__reset" @click="$emit('reset')" title="Reiniciar conversa">
-      ↺
+      <NIcon :component="RefreshOutline" size="17" />
     </button>
   </div>
 </template>
 
 <style scoped>
 .chat-header {
-  background: #075e54;
-  padding: 12px 16px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand) 92%, #0f766e), var(--brand-strong));
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-header__avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
   background: rgba(255,255,255,0.2);
   color: #fff;
   display: flex;
@@ -43,6 +47,7 @@ defineEmits<{ reset: [] }>()
   font-weight: 800;
   font-size: 18px;
   flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
 }
 
 .chat-header__info {
@@ -54,7 +59,7 @@ defineEmits<{ reset: [] }>()
 
 .chat-header__name {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 800;
   color: #fff;
   line-height: 1.2;
 }
@@ -74,16 +79,16 @@ defineEmits<{ reset: [] }>()
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.18);
 }
 
 .chat-header__reset {
   width: 34px;
   height: 34px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: rgba(255,255,255,0.12);
-  border: none;
+  border: 1px solid rgba(255,255,255,0.16);
   color: #fff;
-  font-size: 18px;
   cursor: pointer;
   display: flex;
   align-items: center;

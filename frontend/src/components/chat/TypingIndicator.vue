@@ -12,13 +12,14 @@
 .msg-row {
   display: flex;
   justify-content: flex-start;
-  padding: 2px 12px;
+  padding: 2px 14px;
 }
 
 .bubble {
-  background: #fff;
-  border-radius: 18px 18px 18px 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(221, 231, 228, 0.86);
+  border-radius: 16px 16px 16px 5px;
+  box-shadow: var(--shadow-xs);
   padding: 10px 14px;
   display: flex;
   align-items: center;
@@ -28,7 +29,7 @@
 .dot {
   width: 7px;
   height: 7px;
-  background: #999;
+  background: var(--muted);
   border-radius: 50%;
   animation: bounce 1.2s infinite ease-in-out;
 }

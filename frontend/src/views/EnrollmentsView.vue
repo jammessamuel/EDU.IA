@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { NAlert, NScrollbar } from 'naive-ui'
+import { NAlert, NIcon, NScrollbar } from 'naive-ui'
+import {
+  CloudUploadOutline,
+  DocumentTextOutline,
+  DownloadOutline,
+  RefreshOutline,
+} from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import ChatMessages from '@/components/chat/ChatMessages.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
@@ -207,7 +213,9 @@ function formatFileSize(value?: number | null) {
             <strong>Matrícula assistida</strong>
             <span>Atendimento guiado, pagamento demo e comprovante em PDF.</span>
           </div>
-          <button class="icon-action" title="Nova matrícula" @click="resetChat">↺</button>
+          <button class="icon-action" title="Nova matrícula" @click="resetChat">
+            <NIcon :component="RefreshOutline" size="16" />
+          </button>
         </div>
 
         <div class="progress">
@@ -238,7 +246,10 @@ function formatFileSize(value?: number | null) {
             <h1>Matrículas</h1>
             <p>{{ enrollments.length }} registros confirmados ou em andamento</p>
           </div>
-          <button class="refresh" :disabled="isLoading" @click="loadEnrollments">Atualizar</button>
+          <button class="refresh" :disabled="isLoading" @click="loadEnrollments">
+            <NIcon :component="RefreshOutline" size="15" />
+            Atualizar
+          </button>
         </div>
 
         <NAlert v-if="error" type="error" closable class="alert" @close="error = null">
@@ -288,6 +299,7 @@ function formatFileSize(value?: number | null) {
           </div>
 
           <button class="primary-action" @click="enrollmentApi.downloadComprovante(selected.id)">
+            <NIcon :component="DownloadOutline" size="17" />
             Baixar comprovante PDF
           </button>
 
@@ -305,6 +317,7 @@ function formatFileSize(value?: number | null) {
               </select>
               <input id="document-file" type="file" accept=".pdf,image/*" @change="onFileChange" />
               <button :disabled="!docFile || uploadBusy" @click="uploadDocument">
+                <NIcon :component="CloudUploadOutline" size="15" />
                 {{ uploadBusy ? 'Enviando...' : 'Enviar' }}
               </button>
             </div>
@@ -316,10 +329,10 @@ function formatFileSize(value?: number | null) {
               <button
                 v-for="document in documents"
                 :key="document.id"
-                class="document-row"
-                @click="enrollmentApi.downloadDocument(selected.id, document)"
-              >
-                <strong>{{ document.type }}</strong>
+              class="document-row"
+              @click="enrollmentApi.downloadDocument(selected.id, document)"
+            >
+                <strong><NIcon :component="DocumentTextOutline" size="15" /> {{ document.type }}</strong>
                 <span>{{ document.fileName }}</span>
                 <small>{{ formatFileSize(document.size) }}</small>
               </button>
@@ -763,6 +776,201 @@ function formatFileSize(value?: number | null) {
   text-align: center;
 }
 
+/* Premium shell */
+.page {
+  background: var(--app-bg);
+}
+
+.workspace {
+  gap: 18px;
+  padding: 18px;
+  background: transparent;
+}
+
+.enrollment-chat,
+.enrollment-list,
+.detail-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.detail-panel {
+  overflow-y: auto;
+}
+
+.chat-strip,
+.section-head {
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom-color: var(--border);
+}
+
+.chat-strip strong,
+.section-head h1,
+.detail-head h2,
+.detail-section h3 {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.chat-strip span,
+.section-head p,
+.progress small,
+.payment-box span,
+.payment-box small,
+.upload-help,
+.document-row small,
+.muted,
+.empty,
+.empty-detail,
+.data-row span {
+  color: var(--muted);
+}
+
+.quick-start {
+  background: rgba(248, 250, 249, 0.94);
+  border-top-color: var(--border);
+}
+
+.quick-btn {
+  border: 1px solid color-mix(in srgb, var(--brand) 26%, white);
+  border-radius: 999px;
+  color: var(--brand);
+  font-weight: 800;
+  box-shadow: var(--shadow-xs);
+}
+
+.quick-btn:hover {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.icon-action {
+  display: grid;
+  place-items: center;
+  border-color: var(--border);
+  color: var(--brand);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.icon-action:hover {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.progress {
+  border-bottom-color: var(--border);
+}
+
+.progress__bar {
+  background: rgba(7, 94, 84, 0.13);
+}
+
+.progress__bar span {
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+}
+
+.refresh,
+.primary-action,
+.upload-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--brand);
+  font-weight: 800;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.refresh:hover:not(:disabled),
+.primary-action:hover,
+.upload-row button:hover:not(:disabled) {
+  background: var(--brand-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.enrollment-card {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-soft);
+  box-shadow: var(--shadow-xs);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.enrollment-card:hover,
+.enrollment-card--active {
+  border-color: color-mix(in srgb, var(--brand) 34%, white);
+  background: linear-gradient(135deg, var(--brand-soft), #fff);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.enrollment-card__number,
+.detail-head__eyebrow,
+.document-row strong {
+  color: var(--brand);
+}
+
+.enrollment-card strong,
+.payment-box strong,
+.document-row span,
+.data-row strong {
+  color: var(--text);
+}
+
+.enrollment-card__foot {
+  color: var(--muted);
+}
+
+.status,
+.detail-tags span {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, white);
+}
+
+.detail-head {
+  border-bottom-color: var(--border);
+}
+
+.payment-box,
+.data-row {
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+.detail-section {
+  border-top-color: var(--border);
+}
+
+.upload-row select,
+.upload-row input {
+  border-color: var(--border);
+  color: var(--text);
+  background: #fff;
+}
+
+.document-row {
+  border-color: var(--border);
+  background: #fff;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.document-row:hover {
+  border-color: color-mix(in srgb, var(--brand) 28%, white);
+  background: var(--surface-soft);
+  transform: translateY(-1px);
+}
+
+.document-row strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 @media (max-width: 1100px) {
   .workspace {
     grid-template-columns: 420px 1fr;
@@ -770,6 +978,23 @@ function formatFileSize(value?: number | null) {
 
   .detail-panel {
     display: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .workspace {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .enrollment-chat,
+  .enrollment-list {
+    min-height: 520px;
+  }
+
+  .upload-row {
+    grid-template-columns: 1fr;
   }
 }
 </style>

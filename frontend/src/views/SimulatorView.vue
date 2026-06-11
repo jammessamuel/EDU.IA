@@ -234,27 +234,38 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f5f7fa;
+  background: var(--app-bg);
 }
 
-.workspace { flex: 1; display: flex; overflow: hidden; }
+.workspace {
+  flex: 1;
+  display: flex;
+  gap: 18px;
+  overflow: hidden;
+  padding: 18px;
+  min-height: 0;
+}
 
 .chat-col {
-  width: 460px;
+  width: min(460px, 39vw);
+  min-width: 390px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #e9edef;
-  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-purpose {
-  background: #fffbeb;
-  border-bottom: 1px solid #fde68a;
-  padding: 8px 16px;
+  background: var(--warning-soft);
+  border-bottom: 1px solid #f7df9b;
+  padding: 9px 16px;
   font-size: 12px;
-  color: #92400e;
+  color: var(--warning);
+  font-weight: 700;
   flex-shrink: 0;
 }
 
@@ -263,12 +274,16 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: var(--shadow-xs);
 }
 
 .leads-header {
-  padding: 16px 20px;
-  background: #fff;
-  border-bottom: 1px solid #e9edef;
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -278,34 +293,40 @@ onMounted(async () => {
 .leads-header__left { display: flex; align-items: center; gap: 10px; }
 
 .leads-header__title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #111b21;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--text);
   margin: 0;
 }
 
 .leads-header__badge {
-  background: #075e54;
+  background: var(--brand);
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
-  padding: 2px 9px;
-  border-radius: 20px;
+  font-weight: 900;
+  padding: 4px 9px;
+  border-radius: 999px;
 }
 
 .btn-pipeline {
-  padding: 6px 14px;
+  padding: 8px 13px;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
-  color: #075e54;
-  background: #e8f5e9;
-  border: 1px solid #b2dfdb;
+  font-weight: 800;
+  color: var(--brand);
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, white);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: var(--shadow-xs);
 }
 
-.btn-pipeline:hover { background: #c8e6c9; }
+.btn-pipeline:hover {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+  box-shadow: var(--shadow-sm);
+}
 
 .enrollment-panel {
   flex: 1;
@@ -315,30 +336,31 @@ onMounted(async () => {
 
 .enrollment-progress {
   padding: 14px;
-  border: 1px solid #d1fae5;
+  border: 1px solid color-mix(in srgb, var(--brand) 20%, white);
   border-radius: 8px;
-  background: #f0fdf8;
+  background: linear-gradient(135deg, var(--brand-soft), #fff);
+  box-shadow: var(--shadow-xs);
 }
 
 .enrollment-progress small {
   display: block;
   margin-top: 8px;
-  color: #047857;
+  color: var(--brand);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 900;
 }
 
 .enrollment-progress__bar {
   height: 8px;
   border-radius: 999px;
-  background: #d1fae5;
+  background: rgba(7, 94, 84, 0.13);
   overflow: hidden;
 }
 
 .enrollment-progress__bar span {
   display: block;
   height: 100%;
-  background: #075e54;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
   transition: width 0.2s ease;
 }
 
@@ -346,23 +368,25 @@ onMounted(async () => {
 .enrollment-block {
   margin-top: 12px;
   padding: 14px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-xs);
 }
 
 .enrollment-tip strong,
 .enrollment-block h3 {
   display: block;
   margin: 0 0 8px;
-  color: #111827;
+  color: var(--text);
   font-size: 14px;
+  font-weight: 900;
 }
 
 .enrollment-tip p,
 .enrollment-muted {
   margin: 0;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -378,7 +402,7 @@ onMounted(async () => {
   grid-template-columns: minmax(120px, 0.45fr) 1fr;
   gap: 10px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--surface-muted);
 }
 
 .enrollment-row:last-child {
@@ -387,12 +411,12 @@ onMounted(async () => {
 }
 
 .enrollment-row span {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 
 .enrollment-row strong {
-  color: #111827;
+  color: var(--text);
   font-size: 13px;
   word-break: break-word;
 }
@@ -405,19 +429,20 @@ onMounted(async () => {
 
 .missing-list span {
   border-radius: 999px;
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
   padding: 5px 9px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .secondary-leads {
   margin-top: 12px;
   padding: 14px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-xs);
 }
 
 .secondary-leads__head {
@@ -430,24 +455,25 @@ onMounted(async () => {
 
 .secondary-leads__head h3 {
   margin: 0;
-  color: #111827;
+  color: var(--text);
   font-size: 14px;
+  font-weight: 900;
 }
 
 .secondary-leads__head span {
   display: block;
   margin-top: 2px;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 
 .secondary-leads__head button {
-  border: 1px solid #b2dfdb;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, white);
   border-radius: 8px;
-  background: #e8f5e9;
-  color: #075e54;
+  background: #fff;
+  color: var(--brand);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   padding: 6px 10px;
   cursor: pointer;
 }
@@ -465,28 +491,30 @@ onMounted(async () => {
   align-items: center;
   gap: 9px;
   padding: 9px;
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #f9fafb;
-  color: #111827;
+  background: var(--surface-soft);
+  color: var(--text);
   text-align: left;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
 
 .lead-mini:hover {
-  border-color: #b2dfdb;
-  background: #f0fdf8;
+  border-color: color-mix(in srgb, var(--brand) 26%, white);
+  background: #fff;
+  transform: translateY(-1px);
 }
 
 .lead-mini__avatar {
   width: 30px;
   height: 30px;
-  border-radius: 999px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #e0f2f1;
-  color: #075e54;
+  background: var(--brand-soft);
+  color: var(--brand);
   font-size: 12px;
   font-weight: 800;
 }
@@ -509,14 +537,14 @@ onMounted(async () => {
 
 .lead-mini__body small {
   margin-top: 2px;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 11px;
 }
 
 .lead-mini__status {
   border-radius: 999px;
-  background: #ecfdf5;
-  color: #047857;
+  background: var(--brand-soft);
+  color: var(--brand);
   padding: 3px 7px;
   font-size: 10px;
   font-weight: 800;
@@ -525,7 +553,7 @@ onMounted(async () => {
 .enrollment-result {
   margin: 12px 16px 0;
   padding: 12px;
-  border: 1px solid #b2dfdb;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, white);
   border-radius: 8px;
   background: #ecfdf5;
   display: flex;
@@ -544,20 +572,20 @@ onMounted(async () => {
 }
 
 .enrollment-result strong {
-  color: #064e3b;
+  color: var(--brand-strong);
   font-size: 13px;
 }
 
 .enrollment-result span {
-  color: #047857;
+  color: var(--brand);
   font-size: 12px;
   margin-top: 2px;
 }
 
 .enrollment-result button {
-  border: 1px solid #10b981;
-  background: #d1fae5;
-  color: #065f46;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, white);
+  background: #fff;
+  color: var(--brand);
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 12px;
@@ -585,7 +613,7 @@ onMounted(async () => {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #075e54;
+  background: var(--brand);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
@@ -597,8 +625,25 @@ onMounted(async () => {
 
 .step__text {
   font-size: 13px;
-  color: #555;
+  color: var(--muted-strong);
   line-height: 1.5;
   padding-top: 4px;
+}
+
+@media (max-width: 980px) {
+  .workspace {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .chat-col {
+    width: 100%;
+    min-width: 0;
+    min-height: 560px;
+  }
+
+  .leads-col {
+    min-height: 480px;
+  }
 }
 </style>

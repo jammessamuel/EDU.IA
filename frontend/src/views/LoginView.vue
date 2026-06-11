@@ -310,11 +310,11 @@ const panel = computed(() =>
   --green-800: #075e54;
   --green-600: #0e8f7e;
   --green-400: #25d366;
-  --cream: #f6f4ee;
-  --cream-2: #eeebe1;
+  --cream: #eef3f1;
+  --cream-2: #dfe8e5;
   --ink: #12211d;
   --muted: #6a7a74;
-  --line: #e4dfd2;
+  --line: #d6e2de;
   --white: #fff;
 
   position: fixed;
@@ -354,7 +354,7 @@ const panel = computed(() =>
   background-size: 22px 22px;
   -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 25%, transparent 75%);
   mask-image: radial-gradient(ellipse at 50% 40%, #000 25%, transparent 75%);
-  opacity: 0.6;
+  opacity: 0.34;
   pointer-events: none;
 }
 
@@ -386,7 +386,7 @@ const panel = computed(() =>
   font-family: 'Bricolage Grotesque', sans-serif;
   font-weight: 800;
   font-size: 21px;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   color: var(--ink);
 }
 .brand__name span {
@@ -402,7 +402,7 @@ const panel = computed(() =>
   padding: 4px;
   background: var(--cream-2);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   margin-bottom: 26px;
 }
 .seg button {
@@ -416,7 +416,7 @@ const panel = computed(() =>
   font-weight: 600;
   color: var(--muted);
   padding: 9px 0;
-  border-radius: 10px;
+  border-radius: 6px;
   transition: color 0.25s;
 }
 .seg button.is-on {
@@ -430,7 +430,7 @@ const panel = computed(() =>
   width: calc(50% - 4px);
   height: calc(100% - 8px);
   background: var(--white);
-  border-radius: 10px;
+  border-radius: 6px;
   box-shadow: 0 2px 9px rgba(18, 33, 29, 0.1);
   transition: transform 0.34s cubic-bezier(0.4, 1.2, 0.4, 1);
 }
@@ -447,7 +447,7 @@ const panel = computed(() =>
   font-weight: 700;
   font-size: 27px;
   line-height: 1.1;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
   color: var(--ink);
 }
 .head p {
@@ -483,7 +483,7 @@ const panel = computed(() =>
   color: var(--ink);
   background: var(--white);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   outline: none;
   transition: border-color 0.18s, box-shadow 0.18s;
 }
@@ -527,7 +527,7 @@ const panel = computed(() =>
   height: 48px;
   margin-top: 6px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   cursor: pointer;
   font-family: inherit;
   font-size: 15px;
@@ -583,7 +583,7 @@ const panel = computed(() =>
   padding: 15px 6px;
   background: var(--white);
   border: 1.5px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   cursor: pointer;
   transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
@@ -605,7 +605,7 @@ const panel = computed(() =>
 }
 .vskel {
   height: 76px;
-  border-radius: 14px;
+  border-radius: 8px;
   background: linear-gradient(100deg, var(--cream-2) 30%, #f2efe7 50%, var(--cream-2) 70%);
   background-size: 220% 100%;
   animation: shimmer 1.3s infinite;
@@ -631,7 +631,7 @@ const panel = computed(() =>
   align-items: center;
   gap: 9px;
   padding: 8px 13px;
-  border-radius: 11px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--vc) 10%, var(--white));
   border: 1.5px solid color-mix(in srgb, var(--vc) 38%, transparent);
 }
@@ -680,20 +680,12 @@ const panel = computed(() =>
     display: block;
     height: 100%;
     overflow: hidden;
-    background: radial-gradient(125% 125% at 72% 8%, #0e8f7e 0%, #075e54 44%, #053b33 100%);
+    background:
+      linear-gradient(145deg, #0e8f7e 0%, #075e54 46%, #053b33 100%);
   }
 }
 .glow {
-  position: absolute;
-  width: 60vw;
-  height: 60vw;
-  max-width: 680px;
-  max-height: 680px;
-  top: -16%;
-  right: -14%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(37, 211, 102, 0.42), transparent 60%);
-  pointer-events: none;
+  display: none;
 }
 .grain {
   position: absolute;
@@ -755,7 +747,7 @@ const panel = computed(() =>
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0;
   opacity: 0.5;
   margin-bottom: 4px;
 }
@@ -769,7 +761,7 @@ const panel = computed(() =>
   font-weight: 700;
   font-size: 39px;
   line-height: 1.04;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   color: #fff;
   animation: rise 0.7s 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }

@@ -32,14 +32,17 @@ watch(() => [props.messages.length, props.isTyping], scrollToBottom, { immediate
 <style scoped>
 .chat-messages {
   flex: 1;
-  background: #ece5dd;
+  background:
+    linear-gradient(rgba(238, 243, 241, 0.88), rgba(238, 243, 241, 0.88)),
+    radial-gradient(circle at 1px 1px, rgba(7, 94, 84, 0.14) 1px, transparent 0);
+  background-size: auto, 22px 22px;
   min-height: 0;
 }
 
 .chat-messages__inner {
-  padding: 12px 0;
+  padding: 14px 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 </style>
