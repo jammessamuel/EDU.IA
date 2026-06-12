@@ -125,6 +125,18 @@ const panel = computed(() =>
         ],
       },
 )
+
+const liveSteps = [
+  { label: 'Lead novo', meta: 'WhatsApp', value: '12s' },
+  { label: 'Dados validados', meta: 'CPF e e-mail', value: 'ok' },
+  { label: 'Matrícula pronta', meta: 'PDF com QR', value: '100%' },
+]
+
+const liveLeads = [
+  { name: 'Juliana', detail: 'Direito · noite', status: 'Quente' },
+  { name: 'Bruno', detail: 'Administração · centro', status: 'Follow-up' },
+  { name: 'Tatiane', detail: 'Enfermagem · manhã', status: 'Qualificado' },
+]
 </script>
 
 <template>
@@ -301,15 +313,55 @@ const panel = computed(() =>
 
     <!-- ╭──────────────── DIREITA: painel da IA ────────────────╮ -->
     <aside class="pane pane--show" aria-hidden="true">
-      <span class="glow" />
       <span class="grain" />
+      <div class="motion-field">
+        <span class="beam beam--one" />
+        <span class="beam beam--two" />
+        <span class="beam beam--three" />
+        <span class="signal signal--one" />
+        <span class="signal signal--two" />
+      </div>
 
       <div class="show">
-        <div class="chat">
-          <div class="bubble bubble--in">Oi! Quero saber sobre o curso 👋</div>
-          <div class="bubble bubble--ai">
-            <span class="bubble__who">EDU.IA respondendo</span>
-            <TypewriterText :key="mode" :text="panel.chat" />
+        <div class="show__main">
+          <div class="chat">
+            <div class="bubble bubble--in">Oi! Quero saber sobre o curso 👋</div>
+            <div class="bubble bubble--ai">
+              <span class="bubble__who">EDU.IA respondendo</span>
+              <TypewriterText :key="mode" :text="panel.chat" />
+            </div>
+          </div>
+
+          <div class="automation-board">
+            <div class="automation-board__top">
+              <span>
+                <i />
+                Atendimento agora
+              </span>
+              <strong>+17 leads</strong>
+            </div>
+
+            <div class="lead-stream">
+              <div v-for="lead in liveLeads" :key="lead.name" class="lead-stream__row">
+                <span class="lead-stream__avatar">{{ lead.name.charAt(0) }}</span>
+                <span>
+                  <strong>{{ lead.name }}</strong>
+                  <small>{{ lead.detail }}</small>
+                </span>
+                <em>{{ lead.status }}</em>
+              </div>
+            </div>
+
+            <div class="flow">
+              <div v-for="step in liveSteps" :key="step.label" class="flow__step">
+                <span>
+                  <strong>{{ step.label }}</strong>
+                  <small>{{ step.meta }}</small>
+                </span>
+                <em>{{ step.value }}</em>
+              </div>
+              <div class="flow__progress" />
+            </div>
           </div>
         </div>
 
@@ -788,9 +840,6 @@ const panel = computed(() =>
     background: var(--auth-panel-bg);
   }
 }
-.glow {
-  display: none;
-}
 .grain {
   position: absolute;
   inset: 0;
@@ -800,6 +849,69 @@ const panel = computed(() =>
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+.motion-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.beam {
+  position: absolute;
+  left: -18%;
+  width: 136%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    rgba(74, 222, 128, 0.28),
+    transparent
+  );
+  transform: rotate(-18deg);
+  animation: beamSweep 8s linear infinite;
+}
+
+.beam--one {
+  top: 22%;
+}
+
+.beam--two {
+  top: 52%;
+  animation-delay: -2.7s;
+  opacity: 0.74;
+}
+
+.beam--three {
+  top: 78%;
+  animation-delay: -5.2s;
+  opacity: 0.58;
+}
+
+.signal {
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  border: 1px solid rgba(234, 255, 245, 0.1);
+  border-radius: 18px;
+  transform: rotate(45deg);
+  opacity: 0.38;
+  animation: signalDrift 12s ease-in-out infinite;
+}
+
+.signal--one {
+  top: 9%;
+  right: 12%;
+}
+
+.signal--two {
+  bottom: 12%;
+  left: 8%;
+  width: 130px;
+  height: 130px;
+  animation-delay: -5s;
+}
+
 .show {
   position: relative;
   z-index: 2;
@@ -807,9 +919,15 @@ const panel = computed(() =>
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 42px;
+  gap: 28px;
   padding: 64px;
   color: #eafff5;
+}
+
+.show__main {
+  display: grid;
+  gap: 20px;
+  max-width: 520px;
 }
 
 /* mini chat */
@@ -854,6 +972,164 @@ const panel = computed(() =>
   letter-spacing: 0;
   opacity: 0.5;
   margin-bottom: 4px;
+}
+
+.automation-board {
+  width: min(100%, 500px);
+  padding: 16px;
+  border: 1px solid rgba(234, 255, 245, 0.16);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)),
+    rgba(3, 31, 27, 0.28);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px);
+  animation: boardLift 0.8s 0.78s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.automation-board__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 13px;
+  color: rgba(234, 255, 245, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.automation-board__top span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.automation-board__top i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #4ade80;
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55);
+  animation: statusPulse 2.2s ease-out infinite;
+}
+
+.automation-board__top strong {
+  color: #fff;
+  font-size: 12px;
+}
+
+.lead-stream {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.lead-stream__row {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1px solid rgba(234, 255, 245, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  animation: rowFloat 4.8s ease-in-out infinite;
+}
+
+.lead-stream__row:nth-child(2) {
+  animation-delay: -1.4s;
+}
+
+.lead-stream__row:nth-child(3) {
+  animation-delay: -2.8s;
+}
+
+.lead-stream__avatar {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(74, 222, 128, 0.16);
+  color: #d8ffec;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.lead-stream strong,
+.flow strong {
+  display: block;
+  color: #fff;
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.lead-stream small,
+.flow small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(234, 255, 245, 0.58);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.lead-stream em {
+  padding: 4px 7px;
+  border-radius: 7px;
+  color: #c8ffe2;
+  background: rgba(74, 222, 128, 0.13);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.flow {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(234, 255, 245, 0.12);
+}
+
+.flow__step {
+  position: relative;
+  z-index: 1;
+  min-height: 70px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(2, 20, 18, 0.24);
+}
+
+.flow__step em {
+  display: inline-flex;
+  margin-top: 8px;
+  color: #a7f3d0;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.flow__progress {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(234, 255, 245, 0.1);
+}
+
+.flow__progress::after {
+  content: '';
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #4ade80, #93c5fd, transparent);
+  animation: progressSweep 2.8s ease-in-out infinite;
 }
 
 /* tagline */
@@ -939,12 +1215,61 @@ const panel = computed(() =>
     box-shadow: 0 0 0 6px rgba(37, 211, 102, 0);
   }
 }
+@keyframes beamSweep {
+  from {
+    transform: translateX(-18%) rotate(-18deg);
+  }
+  to {
+    transform: translateX(18%) rotate(-18deg);
+  }
+}
+@keyframes signalDrift {
+  50% {
+    transform: translate3d(-14px, 12px, 0) rotate(45deg);
+    opacity: 0.58;
+  }
+}
+@keyframes boardLift {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+}
+@keyframes statusPulse {
+  70% {
+    box-shadow: 0 0 0 12px rgba(74, 222, 128, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+  }
+}
+@keyframes rowFloat {
+  50% {
+    transform: translateY(-3px);
+    border-color: rgba(234, 255, 245, 0.22);
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+@keyframes progressSweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .form-wrap,
   .bubble,
   .copy h2,
-  .copy p {
+  .copy p,
+  .beam,
+  .signal,
+  .automation-board,
+  .automation-board__top i,
+  .lead-stream__row,
+  .flow__progress::after {
     animation: none;
   }
 }
