@@ -241,24 +241,6 @@ function formatFileSize(value?: number | null) {
 
         <ChatMessages :messages="messages" :is-typing="isTyping" />
 
-        <div v-if="messages.length === 1 && !isSending" class="quick-start">
-          <button class="quick-btn" @click="sendEnrollmentMessage('Quero começar minha matrícula')">
-            Começar matrícula
-          </button>
-          <button class="quick-btn" @click="sendEnrollmentMessage('Quais cursos estão disponíveis?')">
-            Ver cursos
-          </button>
-          <button class="quick-btn" @click="sendEnrollmentMessage('Tenho dúvidas sobre o processo')">
-            Tirar dúvidas
-          </button>
-          <button class="quick-btn" @click="sendEnrollmentMessage('I want to start my enrollment. I am American and I will use my passport.')">
-            Start in English
-          </button>
-          <button class="quick-btn" @click="sendEnrollmentMessage('Quiero empezar mi matrícula. Soy de España y voy a usar mi pasaporte.')">
-            Empezar en español
-          </button>
-        </div>
-
         <ChatInput :disabled="isSending" placeholder="Escreva sua resposta aqui..." @send="sendEnrollmentMessage" />
       </section>
 
@@ -472,31 +454,6 @@ function formatFileSize(value?: number | null) {
   color: #6b7280;
   font-size: 12px;
   line-height: 1.4;
-}
-
-.quick-start {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #f9fafb;
-  border-top: 1px solid #e5e7eb;
-}
-
-.quick-btn {
-  padding: 8px 14px;
-  border-radius: 20px;
-  border: 1.5px solid #25D366;
-  background: #fff;
-  color: #111827;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.quick-btn:hover {
-  background: #25D366;
-  color: #fff;
 }
 
 .icon-action {
@@ -935,25 +892,6 @@ function formatFileSize(value?: number | null) {
 .empty-detail,
 .data-row span {
   color: var(--muted);
-}
-
-.quick-start {
-  background: var(--surface-raised);
-  border-top-color: var(--border);
-}
-
-.quick-btn {
-  border: 1px solid color-mix(in srgb, var(--brand) 26%, white);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--brand);
-  font-weight: 800;
-  box-shadow: var(--shadow-xs);
-}
-
-.quick-btn:hover {
-  background: var(--brand);
-  border-color: var(--brand);
 }
 
 .icon-action {

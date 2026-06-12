@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EnrollmentService } from './enrollment.service';
 import { AccessibilityService } from '../accessibility/accessibility.service';
 import type { AccessibilityProfile } from '../accessibility/accessibility.types';
+import { isValidCpf, isValidEmail, onlyDigits } from '../common/lib/validation';
 import {
   EDUCATION_ENROLLMENT_FIELDS,
   DEFAULT_ENROLLMENT_FEE,
@@ -25,6 +26,7 @@ import {
   camposFaltando,
   buildEnrollmentPrompt,
 } from './enrollment-agent';
+import { INSTITUTION_INFO } from './institution-info';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -86,6 +88,7 @@ export class EnrollmentChatService {
       fee: DEFAULT_ENROLLMENT_FEE,
       draft: initialDraft,
       accessibility,
+      frontendUrl: this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app',
     });
 
     const messages: any[] = [
@@ -176,9 +179,20 @@ export class EnrollmentChatService {
       return ofertaInfo(fields);
     }
 
+    if (name === 'consultar_instituicao') {
+      const frontendUrl = (this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app').replace(/\/$/, '');
+      return {
+        ...INSTITUTION_INFO,
+        materiais: INSTITUTION_INFO.materiais.map((material) => ({
+          ...material,
+          url: `${frontendUrl}${material.arquivo}`,
+        })),
+      };
+    }
+
     if (name === 'salvar_dados') {
       const novo = normalizeEnrollmentData(fields, { ...draft, ...(args.campos || {}) });
-      const erros = validateEnrollment(fields, novo);
+      const erros = validateEnrollment(fields, novo, { requireMissing: false });
       const faltando = camposFaltando(fields, novo);
       return {
         ok: erros.length === 0,
@@ -225,6 +239,7 @@ export class EnrollmentChatService {
   private extractObviousFields(text: string, fields: EnrollmentField[]): Record<string, string> {
     const found: Record<string, string> = {};
     const haystack = this.normalizeText(text);
+    const digits = onlyDigits(text);
 
     const language = this.detectLanguage(text);
     if (language) found.preferredLanguage = language;
@@ -245,19 +260,49 @@ export class EnrollmentChatService {
     if (/\bnie\b/i.test(text)) found.documentType = 'NIE';
     if (/\bdni\b/i.test(text)) found.documentType = 'DNI';
     if (/\bcpf\b/i.test(text)) found.documentType = 'CPF';
+
+    const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+    if (email && isValidEmail(email)) found.email = email;
+
+    const cpfCandidate = text.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/)?.[0];
+    if (cpfCandidate && isValidCpf(cpfCandidate)) {
+      found.documentType = 'CPF';
+      found.documentNumber = cpfCandidate;
+    }
+
+    const passportCandidate = text.match(/\b(?:passaporte|passport|pasaporte)\s*(?:é|e|:|#|number|nº|no\.?)?\s*([A-Z0-9][A-Z0-9 -]{4,18})\b/i)?.[1];
+    if (passportCandidate) {
+      found.documentType = 'Passaporte';
+      found.documentNumber = passportCandidate;
+    }
+
+    const dateCandidate = text.match(/\b(?:nasci(?:mento)?|birth(?:date)?|nací|fecha de nacimiento|data de nascimento)?\s*(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\b/i)?.[1];
+    if (dateCandidate) found.birthDate = dateCandidate;
+
+    const cepCandidate = text.match(/\b\d{5}-?\d{3}\b/)?.[0];
+    if (cepCandidate) found.cep = cepCandidate;
+
+    const phoneCandidate = text.match(/(?:\+?\d[\d\s().-]{9,}\d)/)?.[0];
+    const phoneDigits = phoneCandidate ? onlyDigits(phoneCandidate) : '';
+    if (phoneCandidate && phoneDigits.length >= 10 && phoneDigits.length <= 15 && !isValidCpf(phoneDigits)) {
+      found.phone = phoneCandidate.trim();
+    } else if (!found.phone && digits.length >= 10 && digits.length <= 15 && !isValidCpf(digits)) {
+      found.phone = text.trim();
+    }
+
+    const nameCandidate =
+      text.match(/\b(?:meu nome é|me chamo|my name is|mi nombre es|me llamo)\s+([A-ZÀ-ÿ][A-ZÀ-ÿ' -]{4,80})/i)?.[1] ??
+      null;
+    if (nameCandidate) found.studentName = nameCandidate.replace(/[,.].*$/, '').trim();
+
     if (!found.paymentMethod && /\bcart[aã]o\b/i.test(text)) found.paymentMethod = 'Cartão de crédito';
+    if (!found.paymentMethod && /\bpix\b/i.test(text)) found.paymentMethod = 'PIX';
+    if (!found.paymentMethod && /\bboleto\b/i.test(text)) found.paymentMethod = 'Boleto';
     return found;
   }
 
   private detectLanguage(text: string): 'Português' | 'English' | 'Español' | null {
     const lower = text.toLowerCase();
-
-    if (
-      /[¿¡]/.test(text) ||
-      /\b(hola|quiero|matr[ií]cula|inscripci[oó]n|espa[ñn]ol|pasaporte|soy|nací|naci|tengo|documento)\b/i.test(text)
-    ) {
-      return 'Español';
-    }
 
     if (
       /\b(hello|hi|i am|i'm|i want|enroll|enrollment|application|american|canadian|passport|driver'?s? license|state id|social security)\b/i.test(
@@ -267,7 +312,25 @@ export class EnrollmentChatService {
       return 'English';
     }
 
-    if (/\b(ol[aá]|quero|matr[ií]cula|inscri[cç][aã]o|brasileir|passaporte|documento|cpf)\b/i.test(lower)) {
+    const hasPortugueseSignal =
+      /\b(ol[aá]|quero|sou|tenho|meu|minha|voc[eê]|matr[ií]cula|inscri[cç][aã]o|brasileir|passaporte|documento|cpf|manh[aã]|noite|cart[aã]o)\b/i.test(
+        lower,
+      );
+    const hasSpanishSignal =
+      /[¿¡]/.test(text) ||
+      /\b(hola|quiero|soy|tengo|nac[ií]|inscripci[oó]n|espa[ñn]ol|pasaporte|documento|matricularme)\b/i.test(
+        lower,
+      );
+
+    if (hasPortugueseSignal && !/\b(hola|quiero|soy|tengo|nac[ií]|espa[ñn]ol|matricularme)\b/i.test(lower)) {
+      return 'Português';
+    }
+
+    if (hasSpanishSignal) return 'Español';
+
+    if (
+      /\b(ol[aá]|quero|matr[ií]cula|inscri[cç][aã]o|brasileir|passaporte|documento|cpf)\b/i.test(lower)
+    ) {
       return 'Português';
     }
 

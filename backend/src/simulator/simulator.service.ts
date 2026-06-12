@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerticalService, VerticalField } from '../vertical/vertical.service';
 import { EnrollmentChatService } from '../enrollment/enrollment-chat.service';
+import { institutionInfoForPrompt } from '../enrollment/institution-info';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -72,7 +73,11 @@ REGRA DE IDIOMA (prioridade alta):
 - Detecte automaticamente se o cliente fala Português, English ou Español.
 - Responda no mesmo idioma do cliente, com naturalidade humana.
 - Se o cliente disser que é American/from the United States, Canadian/from Canada ou Spanish/from Spain/España, reconheça isso e continue no idioma correspondente.
-- Continue coletando uma pergunta por vez.`;
+- Continue coletando uma pergunta por vez.
+- Se o cliente perguntar horário, localização, endereço, como chegar, condução/transporte, desconto à vista, valores ou PDF/material do curso, responda usando as informações institucionais abaixo.
+- Evite respostas gravadas. Puxe assunto como uma pessoa: entenda a intenção, responda o que foi perguntado e faça uma próxima pergunta leve.
+
+${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app')}`;
   }
 
   // ── Chat ──────────────────────────────────────────────────────────────────────

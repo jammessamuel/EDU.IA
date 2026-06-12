@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, reactive, nextTick, onMounted, watch } from 'vue'
 import AppNav from '@/components/layout/AppNav.vue'
-import QuickReplies from '@/components/chat/QuickReplies.vue'
 import { simulatorApi } from '@/api/simulator'
 import { useSimulatorStore } from '@/stores/simulator'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -45,9 +44,9 @@ const CONTACTS_BY_VERTICAL: Record<string, ContactDef[]> = {
       id: 'c1', phone: '+55 (11) 99234-5678', city: 'São Paulo',
       lead: { name: 'Camila Souza', data: { course: 'Enfermagem', unit: 'Centro', shift: 'manhã' }, status: 'NOVO' },
       history: [
-        { from: 'ai',   text: 'Olá! 👋 Seja bem-vindo à nossa instituição. Como posso te ajudar?', minutesAgo: 47 },
+        { from: 'ai',   text: 'Oi, tudo bem? Você quer ver cursos, valores, localização ou já começar uma matrícula?', minutesAgo: 47 },
         { from: 'user', text: 'Oi! Quero saber sobre os cursos de saúde', minutesAgo: 46 },
-        { from: 'ai',   text: 'Que ótimo! Temos o curso de Enfermagem 🩺, muito valorizado no mercado. Qual curso te interessa? Temos: Enfermagem, Administração, Direito e Pedagogia.', minutesAgo: 45 },
+        { from: 'ai',   text: 'Temos Enfermagem como principal opção na área da saúde. Posso te mandar o PDF do curso e já ver a melhor unidade pra você.', minutesAgo: 45 },
         { from: 'user', text: 'Enfermagem mesmo', minutesAgo: 44 },
         { from: 'ai',   text: 'Perfeito! Temos unidades no Centro, Norte e Sul. Qual fica mais perto de você?', minutesAgo: 43 },
         { from: 'user', text: 'Centro, fica perto do meu trabalho', minutesAgo: 42 },
@@ -55,22 +54,22 @@ const CONTACTS_BY_VERTICAL: Record<string, ContactDef[]> = {
         { from: 'user', text: 'Manhã', minutesAgo: 40 },
         { from: 'ai',   text: 'Qual é o seu nome completo para eu registrar?', minutesAgo: 39 },
         { from: 'user', text: 'Camila Souza', minutesAgo: 38 },
-        { from: 'ai',   text: 'Pronto, Camila! ✅ Seus dados foram registrados. Um consultor vai te contatar em breve com mais informações sobre Enfermagem, unidade Centro, turno manhã. 😊', minutesAgo: 37 },
+        { from: 'ai',   text: 'Fechado, Camila. Anotei Enfermagem no Centro pela manhã. Vou deixar isso pronto para a secretaria continuar sua matrícula.', minutesAgo: 37 },
       ],
     },
     {
       id: 'c2', phone: '+55 (21) 97654-3210', city: 'Rio de Janeiro',
       lead: { name: 'Lucas Rodrigues', data: { course: 'Direito', unit: 'Sul', shift: 'tarde' }, status: 'CONTATO' },
       history: [
-        { from: 'ai',   text: 'Olá! 👋 Como posso te ajudar hoje?', minutesAgo: 130 },
+        { from: 'ai',   text: 'Oi, Lucas. Me fala o que você procura e eu já te direciono sem enrolação.', minutesAgo: 130 },
         { from: 'user', text: 'Tenho interesse em fazer Direito', minutesAgo: 128 },
-        { from: 'ai',   text: 'Excelente escolha! ⚖️ Nosso curso de Direito tem ótima reputação. Qual unidade você prefere: Centro, Norte ou Sul?', minutesAgo: 127 },
+        { from: 'ai',   text: 'Direito é uma ótima escolha. Temos material em PDF e condição à vista; qual unidade fica melhor: Centro, Norte ou Sul?', minutesAgo: 127 },
         { from: 'user', text: 'Sul', minutesAgo: 125 },
         { from: 'ai',   text: 'Qual turno: manhã, tarde ou noite?', minutesAgo: 124 },
         { from: 'user', text: 'Tarde', minutesAgo: 123 },
         { from: 'ai',   text: 'Qual é o seu nome completo?', minutesAgo: 122 },
         { from: 'user', text: 'Lucas Rodrigues', minutesAgo: 121 },
-        { from: 'ai',   text: 'Obrigado, Lucas! ✅ Registrado. Nossa equipe vai entrar em contato em breve. 😊', minutesAgo: 120 },
+        { from: 'ai',   text: 'Obrigado, Lucas. Registrei Direito, unidade Sul, turno tarde. Vou manter isso no seu atendimento.', minutesAgo: 120 },
         { from: 'user', text: 'Já falei com o consultor, adorei as opções!', minutesAgo: 30 },
         { from: 'ai',   text: 'Que ótimo, Lucas! Qualquer dúvida pode falar aqui. Boa sorte! 🎓', minutesAgo: 29 },
       ],
@@ -79,15 +78,15 @@ const CONTACTS_BY_VERTICAL: Record<string, ContactDef[]> = {
       id: 'c3', phone: '+55 (31) 98123-4567', city: 'Belo Horizonte',
       lead: { name: 'Mariana Costa', data: { course: 'Administração', unit: 'Sul', shift: 'tarde' }, status: 'INSCRITO' },
       history: [
-        { from: 'ai',   text: 'Olá! 👋 Como posso te ajudar?', minutesAgo: 300 },
+        { from: 'ai',   text: 'Oi, Mariana. Quer tirar dúvida de curso ou já prefere começar a inscrição?', minutesAgo: 300 },
         { from: 'user', text: 'Quero me inscrever em Administração', minutesAgo: 298 },
-        { from: 'ai',   text: '📊 Administração é uma das carreiras mais versáteis! Qual unidade prefere: Centro, Norte ou Sul?', minutesAgo: 297 },
+        { from: 'ai',   text: 'Perfeito. Administração tem bastante saída para gestão e negócios. Qual unidade prefere: Centro, Norte ou Sul?', minutesAgo: 297 },
         { from: 'user', text: 'Sul', minutesAgo: 295 },
         { from: 'ai',   text: 'Turno: manhã, tarde ou noite?', minutesAgo: 294 },
         { from: 'user', text: 'Tarde', minutesAgo: 293 },
         { from: 'ai',   text: 'Seu nome completo?', minutesAgo: 292 },
         { from: 'user', text: 'Mariana Costa', minutesAgo: 290 },
-        { from: 'ai',   text: 'Tudo registrado, Mariana! ✅ Nosso time entra em contato em breve. 😊', minutesAgo: 288 },
+        { from: 'ai',   text: 'Tudo certo, Mariana. Deixei Administração, Sul, tarde anotado para seguir com sua inscrição.', minutesAgo: 288 },
         { from: 'user', text: 'Já me inscrevi! Começo semana que vem 🎉', minutesAgo: 60 },
         { from: 'ai',   text: 'Parabéns, Mariana! 🎉 Boas-vindas à família! Qualquer dúvida estou aqui.', minutesAgo: 59 },
       ],
@@ -96,15 +95,15 @@ const CONTACTS_BY_VERTICAL: Record<string, ContactDef[]> = {
       id: 'c4', phone: '+55 (41) 99876-5432', city: 'Curitiba',
       lead: { name: 'Thiago Martins', data: { course: 'Enfermagem', unit: 'Sul', shift: 'tarde' }, status: 'MATRICULADO' },
       history: [
-        { from: 'ai',   text: 'Olá! 👋 Como posso te ajudar?', minutesAgo: 600 },
+        { from: 'ai',   text: 'Boa tarde! Está olhando algum curso específico ou quer comparar opções?', minutesAgo: 600 },
         { from: 'user', text: 'Boa tarde! Informações sobre Enfermagem', minutesAgo: 598 },
-        { from: 'ai',   text: 'Boa tarde! 🩺 Nosso curso de Enfermagem é excelente. Qual unidade: Centro, Norte ou Sul?', minutesAgo: 597 },
+        { from: 'ai',   text: 'Boa tarde! Enfermagem tem turma nas unidades Centro, Norte e Sul. Qual delas fica melhor pra você?', minutesAgo: 597 },
         { from: 'user', text: 'Sul por favor', minutesAgo: 595 },
         { from: 'ai',   text: 'Turno preferido?', minutesAgo: 594 },
         { from: 'user', text: 'Tarde', minutesAgo: 592 },
         { from: 'ai',   text: 'Seu nome completo?', minutesAgo: 591 },
         { from: 'user', text: 'Thiago Martins', minutesAgo: 590 },
-        { from: 'ai',   text: 'Registrado, Thiago! ✅ Um consultor vai te contatar. 😊', minutesAgo: 588 },
+        { from: 'ai',   text: 'Registrado, Thiago. Separei Enfermagem na unidade Sul, turno tarde, para a secretaria continuar.', minutesAgo: 588 },
         { from: 'user', text: 'Já fiz a matrícula! Começo no próximo semestre 🎓', minutesAgo: 120 },
         { from: 'ai',   text: 'Que notícia incrível, Thiago! 🎓🎉 Seja bem-vindo! Bons estudos!', minutesAgo: 119 },
         { from: 'user', text: 'Obrigado pelo atendimento rápido! 👏', minutesAgo: 118 },
@@ -115,7 +114,7 @@ const CONTACTS_BY_VERTICAL: Record<string, ContactDef[]> = {
       id: 'c5', phone: '+55 (85) 98421-1234', city: 'Fortaleza',
       lead: null,
       history: [
-        { from: 'ai',   text: 'Olá! 👋 Como posso te ajudar hoje?', minutesAgo: 3 },
+        { from: 'ai',   text: 'Oi! Quer saber valores, unidade, horário ou já começar sua matrícula?', minutesAgo: 3 },
         { from: 'user', text: 'Oi, quero informação sobre Pedagogia', minutesAgo: 2 },
         { from: 'ai',   text: '👩‍🏫 Pedagogia forma educadores incríveis! Qual unidade fica melhor pra você: Centro, Norte ou Sul?', minutesAgo: 1 },
       ],
@@ -563,34 +562,6 @@ function scrollToBottom() {
   if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
 }
 
-// ─── Quick replies por conversa ────────────────────────────────────────────────
-
-function getQuickReplies(contactId: string): string[] | null {
-  const conv = convs[contactId]
-  if (!conv || conv.lead || conv.isTyping || conv.isSending) return null
-
-  const sortedFields = [...ws.fields].sort((a, b) => a.order - b.order)
-  if (!sortedFields.length) return null
-
-  const msgs = conv.messages
-  if (!msgs.length) return null
-
-  // Só mostra quando a última mensagem é da IA
-  const lastMsg = msgs[msgs.length - 1]
-  if (!lastMsg) return null
-  if (lastMsg.from !== 'ai') return null
-
-  // Conta TODAS as mensagens da IA (inclusive pré-carregadas)
-  // Primeira = saudação, demais = perguntas sobre campos
-  const allAiMsgs = msgs.filter(m => m.from === 'ai')
-  const fieldIdx  = allAiMsgs.length - 2 // -1 zero-index, -1 saudação
-
-  if (fieldIdx < 0) return null
-
-  const field = sortedFields[fieldIdx]
-  return field?.type === 'select' && field.options?.length ? field.options : null
-}
-
 // ─── Envio de mensagem ─────────────────────────────────────────────────────────
 
 const inputText = ref('')
@@ -753,13 +724,6 @@ const STATUS_COLOR: Record<string, string> = {
             </div>
           </div>
         </div>
-
-        <!-- Quick replies -->
-        <QuickReplies
-          v-if="selectedId && getQuickReplies(selectedId)"
-          :options="getQuickReplies(selectedId)!"
-          @select="inputText = $event; send()"
-        />
 
         <!-- Lead banner -->
         <div v-if="current?.lead" class="lead-banner">

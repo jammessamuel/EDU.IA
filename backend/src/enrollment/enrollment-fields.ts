@@ -476,14 +476,16 @@ export function normalizeEnrollmentData(
 export function validateEnrollment(
   fields: EnrollmentField[],
   data: Record<string, unknown>,
+  opts: { requireMissing?: boolean } = {},
 ): ValidationError[] {
   const errors: ValidationError[] = [];
+  const requireMissing = opts.requireMissing ?? true;
 
   for (const f of fields) {
     const obrigatorio = isEnrollmentFieldRequired(f, data);
     const val = (data[f.name] ?? '').toString().trim();
 
-    if (obrigatorio && !val) {
+    if (requireMissing && obrigatorio && !val) {
       errors.push({ field: f.name, message: `"${f.label}" é obrigatório.` });
       continue;
     }

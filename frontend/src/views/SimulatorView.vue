@@ -7,20 +7,13 @@ import AppNav from '@/components/layout/AppNav.vue'
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import ChatMessages from '@/components/chat/ChatMessages.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
-import QuickReplies from '@/components/chat/QuickReplies.vue'
 import LeadCard from '@/components/leads/LeadCard.vue'
 import LeadDetailModal from '@/components/leads/LeadDetailModal.vue'
-import { useQuickReplies } from '@/composables/useQuickReplies'
 import { enrollmentApi } from '@/api/enrollments'
 import type { EnrollmentField, Lead } from '@/types'
 
 const store  = useSimulatorStore()
 const router = useRouter()
-
-const quickReplies = useQuickReplies(
-  computed(() => store.messages),
-  computed(() => store.isTyping),
-)
 
 const detailLead = ref<Lead | null>(null)
 const enrollmentFields = ref<EnrollmentField[]>([])
@@ -82,11 +75,6 @@ onMounted(async () => {
           @reset="store.resetSession()"
         />
         <ChatMessages :messages="store.messages" :is-typing="store.isTyping" />
-        <QuickReplies
-          v-if="quickReplies && !store.isSending && !store.isEnrollmentMode"
-          :options="quickReplies"
-          @select="store.sendMessage($event)"
-        />
         <ChatInput :disabled="store.isSending" @send="store.sendMessage($event)" />
       </section>
 

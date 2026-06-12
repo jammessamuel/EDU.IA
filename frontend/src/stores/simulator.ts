@@ -8,7 +8,7 @@ function makeWelcome(): ChatMessage {
   return {
     id: 'welcome',
     from: 'ai',
-    text: 'Olá! 👋 Seja bem-vindo! Como posso te ajudar hoje?',
+    text: 'Oi, tudo bem? Me conta rapidinho o que você procura: curso, matrícula, valores, localização ou horário de atendimento?',
     timestamp: new Date(),
   }
 }

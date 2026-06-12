@@ -12,6 +12,7 @@ import {
   isEnrollmentFieldRequired,
 } from './enrollment-fields';
 import type { AccessibilityProfile } from '../accessibility/accessibility.types';
+import { institutionInfoForPrompt } from './institution-info';
 
 // Ferramentas expostas à IA (formato OpenAI "tools").
 export const ENROLLMENT_TOOLS = [
@@ -21,6 +22,15 @@ export const ENROLLMENT_TOOLS = [
       name: 'consultar_oferta',
       description:
         'Retorna os campos necessários para a matrícula, com as opções de cada um (cursos, turnos, unidades disponíveis). Use no começo, ou quando precisar lembrar o que perguntar / quais são as opções válidas.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'consultar_instituicao',
+      description:
+        'Retorna horário de funcionamento, localização das unidades, condução/transporte, desconto à vista e links dos PDFs de cursos. Use quando o aluno perguntar sobre horário, endereço, localização, como chegar, condução, transporte, ônibus, metrô, valores, descontos, pagamento à vista ou material do curso.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -116,8 +126,9 @@ export function buildEnrollmentPrompt(opts: {
   fee: number;
   draft: Record<string, unknown>;
   accessibility: AccessibilityProfile;
+  frontendUrl?: string | null;
 }): string {
-  const { chatbotName, schoolName, fee, draft, accessibility } = opts;
+  const { chatbotName, schoolName, fee, draft, accessibility, frontendUrl } = opts;
   const jaColetado = Object.keys(draft).length
     ? Object.entries(draft)
         .map(([k, v]) => `${k}=${v}`)
@@ -137,6 +148,7 @@ export function buildEnrollmentPrompt(opts: {
 
 COMO VOCÊ FALA (muito importante):
 - Como uma pessoa de verdade, NUNCA como um robô. Fale de forma calorosa e natural.
+- Puxe assunto de um jeito humano: se o aluno chegar genérico ("oi", "quero saber", "me ajuda"), responda como secretária experiente e descubra a intenção com uma pergunta leve, sem texto engessado.
 - Detecte o idioma do aluno automaticamente entre Português, English e Español. Responda no mesmo idioma do aluno. Se já existir preferredLanguage nos dados, respeite esse idioma.
 - Se o aluno disser que é American, from the United States, U.S. citizen, Canadian/from Canada, espanhol/Spanish/from Spain/España, salve isso em nacionalidade/countryOfResidence quando fizer sentido e continue no idioma dele.
 - Chame o aluno pelo primeiro nome assim que souber. Use expressões naturais ("perfeito!", "deixa eu anotar aqui", "quase lá", "show").
@@ -151,6 +163,7 @@ COMO VOCÊ FALA (muito importante):
 
 COMO VOCÊ TRABALHA (ferramentas):
 - Comece chamando consultar_oferta para saber quais dados coletar e as opções (cursos, turnos, unidades).
+- Se o aluno perguntar sobre horário, localização, endereço, como chegar, condução/transporte, valores, desconto à vista ou PDF/material do curso, chame consultar_instituicao e responda com as informações de lá.
 - Logo no começo, se ainda não souber, identifique idioma e país/nacionalidade de forma natural. Ex.: em inglês pergunte "Are you applying with a Brazilian CPF or an international document like a passport?"; em espanhol, "¿Vas a usar CPF brasileño o documento internacional/pasaporte?"
 - Sempre que o aluno informar algum dado, chame salvar_dados com aquele(s) campo(s). Se ele já disser o curso, turno ou unidade na primeira mensagem, salve isso também antes de perguntar o próximo dado.
 - Quando o aluno pedir ou aceitar ajustes de acessibilidade, chame ajustar_acessibilidade. Depois confirme em uma frase curta que a preferência foi aplicada.
@@ -160,6 +173,7 @@ COMO VOCÊ TRABALHA (ferramentas):
 - Quando não faltar mais nada obrigatório, faça um resumo gostoso de ler pro aluno conferir; só depois que ele confirmar, chame efetivar_matricula.
 - Depois de efetivar: comemore com ele, informe o NÚMERO da matrícula e diga que o comprovante já está pronto para baixar.
 - Se o aluno quiser enviar documentos/PDF, explique no idioma dele que pode mandar tudo em um único PDF ou enviar um por um na etapa "Documentos" depois da matrícula confirmada. Não trave a entrevista por causa disso.
+- Se o aluno mandar vários dados misturados, não diga que está errado. Salve o que deu para reconhecer e peça só o ponto que realmente ficou inválido ou faltando.
 - Documentos brasileiros usuais: CPF/RG ou CNH, comprovante de residência, histórico/certificado escolar e foto quando a instituição pedir.
 - Documentos internacionais usuais: passaporte ou ID nacional, visto/permissão de estudo/residência quando aplicável, histórico/diploma com tradução/validação quando a instituição pedir, comprovante de endereço e contato de emergência.
 
@@ -167,6 +181,8 @@ REGRAS:
 - Nunca invente dados. Nunca diga que matriculou sem ter chamado efetivar_matricula com sucesso.
 - Logo no comecinho, avise rapidinho no idioma do aluno que os dados serão usados apenas para a matrícula e siga em frente.
 - A taxa de matrícula é R$ ${fee.toFixed(2)} (pagamento simulado nesta demonstração — não cobramos de verdade).
+
+${institutionInfoForPrompt(frontendUrl)}
 
 Dados já coletados até agora: ${jaColetado}.`;
 }
