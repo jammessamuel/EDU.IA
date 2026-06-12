@@ -57,8 +57,10 @@ async function logout() {
       <button
         v-for="link in links"
         :key="link.to"
+        type="button"
         class="topbar__link"
         :class="{ 'topbar__link--active': route.path === link.to }"
+        :aria-current="route.path === link.to ? 'page' : undefined"
         @click="router.push(link.to)"
       >
         <NIcon :component="link.icon" size="16" />
@@ -78,7 +80,7 @@ async function logout() {
         <div class="topbar__avatar">{{ auth.user?.name?.charAt(0).toUpperCase() }}</div>
         <span class="topbar__username">{{ auth.user?.name }}</span>
       </div>
-      <button class="topbar__logout" title="Sair" @click="logout">
+      <button type="button" class="topbar__logout" title="Sair" @click="logout">
         <NIcon :component="LogOutOutline" size="15" />
         <span>Sair</span>
       </button>
@@ -160,10 +162,18 @@ async function logout() {
   gap: 4px;
   flex: 1;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.topbar__nav::-webkit-scrollbar {
+  display: none;
 }
 
 .topbar__link {
-  min-height: 36px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -239,7 +249,7 @@ async function logout() {
 
 .topbar__theme,
 .topbar__logout {
-  min-height: 32px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -269,6 +279,13 @@ async function logout() {
   background: var(--danger-soft);
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 35%, white);
+}
+
+.topbar__link:focus-visible,
+.topbar__theme:focus-visible,
+.topbar__logout:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand, #075e54) 28%, transparent);
+  outline-offset: 2px;
 }
 
 @media (max-width: 1120px) {

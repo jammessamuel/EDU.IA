@@ -28,23 +28,27 @@ const showPass = ref(false)
 // Verticais (setores) carregados do backend para o passo 1 do cadastro
 const verticals = ref<Vertical[]>([])
 const loadingVerticals = ref(false)
+const verticalLoadFailed = ref(false)
 const selectedVertical = ref<Vertical | null>(null)
 
 const loginForm = ref({ email: '', password: '' })
 const registerForm = ref({ name: '', email: '', password: '', workspaceName: '' })
 const registerStep = computed(() => (selectedVertical.value ? 2 : 1))
 
-onMounted(async () => {
+onMounted(() => loadVerticals())
+
+async function loadVerticals() {
   loadingVerticals.value = true
+  verticalLoadFailed.value = false
   try {
     const { data } = await apiClient.get<Vertical[]>('/verticals')
     verticals.value = data
   } catch {
-    /* silencioso — o cadastro só é necessário para novos negócios */
+    verticalLoadFailed.value = true
   } finally {
     loadingVerticals.value = false
   }
-})
+}
 
 function setMode(m: 'login' | 'register') {
   if (mode.value === m) return
@@ -235,12 +239,17 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
               <div v-if="loadingVerticals" class="vgrid">
                 <span v-for="n in 6" :key="n" class="vskel" />
               </div>
-              <div v-else class="vgrid">
+              <div v-else-if="verticals.length" class="vgrid">
                 <button v-for="v in verticals" :key="v.id" class="vchip"
                   :style="{ '--vc': v.color }" @click="selectVertical(v)">
                   <span class="vchip__icon">{{ v.icon }}</span>
                   <span class="vchip__name">{{ v.name }}</span>
                 </button>
+              </div>
+              <div v-else class="vertical-empty" aria-live="polite">
+                <strong>{{ verticalLoadFailed ? 'Não consegui carregar os setores agora.' : 'Nenhum setor disponível.' }}</strong>
+                <span>{{ verticalLoadFailed ? 'Confira a conexão do backend e tente novamente.' : 'Cadastre um setor para liberar novas contas.' }}</span>
+                <button type="button" @click="loadVerticals">Tentar novamente</button>
               </div>
               <p class="register-helper">
                 O setor define as perguntas iniciais, etapas do pipeline e exemplos da demonstração.
@@ -452,10 +461,18 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
   transform: translateY(-1px);
 }
+
+.auth button:focus-visible,
+.auth input:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 46%, transparent);
+  outline-offset: 2px;
+}
+
 @media (min-width: 920px) {
   .auth {
-    grid-template-columns: 1.04fr 1fr;
-    overflow: hidden;
+    display: block;
+    overflow-y: auto;
+    background: var(--auth-panel-bg);
   }
 }
 
@@ -470,6 +487,7 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   justify-content: center;
   padding: 44px 28px;
   overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
 }
 /* textura de pontos discreta no creme */
 .pane--form::before {
@@ -489,6 +507,37 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   width: 100%;
   max-width: 380px;
   animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@media (min-width: 920px) {
+  .pane--form {
+    position: relative;
+    z-index: 3;
+    min-height: 100dvh;
+    height: auto;
+    padding: clamp(28px, 6vh, 76px) 24px;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .pane--form::before {
+    opacity: 0.16;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 48%, #000 18%, transparent 64%);
+    mask-image: radial-gradient(ellipse at 50% 48%, #000 18%, transparent 64%);
+  }
+
+  .form-wrap {
+    max-width: 424px;
+    margin-block: auto;
+    padding: 30px;
+    border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--border));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-raised) 91%, transparent);
+    box-shadow:
+      0 28px 80px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 color-mix(in srgb, white 42%, transparent);
+    backdrop-filter: blur(24px);
+  }
 }
 
 /* ── marca ── */
@@ -862,6 +911,49 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   animation: shimmer 1.3s infinite;
 }
 
+.vertical-empty {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed color-mix(in srgb, var(--green-800) 28%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--green-800) 7%, var(--white));
+}
+
+.vertical-empty strong,
+.vertical-empty span {
+  display: block;
+}
+
+.vertical-empty strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.vertical-empty span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.vertical-empty button {
+  justify-self: start;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--green-800) 28%, var(--line));
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--green-800);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.vertical-empty button:hover {
+  background: color-mix(in srgb, var(--green-800) 9%, var(--white));
+}
+
 /* ── vertical selecionado ── */
 .back {
   align-self: flex-start;
@@ -928,15 +1020,28 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
 }
 @media (min-width: 920px) {
   .pane--show {
+    position: fixed;
+    inset: 0;
     display: block;
     height: 100%;
     overflow: hidden;
     background: var(--auth-panel-bg);
   }
+
+  .pane--show::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 50% 48%, rgba(5, 19, 16, 0.05), rgba(5, 19, 16, 0.5) 72%),
+      linear-gradient(90deg, rgba(2, 12, 10, 0.5), transparent 38%, rgba(2, 12, 10, 0.16));
+  }
 }
 .grain {
   position: absolute;
   inset: 0;
+  z-index: 0;
   opacity: 0.05;
   mix-blend-mode: overlay;
   pointer-events: none;
@@ -946,6 +1051,7 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
 .motion-field {
   position: absolute;
   inset: 0;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
 }
@@ -1016,6 +1122,27 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   gap: 28px;
   padding: 64px;
   color: #eafff5;
+  pointer-events: none;
+}
+
+@media (min-width: 920px) and (max-width: 1399px) {
+  .show {
+    display: none;
+  }
+}
+
+@media (min-width: 1400px) {
+  .show {
+    position: absolute;
+    inset: 0;
+    height: auto;
+    justify-content: center;
+    padding:
+      clamp(40px, 6vh, 72px)
+      clamp(28px, 4vw, 72px)
+      clamp(36px, 5vh, 64px)
+      max(64vw, calc(50vw + 300px));
+  }
 }
 
 .show__main {
