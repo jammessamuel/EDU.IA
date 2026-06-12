@@ -77,7 +77,15 @@ export class EnrollmentChatService {
     const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
     let accessibility = await this.accessibility.getForUser(userId);
     const fields = EDUCATION_ENROLLMENT_FIELDS;
+    const recentUserText = [
+      ...history
+        .filter((message) => message.role === 'user')
+        .slice(-6)
+        .map((message) => message.content),
+      text,
+    ].join('\n');
     const initialDraft = normalizeEnrollmentData(fields, {
+      ...this.extractObviousFields(recentUserText, fields),
       ...draft,
       ...this.extractObviousFields(text, fields),
     });

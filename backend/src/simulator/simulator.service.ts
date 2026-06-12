@@ -48,6 +48,13 @@ export class SimulatorService {
       include: { vertical: true },
     });
 
+    if (school?.vertical?.slug === 'education') {
+      return this.buildEducationPrompt(
+        school.chatbotName ?? 'IA Atendente',
+        school.name ?? 'nossa instituição',
+      );
+    }
+
     const fields = await this.verticalService.getFieldsForWorkspace(schoolId);
     const fieldDescriptions = fields
       .sort((a, b) => a.order - b.order)
@@ -76,6 +83,31 @@ REGRA DE IDIOMA (prioridade alta):
 - Continue coletando uma pergunta por vez.
 - Se o cliente perguntar horário, localização, endereço, como chegar, condução/transporte, desconto à vista, valores ou PDF/material do curso, responda usando as informações institucionais abaixo.
 - Evite respostas gravadas. Puxe assunto como uma pessoa: entenda a intenção, responda o que foi perguntado e faça uma próxima pergunta leve.
+
+${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app')}`;
+  }
+
+  private buildEducationPrompt(chatbotName: string, workspaceName: string): string {
+    return `Você é ${chatbotName}, atendente de IA da ${workspaceName}. Você atende alunos pelo WhatsApp/simulador e deve resolver a conversa por conta própria.
+
+OBJETIVO:
+- Responder dúvidas sobre cursos, descontos, PDFs, horário, localização, condução e matrícula.
+- Quando o aluno demonstrar vontade de seguir, convidar para fazer a matrícula completa por aqui.
+- Você NÃO é triagem para consultor. Não diga "um consultor/equipe vai entrar em contato". Diga que você mesmo pode continuar e fazer a matrícula.
+
+COMO CONVERSAR:
+- Fale como uma pessoa: natural, objetiva, gentil e sem texto engessado.
+- Responda o que o aluno perguntou antes de pedir qualquer dado.
+- Não force unidade/turno quando o aluno só quer informação, promoção, PDF ou detalhes do curso.
+- Se o aluno escolher um curso, explique rapidamente o curso e pergunte se ele quer: receber o PDF, ver desconto/valores ou começar a matrícula.
+- Só pergunte unidade e turno depois que o aluno deixar claro que quer fazer matrícula ou pedir disponibilidade.
+- Se ele perguntar promoção/desconto, responda a condição e ofereça seguir com a matrícula por aqui.
+- Se ele pedir localização, diga o endereço e como chegar, sem transformar isso automaticamente em matrícula.
+- Nunca encerre com "até logo" enquanto ainda existe possibilidade de avançar. Termine com uma próxima pergunta útil.
+
+QUANDO VIRAR MATRÍCULA:
+- Se o aluno disser "quero fazer matrícula", "quero me matricular", "quero inscrição", "pode fazer", "vamos fazer", "sim, quero começar" ou equivalente, o sistema chamará o fluxo completo de matrícula.
+- Nesse caso, a própria IA coleta dados, valida e efetiva a matrícula. Não transfira para humano.
 
 ${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app')}`;
   }
@@ -134,6 +166,12 @@ ${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'ht
     const internationalEnrollmentIntent =
       /\b(enroll|enrollment|admission|application|apply|inscripci[oó]n|inscribirme|matricularme)\b/i;
     if (enrollmentIntent.test(text) || internationalEnrollmentIntent.test(text)) return true;
+
+    const affirmative = /\b(sim|pode|vamos|bora|quero|claro|ok|fechado|yes|sure|let'?s|quiero|sí|si)\b/i;
+    const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
+    const assistantInvitedEnrollment =
+      /\b(começar|fazer|iniciar|seguir|finalizar)\s+(a\s+)?(sua\s+)?matr[ií]cula\b|\bmatr[ií]cula\s+por aqui\b/i;
+    if (affirmative.test(text) && assistantInvitedEnrollment.test(lastAssistant)) return true;
 
     // Mantém o usuário no mesmo fluxo depois que ELE iniciou matrícula.
     // Não usa mensagens da IA, porque a saudação cita "matrícula" como opção

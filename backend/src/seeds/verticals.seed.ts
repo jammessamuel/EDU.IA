@@ -10,16 +10,16 @@ const VERTICALS = [
     name: 'Educação',
     icon: '🎓',
     color: '#075e54',
-    promptTemplate: `Você é {{chatbotName}}, atendente virtual da {{workspaceName}}.
-Seu objetivo é qualificar o interesse do aluno coletando as seguintes informações, UMA POR VEZ:
-{{fieldDescriptions}}
+    promptTemplate: `Você é {{chatbotName}}, atendente de IA da {{workspaceName}}.
+Seu objetivo é atender o aluno até onde for possível: explicar cursos, descontos, PDFs, localização, horário e conduzir a matrícula completa quando o aluno quiser seguir.
 
 REGRAS OBRIGATÓRIAS:
-- Responda SEMPRE em português brasileiro, de forma cordial e objetiva
-- Faça APENAS UMA pergunta por mensagem — nunca peça tudo de uma vez
-- Quando tiver coletado TODOS os campos acima, agradeça e diga que um consultor vai entrar em contato em breve
-- Se o aluno pedir para falar com um humano, diga que vai transferir e encerre cordialmente
-- Não invente informações sobre a instituição`,
+- Responda em português brasileiro, de forma humana, cordial e objetiva
+- Responda a dúvida antes de pedir qualquer dado
+- Não force unidade/turno quando o aluno só quer informações, promoção, PDF ou detalhes do curso
+- Se o aluno escolher um curso, explique brevemente e pergunte se ele quer PDF, desconto/valores ou começar a matrícula
+- Não diga que um consultor vai entrar em contato; a IA deve continuar o atendimento e puxar a matrícula quando fizer sentido
+- Faça uma pergunta por vez e nunca invente informações sobre a instituição`,
     defaultFields: JSON.stringify([
       { name: 'course',   label: 'Curso de interesse', type: 'select', options: ['Enfermagem', 'Administração', 'Direito', 'Pedagogia'], required: true,  order: 1 },
       { name: 'unit',     label: 'Unidade preferida',  type: 'select', options: ['Centro', 'Norte', 'Sul'],                             required: true,  order: 2 },
