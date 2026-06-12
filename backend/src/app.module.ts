@@ -6,6 +6,7 @@ import { SimulatorModule } from './simulator/simulator.module';
 import { AuthModule } from './auth/auth.module';
 import { VerticalModule } from './vertical/vertical.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
+import { AccessibilityModule } from './accessibility/accessibility.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt.guard';
 import { RbacGuard } from './common/guards/rbac.guard';
@@ -17,6 +18,7 @@ import { AppService } from './app.service';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    AccessibilityModule,
     SimulatorModule,
     VerticalModule,
     EnrollmentModule,

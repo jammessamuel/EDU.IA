@@ -12,13 +12,20 @@ const time = computed(() =>
     minute: '2-digit',
   }),
 )
+
+const senderLabel = computed(() => (isUser.value ? 'Você' : 'Atendente de IA'))
 </script>
 
 <template>
   <div class="msg-row" :class="{ 'msg-row--user': isUser }">
-    <div class="bubble" :class="isUser ? 'bubble--user' : 'bubble--ai'">
+    <div
+      class="bubble"
+      :class="isUser ? 'bubble--user' : 'bubble--ai'"
+      role="article"
+      :aria-label="`${senderLabel}, ${time}: ${message.text}`"
+    >
       <span class="bubble__text">{{ message.text }}</span>
-      <span class="bubble__time">{{ time }}</span>
+      <span class="bubble__time" aria-hidden="true">{{ time }}</span>
     </div>
   </div>
 </template>

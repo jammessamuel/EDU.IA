@@ -4,6 +4,7 @@ import { NScrollbar } from 'naive-ui'
 import MessageBubble from './MessageBubble.vue'
 import TypingIndicator from './TypingIndicator.vue'
 import type { ChatMessage } from '@/types'
+import { useAccessibility } from '@/composables/useAccessibility'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -11,10 +12,14 @@ const props = defineProps<{
 }>()
 
 const scrollbarRef = ref<InstanceType<typeof NScrollbar>>()
+const { effectiveReduceMotion } = useAccessibility()
 
 async function scrollToBottom() {
   await nextTick()
-  scrollbarRef.value?.scrollTo({ top: 999_999, behavior: 'smooth' })
+  scrollbarRef.value?.scrollTo({
+    top: 999_999,
+    behavior: effectiveReduceMotion.value ? 'auto' : 'smooth',
+  })
 }
 
 watch(() => [props.messages.length, props.isTyping], scrollToBottom, { immediate: true })
@@ -22,7 +27,13 @@ watch(() => [props.messages.length, props.isTyping], scrollToBottom, { immediate
 
 <template>
   <NScrollbar ref="scrollbarRef" class="chat-messages">
-    <div class="chat-messages__inner">
+    <div
+      class="chat-messages__inner"
+      role="log"
+      aria-live="polite"
+      aria-relevant="additions text"
+      aria-label="Histórico da conversa"
+    >
       <MessageBubble v-for="msg in messages" :key="msg.id" :message="msg" />
       <TypingIndicator v-if="isTyping" />
     </div>

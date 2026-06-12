@@ -11,6 +11,7 @@ import AppNav from '@/components/layout/AppNav.vue'
 import ChatMessages from '@/components/chat/ChatMessages.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import { enrollmentApi } from '@/api/enrollments'
+import { useAccessibility } from '@/composables/useAccessibility'
 import type { ChatMessage, Enrollment, EnrollmentDocument, EnrollmentField, HistoryMessage } from '@/types'
 
 const messages = ref<ChatMessage[]>([
@@ -47,6 +48,7 @@ const error = ref<string | null>(null)
 const docType = ref('PACOTE_COMPLETO')
 const docFile = ref<File | null>(null)
 const uploadBusy = ref(false)
+const { effectiveReduceMotion, updateProfile } = useAccessibility()
 
 const requiredCount = computed(() => fields.value.filter((f) => f.required).length)
 const collectedRequiredCount = computed(() =>
@@ -120,7 +122,7 @@ async function sendEnrollmentMessage(text: string) {
 
   error.value = null
   isSending.value = true
-  await delay(450)
+  if (!effectiveReduceMotion.value) await delay(450)
   isTyping.value = true
   await nextTick()
 
@@ -128,9 +130,10 @@ async function sendEnrollmentMessage(text: string) {
   try {
     const res = await enrollmentApi.chat({ text: text.trim(), history, draft: draft.value })
     const elapsed = Date.now() - startedAt
-    if (elapsed < 1300) await delay(1300 - elapsed)
+    if (!effectiveReduceMotion.value && elapsed < 1300) await delay(1300 - elapsed)
 
     draft.value = res.draft || draft.value
+    if (res.accessibility) await updateProfile(res.accessibility)
     messages.value.push({
       id: crypto.randomUUID(),
       from: 'ai',
@@ -317,7 +320,12 @@ function formatFileSize(value?: number | null) {
             <small>{{ selected.paymentMethod || 'Forma não informada' }} · {{ selected.paymentRef || 'sem referência' }}</small>
           </div>
 
-          <button class="primary-action" @click="enrollmentApi.downloadComprovante(selected.id)">
+          <button
+            type="button"
+            class="primary-action"
+            :aria-label="`Baixar comprovante PDF da matricula ${selected.number}`"
+            @click="enrollmentApi.downloadComprovante(selected.id)"
+          >
             <NIcon :component="DownloadOutline" size="17" />
             Baixar comprovante PDF
           </button>
@@ -325,25 +333,36 @@ function formatFileSize(value?: number | null) {
           <div class="detail-section">
             <h3>Documentos</h3>
             <div class="upload-row">
-              <select v-model="docType">
-                <option value="PACOTE_COMPLETO">PDF completo da matrícula</option>
-                <option>RG</option>
-                <option>CPF</option>
-                <option>PASSAPORTE</option>
-                <option>SSN</option>
-                <option>DRIVER_LICENSE</option>
-                <option>STATE_ID</option>
-                <option>NIE</option>
-                <option>DNI</option>
-                <option>VISTO_PERMISSAO</option>
-                <option>HISTORICO</option>
-                <option>HISTORICO_TRADUZIDO</option>
-                <option>COMPROVANTE_RESIDENCIA</option>
-                <option>FOTO</option>
-                <option>OUTRO</option>
-              </select>
-              <input id="document-file" type="file" accept=".pdf,image/*" @change="onFileChange" />
-              <button :disabled="!docFile || uploadBusy" @click="uploadDocument">
+              <label class="upload-field">
+                <span>Tipo de documento</span>
+                <select v-model="docType">
+                  <option value="PACOTE_COMPLETO">PDF completo da matrícula</option>
+                  <option>RG</option>
+                  <option>CPF</option>
+                  <option>PASSAPORTE</option>
+                  <option>SSN</option>
+                  <option>DRIVER_LICENSE</option>
+                  <option>STATE_ID</option>
+                  <option>NIE</option>
+                  <option>DNI</option>
+                  <option>VISTO_PERMISSAO</option>
+                  <option>HISTORICO</option>
+                  <option>HISTORICO_TRADUZIDO</option>
+                  <option>COMPROVANTE_RESIDENCIA</option>
+                  <option>FOTO</option>
+                  <option>OUTRO</option>
+                </select>
+              </label>
+              <label class="upload-field">
+                <span>Arquivo</span>
+                <input id="document-file" type="file" accept=".pdf,image/*" @change="onFileChange" />
+              </label>
+              <button
+                type="button"
+                :disabled="!docFile || uploadBusy"
+                aria-label="Enviar documento da matricula"
+                @click="uploadDocument"
+              >
                 <NIcon :component="CloudUploadOutline" size="15" />
                 {{ uploadBusy ? 'Enviando...' : 'Enviar' }}
               </button>
@@ -367,9 +386,11 @@ function formatFileSize(value?: number | null) {
               <button
                 v-for="document in documents"
                 :key="document.id"
-              class="document-row"
-              @click="enrollmentApi.downloadDocument(selected.id, document)"
-            >
+                type="button"
+                class="document-row"
+                :aria-label="`Baixar documento ${document.type}: ${document.fileName}`"
+                @click="enrollmentApi.downloadDocument(selected.id, document)"
+              >
                 <strong><NIcon :component="DocumentTextOutline" size="15" /> {{ document.type }}</strong>
                 <span>{{ document.fileName }}</span>
                 <small>{{ formatFileSize(document.size) }}</small>
@@ -712,6 +733,19 @@ function formatFileSize(value?: number | null) {
   align-items: center;
 }
 
+.upload-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.upload-field span {
+  color: #374151;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .upload-help {
   margin: 8px 0 0;
   color: #6b7280;
@@ -759,6 +793,10 @@ function formatFileSize(value?: number | null) {
   padding: 0 9px;
   background: #fff;
   font-size: 12px;
+}
+
+.upload-field span {
+  color: var(--muted-strong);
 }
 
 .upload-row button {

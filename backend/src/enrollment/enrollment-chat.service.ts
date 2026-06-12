@@ -10,6 +10,8 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
 import { EnrollmentService } from './enrollment.service';
+import { AccessibilityService } from '../accessibility/accessibility.service';
+import type { AccessibilityProfile } from '../accessibility/accessibility.types';
 import {
   EDUCATION_ENROLLMENT_FIELDS,
   DEFAULT_ENROLLMENT_FEE,
@@ -37,6 +39,7 @@ export class EnrollmentChatService {
     private config: ConfigService,
     private prisma: PrismaService,
     private enrollments: EnrollmentService,
+    private accessibility: AccessibilityService,
   ) {}
 
   private get client(): OpenAI {
@@ -62,8 +65,15 @@ export class EnrollmentChatService {
     history: ChatMessage[],
     draft: Record<string, any>,
     schoolId: string,
-  ): Promise<{ reply: string; draft: Record<string, any>; enrollment: any | null }> {
+    userId: string,
+  ): Promise<{
+    reply: string;
+    draft: Record<string, any>;
+    enrollment: any | null;
+    accessibility: AccessibilityProfile | null;
+  }> {
     const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    let accessibility = await this.accessibility.getForUser(userId);
     const fields = EDUCATION_ENROLLMENT_FIELDS;
     const initialDraft = normalizeEnrollmentData(fields, {
       ...draft,
@@ -75,6 +85,7 @@ export class EnrollmentChatService {
       schoolName: school?.name ?? 'nossa instituição',
       fee: DEFAULT_ENROLLMENT_FEE,
       draft: initialDraft,
+      accessibility,
     });
 
     const messages: any[] = [
@@ -85,6 +96,7 @@ export class EnrollmentChatService {
 
     let current = { ...initialDraft };
     let enrollment: any = null;
+    let updatedAccessibility: AccessibilityProfile | null = null;
 
     // Loop de tool-calling. Teto de voltas pra nunca rodar infinito.
     for (let turn = 0; turn < 6; turn++) {
@@ -94,7 +106,7 @@ export class EnrollmentChatService {
 
       // Sem tool calls → é a resposta final, em texto, pro aluno.
       if (!msg.tool_calls || msg.tool_calls.length === 0) {
-        return { reply: msg.content ?? '', draft: current, enrollment };
+        return { reply: msg.content ?? '', draft: current, enrollment, accessibility: updatedAccessibility };
       }
 
       // Executa cada ferramenta que a IA pediu e devolve o resultado pra ela.
@@ -106,13 +118,18 @@ export class EnrollmentChatService {
           /* argumentos inválidos: segue com objeto vazio */
         }
 
-        const result = await this.runTool((call as any).function.name, args, current, schoolId);
+        const result = await this.runTool((call as any).function.name, args, current, schoolId, userId);
 
         // canais "laterais" p/ propagar estado sem mandar lixo pra IA
         if (result._draft) current = result._draft;
         if (result._enrollment) enrollment = result._enrollment;
+        if (result._accessibility) {
+          accessibility = result._accessibility;
+          updatedAccessibility = result._accessibility;
+        }
         delete result._draft;
         delete result._enrollment;
+        delete result._accessibility;
 
         messages.push({
           role: 'tool',
@@ -122,7 +139,7 @@ export class EnrollmentChatService {
       }
     }
 
-    return { reply: 'Vamos continuar de onde paramos?', draft: current, enrollment };
+    return { reply: 'Vamos continuar de onde paramos?', draft: current, enrollment, accessibility: updatedAccessibility };
   }
 
   /** Chamada à OpenAI com tratamento de chave inválida (vira um 503 amigável). */
@@ -151,6 +168,7 @@ export class EnrollmentChatService {
     args: any,
     draft: Record<string, any>,
     schoolId: string,
+    userId: string,
   ): Promise<any> {
     const fields = EDUCATION_ENROLLMENT_FIELDS;
 
@@ -186,6 +204,18 @@ export class EnrollmentChatService {
         situacao: e.status,
         comprovanteUrl: `/enrollments/${e.id}/comprovante.pdf`,
         _enrollment: e,
+      };
+    }
+
+    if (name === 'ajustar_acessibilidade') {
+      const { motivo: _motivo, ...preferences } = args || {};
+      const profile = await this.accessibility.updateForUser(userId, preferences);
+      return {
+        ok: true,
+        aplicado: profile,
+        mensagem:
+          'Preferência de acessibilidade atualizada. Continue respondendo de acordo com esse perfil.',
+        _accessibility: profile,
       };
     }
 

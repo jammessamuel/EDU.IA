@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '../api/client'
 import { useWorkspaceStore } from './workspace'
+import { useAccessibility } from '@/composables/useAccessibility'
 
 interface AuthUser {
   id: string
@@ -21,6 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(email: string, password: string) {
     const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/login', { email, password })
     _persist(data)
+    await useAccessibility().syncFromServer()
   }
 
   async function register(name: string, email: string, password: string, workspaceName: string, verticalId: string) {

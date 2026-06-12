@@ -102,6 +102,15 @@ model User {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  // Preferências de acessibilidade do operador/admin.
+  // Aplicadas no frontend e usadas pelo agente para adaptar linguagem.
+  screenReader   Boolean @default(false)
+  highContrast   Boolean @default(false)
+  colorBlindMode String  @default("none") // none, protanopia, deuteranopia, tritanopia
+  reduceMotion   Boolean @default(false)
+  simpleLanguage Boolean @default(false)
+  fontScale      Float   @default(1.0)
+
   school School  @relation(fields: [schoolId], references: [id])
   role   Role?   @relation(fields: [roleId], references: [id])
 

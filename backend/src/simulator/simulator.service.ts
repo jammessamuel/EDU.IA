@@ -81,16 +81,18 @@ REGRA DE IDIOMA (prioridade alta):
     text: string,
     history: ChatMessage[],
     schoolId: string,
+    userId: string,
     enrollmentDraft: Record<string, any> = {},
   ) {
     if (this.shouldUseEnrollmentFlow(text, history, enrollmentDraft)) {
-      const result = await this.enrollmentChat.chat(text, history, enrollmentDraft, schoolId);
+      const result = await this.enrollmentChat.chat(text, history, enrollmentDraft, schoolId, userId);
       return {
         reply: result.reply,
         lead: null,
         mode: 'enrollment',
         enrollmentDraft: result.draft,
         enrollment: result.enrollment,
+        accessibility: result.accessibility,
       };
     }
 

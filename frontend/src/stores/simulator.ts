@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { simulatorApi } from '@/api/simulator'
 import type { ChatMessage, Enrollment, Lead } from '@/types'
+import { useAccessibility } from '@/composables/useAccessibility'
 
 function makeWelcome(): ChatMessage {
   return {
@@ -13,6 +14,7 @@ function makeWelcome(): ChatMessage {
 }
 
 export const useSimulatorStore = defineStore('simulator', () => {
+  const { effectiveReduceMotion, updateProfile } = useAccessibility()
   const messages = ref<ChatMessage[]>([makeWelcome()])
   const leads = ref<Lead[]>([])
   const isTyping = ref(false)
@@ -47,11 +49,12 @@ export const useSimulatorStore = defineStore('simulator', () => {
       timestamp: new Date(),
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    if (!effectiveReduceMotion.value) await new Promise((resolve) => setTimeout(resolve, 400))
     isTyping.value = true
 
     try {
       const response = await simulatorApi.sendMessage(text.trim(), history, enrollmentDraft.value)
+      if (response.accessibility) await updateProfile(response.accessibility)
 
       isTyping.value = false
       messages.value.push({

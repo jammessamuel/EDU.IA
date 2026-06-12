@@ -23,6 +23,17 @@ export interface Vertical {
   stages: VerticalStage[]
 }
 
+export type ColorBlindMode = 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia'
+
+export interface AccessibilityProfile {
+  screenReader: boolean
+  highContrast: boolean
+  colorBlindMode: ColorBlindMode
+  reduceMotion: boolean
+  simpleLanguage: boolean
+  fontScale: number
+}
+
 export interface ConversationMessage {
   role: 'user' | 'assistant'
   content: string
@@ -60,6 +71,7 @@ export interface SendMessageResponse {
   mode?: 'lead' | 'enrollment'
   enrollmentDraft?: Record<string, unknown> | null
   enrollment?: Enrollment | null
+  accessibility?: AccessibilityProfile | null
 }
 
 export interface Metrics {
@@ -135,6 +147,7 @@ export interface EnrollmentChatResponse {
   reply: string
   draft: Record<string, unknown>
   enrollment: Enrollment | null
+  accessibility?: AccessibilityProfile | null
 }
 
 export interface EnrollmentVerifyResponse {

@@ -89,6 +89,7 @@ body {
     Ubuntu,
     sans-serif;
   font-size: 15px;
+  font-size: calc(15px * var(--a11y-font-scale, 1));
   color: var(--text);
   background:
     linear-gradient(135deg, rgba(7, 94, 84, 0.06), transparent 34%),
@@ -96,6 +97,50 @@ body {
     var(--app-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-high-contrast='true'] {
+  --app-bg: #ffffff;
+  --app-bg-strong: #e5e7eb;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --surface-muted: #eef2f7;
+  --surface-raised: rgba(255, 255, 255, 0.96);
+  --border: #64748b;
+  --border-strong: #334155;
+  --text: #020617;
+  --text-soft: #0f172a;
+  --muted: #334155;
+  --muted-strong: #1e293b;
+  --brand: #005a9c;
+  --brand-strong: #003f73;
+  --brand-soft: #e0f2fe;
+  --accent: #f59e0b;
+  --accent-strong: #b45309;
+  --focus-ring: 0 0 0 4px rgba(0, 90, 156, 0.32);
+}
+
+:root[data-color-blind-mode='protanopia'],
+:root[data-color-blind-mode='deuteranopia'] {
+  --brand: #005a9c;
+  --brand-strong: #003f73;
+  --brand-soft: #e0f2fe;
+  --accent: #f59e0b;
+  --accent-strong: #b45309;
+  --chat-user-bg: linear-gradient(135deg, #005a9c, #2563eb);
+}
+
+:root[data-color-blind-mode='tritanopia'] {
+  --brand: #7c2d12;
+  --brand-strong: #431407;
+  --brand-soft: #ffedd5;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --chat-user-bg: linear-gradient(135deg, #7c2d12, #b45309);
+}
+
+:root[data-simple-language='true'] {
+  --motion-speed: 0ms;
 }
 
 :root[data-theme='dark'] body {
@@ -122,6 +167,45 @@ select:focus-visible,
 textarea:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 9999;
+  transform: translateY(-160%);
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 ::selection {

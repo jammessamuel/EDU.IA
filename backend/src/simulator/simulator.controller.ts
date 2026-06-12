@@ -17,6 +17,7 @@ export class SimulatorController {
       body.text,
       body.history ?? [],
       user.schoolId,
+      user.id,
       body.enrollmentDraft ?? {},
     );
   }

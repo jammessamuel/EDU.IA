@@ -15,8 +15,8 @@ import { formatCpf } from '../common/lib/validation';
 
 const GREEN = '#075e54';
 const INK = '#12211d';
-const MUTED = '#6a7a74';
-const LINE = '#e4dfd2';
+const MUTED = '#475852';
+const LINE = '#c8d7d3';
 
 function safeJson(s: string): Record<string, unknown> {
   try {
@@ -49,7 +49,22 @@ export async function gerarComprovantePdf(enrollment: any): Promise<Buffer> {
   const qrDataUrl = await QRCode.toDataURL(validateUrl, { margin: 1, width: 140 });
   const qrBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
 
-  const doc = new PDFDocument({ size: 'A4', margin: 48, info: { Title: `Comprovante de Matrícula ${enrollment.number}` } });
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 48,
+    tagged: true,
+    lang: 'pt-BR',
+    displayTitle: true,
+    info: {
+      Title: `Comprovante de Matrícula ${enrollment.number}`,
+      Subject: 'Comprovante acessível de matrícula com código de autenticação',
+      Author: schoolName,
+      Creator: 'EDU.IA',
+      Producer: 'EDU.IA via PDFKit',
+      Keywords: 'matrícula, comprovante, acessibilidade, autenticação',
+      Language: 'pt-BR',
+    },
+  } as any);
   const chunks: Buffer[] = [];
   doc.on('data', (c) => chunks.push(c as Buffer));
   const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
@@ -69,9 +84,11 @@ export async function gerarComprovantePdf(enrollment: any): Promise<Buffer> {
   doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(8).text('Nº DE MATRÍCULA', left + 16, y + 12);
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(17).text(enrollment.number, left + 16, y + 26);
   doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(8).text('SITUAÇÃO', left + 230, y + 12);
-  doc.fillColor('#18a058').font('Helvetica-Bold').fontSize(13)
+  doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(13)
     .text(enrollment.status === 'CONFIRMADA' ? 'MATRICULADO' : enrollment.status, left + 230, y + 26);
   doc.image(qrBuffer, left + contentWidth - 72, y - 4, { width: 68 });
+  doc.fillColor(MUTED).font('Helvetica').fontSize(7.5)
+    .text('QR de validação', left + contentWidth - 86, y + 65, { width: 92, align: 'center' });
   y += 82;
 
   // ── Seções ──

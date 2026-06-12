@@ -4,9 +4,10 @@ import { EnrollmentService } from './enrollment.service';
 import { EnrollmentChatService } from './enrollment-chat.service';
 import { PaymentProvider } from './payment.provider';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AccessibilityModule } from '../accessibility/accessibility.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AccessibilityModule],
   controllers: [EnrollmentController],
   providers: [EnrollmentService, EnrollmentChatService, PaymentProvider],
   exports: [EnrollmentService, EnrollmentChatService], // o Simulador reutiliza o fluxo completo

@@ -36,7 +36,7 @@ export class EnrollmentController {
     @Body() body: { text: string; history?: ChatMessage[]; draft?: Record<string, any> },
     @CurrentUser() user: { id: string; schoolId: string },
   ) {
-    return this.chatService.chat(body.text, body.history ?? [], body.draft ?? {}, user.schoolId);
+    return this.chatService.chat(body.text, body.history ?? [], body.draft ?? {}, user.schoolId, user.id);
   }
 
   // Efetiva a matrícula direto (sem IA). Aceita { data: {...campos} } ou os campos no corpo.

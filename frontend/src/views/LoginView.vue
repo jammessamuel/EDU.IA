@@ -15,10 +15,13 @@ import { apiClient } from '../api/client'
 import type { Vertical } from '../types'
 import TypewriterText from '../components/auth/TypewriterText.vue'
 import { useTheme } from '../composables/useTheme'
+import { useAccessibility } from '../composables/useAccessibility'
+import type { AccessibilityProfile, ColorBlindMode } from '../types'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { isDark, themeLabel, toggleTheme } = useTheme()
+const { profile: accessibilityProfile, updateProfile } = useAccessibility()
 
 const mode = ref<'login' | 'register'>('login')
 const loading = ref(false)
@@ -99,6 +102,7 @@ async function handleRegister() {
       f.workspaceName,
       selectedVertical.value.id,
     )
+    await updateProfile({ ...accessibilityProfile.value })
     router.push('/')
   } catch (err: any) {
     error.value = err?.response?.data?.message ?? 'Não foi possível criar a conta.'
@@ -144,6 +148,32 @@ const liveLeads = [
 
 const onboardingLanguages = ['Português', 'English', 'Español']
 const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
+
+const colorBlindOptions: { value: ColorBlindMode; label: string }[] = [
+  { value: 'none', label: 'Sem ajuste' },
+  { value: 'protanopia', label: 'Protanopia' },
+  { value: 'deuteranopia', label: 'Deuteranopia' },
+  { value: 'tritanopia', label: 'Tritanopia' },
+]
+
+function setAccessibility(input: Partial<AccessibilityProfile>) {
+  updateProfile(input)
+}
+
+function onAccessibilityToggle(
+  key: 'screenReader' | 'highContrast' | 'reduceMotion' | 'simpleLanguage',
+  event: Event,
+) {
+  setAccessibility({ [key]: (event.target as HTMLInputElement).checked })
+}
+
+function onColorBlindChange(event: Event) {
+  setAccessibility({ colorBlindMode: (event.target as HTMLSelectElement).value as ColorBlindMode })
+}
+
+function onFontScaleChange(event: Event) {
+  setAccessibility({ fontScale: Number((event.target as HTMLInputElement).value) })
+}
 </script>
 
 <template>
@@ -186,14 +216,14 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
 
             <label class="field">
               <span class="field__label">E-mail</span>
-              <input v-model="loginForm.email" type="email" autocomplete="email"
+              <input v-model="loginForm.email" type="email" autocomplete="email" aria-label="E-mail"
                 placeholder="voce@empresa.com" />
             </label>
 
             <label class="field">
               <span class="field__label">Senha</span>
               <div class="field__pw">
-                <input v-model="loginForm.password" :type="showPass ? 'text' : 'password'"
+                <input v-model="loginForm.password" :type="showPass ? 'text' : 'password'" aria-label="Senha"
                   autocomplete="current-password" placeholder="••••••••" @keyup.enter="handleLogin" />
                 <button type="button" class="eye" @click="showPass = !showPass"
                   :aria-label="showPass ? 'Ocultar senha' : 'Mostrar senha'">
@@ -290,19 +320,82 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
                 </div>
               </div>
 
+              <fieldset class="accessibility-setup">
+                <legend>Preferências de acessibilidade (opcional)</legend>
+                <p>
+                  Ajuste agora se você usa leitor de tela, precisa de contraste, menos movimento ou linguagem mais direta.
+                </p>
+
+                <div class="accessibility-setup__toggles">
+                  <label>
+                    <input
+                      type="checkbox"
+                      :checked="accessibilityProfile.screenReader"
+                      @change="onAccessibilityToggle('screenReader', $event)"
+                    />
+                    <span>Leitor de tela</span>
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      :checked="accessibilityProfile.highContrast"
+                      @change="onAccessibilityToggle('highContrast', $event)"
+                    />
+                    <span>Alto contraste</span>
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      :checked="accessibilityProfile.reduceMotion"
+                      @change="onAccessibilityToggle('reduceMotion', $event)"
+                    />
+                    <span>Reduzir animações</span>
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      :checked="accessibilityProfile.simpleLanguage"
+                      @change="onAccessibilityToggle('simpleLanguage', $event)"
+                    />
+                    <span>Linguagem simples</span>
+                  </label>
+                </div>
+
+                <label class="accessibility-setup__field">
+                  <span>Modo daltonismo</span>
+                  <select :value="accessibilityProfile.colorBlindMode" @change="onColorBlindChange">
+                    <option v-for="option in colorBlindOptions" :key="option.value" :value="option.value">
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <label class="accessibility-setup__field">
+                  <span>Escala da fonte: {{ Math.round(accessibilityProfile.fontScale * 100) }}%</span>
+                  <input
+                    type="range"
+                    min="0.9"
+                    max="1.35"
+                    step="0.05"
+                    :value="accessibilityProfile.fontScale"
+                    @input="onFontScaleChange"
+                  />
+                </label>
+              </fieldset>
+
               <label class="field">
                 <span class="field__label">Seu nome</span>
-                <input v-model="registerForm.name" placeholder="Maria Silva" autocomplete="name" />
+                <input v-model="registerForm.name" aria-label="Seu nome" placeholder="Maria Silva" autocomplete="name" />
               </label>
               <label class="field">
                 <span class="field__label">E-mail</span>
-                <input v-model="registerForm.email" type="email" placeholder="maria@empresa.com"
+                <input v-model="registerForm.email" type="email" aria-label="E-mail" placeholder="maria@empresa.com"
                   autocomplete="email" />
               </label>
               <label class="field">
                 <span class="field__label">Senha</span>
                 <div class="field__pw">
-                  <input v-model="registerForm.password" :type="showPass ? 'text' : 'password'"
+                  <input v-model="registerForm.password" :type="showPass ? 'text' : 'password'" aria-label="Senha"
                     placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
                   <button type="button" class="eye" @click="showPass = !showPass"
                     :aria-label="showPass ? 'Ocultar senha' : 'Mostrar senha'">
@@ -323,7 +416,7 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
               </label>
               <label class="field">
                 <span class="field__label">Nome do negócio</span>
-                <input v-model="registerForm.workspaceName" placeholder="Faculdade Horizonte" />
+                <input v-model="registerForm.workspaceName" aria-label="Nome do negócio" placeholder="Faculdade Horizonte" />
               </label>
 
               <p v-if="error" class="err">{{ error }}</p>
@@ -917,6 +1010,73 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   font-size: 10.5px;
   line-height: 1;
   font-weight: 900;
+}
+
+.accessibility-setup {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--green-800) 20%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--white) 88%, transparent);
+}
+
+.accessibility-setup legend {
+  padding: 0 4px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.accessibility-setup p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.accessibility-setup__toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.accessibility-setup__toggles label {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cream-2) 72%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.accessibility-setup input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--green-800);
+}
+
+.accessibility-setup__field {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.accessibility-setup__field select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
 }
 
 /* ── grid de verticais ── */
@@ -1761,6 +1921,10 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   }
 
   .international-setup__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .accessibility-setup__toggles {
     grid-template-columns: 1fr;
   }
 }

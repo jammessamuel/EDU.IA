@@ -4,7 +4,8 @@
   para o próximo. Uso na tela de login pra simular a IA respondendo em tempo real.
 -->
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { useAccessibility } from '@/composables/useAccessibility'
 
 const props = withDefaults(
   defineProps<{
@@ -19,16 +20,23 @@ const props = withDefaults(
 )
 
 const display = ref('')
+const { effectiveReduceMotion } = useAccessibility()
 let timer: ReturnType<typeof setTimeout> | undefined
 
 function asArray(): string[] {
   return Array.isArray(props.text) ? props.text : [props.text]
 }
 
+const fullText = computed(() => asArray()[0] ?? '')
+
 function start() {
   clearTimeout(timer)
   display.value = ''
   const frases = asArray()
+  if (effectiveReduceMotion.value) {
+    display.value = frases[0] ?? ''
+    return
+  }
   let fi = 0 // índice da frase
   let ci = 0 // índice do caractere
   let apagando = false
@@ -67,14 +75,29 @@ function start() {
 
 onMounted(start)
 watch(() => props.text, start)
+watch(effectiveReduceMotion, start)
 onUnmounted(() => clearTimeout(timer))
 </script>
 
 <template>
-  <span class="tw">{{ display }}<span class="tw__cursor" aria-hidden="true">{{ cursor }}</span></span>
+  <span class="tw" :aria-label="fullText">
+    <span aria-hidden="true">{{ display }}<span class="tw__cursor">{{ cursor }}</span></span>
+    <span class="sr-only">{{ fullText }}</span>
+  </span>
 </template>
 
 <style scoped>
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .tw__cursor {
   display: inline-block;
   margin-left: 1px;

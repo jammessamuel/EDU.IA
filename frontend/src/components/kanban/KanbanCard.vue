@@ -5,25 +5,33 @@
     <div class="kanban-card__body">
       <div class="kanban-card__header">
         <span class="kanban-card__name">{{ lead.name }}</span>
-        <span v-if="isStale" class="kanban-card__stale">⚠</span>
+        <span v-if="isStale" class="kanban-card__stale" aria-label="Lead parado ha mais de 24 horas">⚠</span>
       </div>
 
       <div class="kanban-card__tags">
         <span v-for="[, val] in dataEntries" :key="val" class="tag">{{ val }}</span>
       </div>
 
+      <span class="kanban-card__stage">Etapa: {{ stageLabel }}</span>
+
       <div class="kanban-card__date-row">
         <span class="kanban-card__date">{{ formatDate(lead.createdAt) }}</span>
-        <button class="btn-detail" title="Ver detalhes" @click.stop="emit('open', lead)">
+        <button
+          type="button"
+          class="btn-detail"
+          title="Ver detalhes"
+          :aria-label="`Ver detalhes de ${lead.name}`"
+          @click.stop="emit('open', lead)"
+        >
           <NIcon :component="EyeOutline" size="14" />
         </button>
       </div>
 
       <div v-if="!isLost" class="kanban-card__actions">
-        <button v-if="nextStage" class="btn-advance" :disabled="loading" @click="advance">
+        <button v-if="nextStage" type="button" class="btn-advance" :disabled="loading" @click="advance">
           {{ nextStage.label }} →
         </button>
-        <button v-if="!isLastActive" class="btn-lost" :disabled="loading" @click="markLost">
+        <button v-if="!isLastActive" type="button" class="btn-lost" :disabled="loading" @click="markLost">
           Perdido
         </button>
       </div>
@@ -54,6 +62,7 @@ const lostKey = computed(() => ws.lostStage)
 
 const currentIdx = computed(() => stages.value.findIndex(s => s.key === props.lead.status))
 const stageColor = computed(() => stages.value[currentIdx.value]?.color ?? '#aaa')
+const stageLabel = computed(() => stages.value[currentIdx.value]?.label ?? props.lead.status)
 
 const isLost      = computed(() => props.lead.status === lostKey.value)
 const isLastActive = computed(() => {
@@ -145,6 +154,19 @@ function formatDate(iso: string) {
 }
 
 .kanban-card__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.kanban-card__stage {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--stage-color, #aaa) 32%, var(--border));
+  border-radius: 6px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--stage-color, #aaa) 10%, var(--surface));
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  padding: 4px 7px;
+}
 
 .tag {
   font-size: 11px;

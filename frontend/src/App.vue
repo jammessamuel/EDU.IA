@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { darkTheme, NConfigProvider, NGlobalStyle } from 'naive-ui'
 import { RouterView } from 'vue-router'
 import { useTheme } from '@/composables/useTheme'
+import AccessibilityMenu from '@/components/accessibility/AccessibilityMenu.vue'
 
 const { isDark } = useTheme()
 
@@ -39,7 +40,11 @@ const themeOverrides = computed(() => ({
 <template>
   <NConfigProvider :theme="isDark ? darkTheme : null" :theme-overrides="themeOverrides">
     <NGlobalStyle />
-    <RouterView />
+    <a class="skip-link" href="#main-content">Pular para o conteúdo principal</a>
+    <div id="main-content" class="app-frame" tabindex="-1">
+      <RouterView />
+    </div>
+    <AccessibilityMenu />
   </NConfigProvider>
 </template>
 
@@ -51,5 +56,14 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+.app-frame {
+  height: 100%;
+  min-height: 0;
+}
+
+.app-frame:focus {
+  outline: none;
 }
 </style>

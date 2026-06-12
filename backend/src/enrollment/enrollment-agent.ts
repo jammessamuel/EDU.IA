@@ -11,6 +11,7 @@ import {
   SECTION_LABELS,
   isEnrollmentFieldRequired,
 } from './enrollment-fields';
+import type { AccessibilityProfile } from '../accessibility/accessibility.types';
 
 // Ferramentas expostas à IA (formato OpenAI "tools").
 export const ENROLLMENT_TOOLS = [
@@ -51,6 +52,33 @@ export const ENROLLMENT_TOOLS = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'ajustar_acessibilidade',
+      description:
+        'Atualiza preferências de acessibilidade quando o usuário pedir ou demonstrar necessidade. A IA propõe; o servidor valida e persiste. Use para leitor de tela, alto contraste, daltonismo, reduzir movimento, linguagem simples/TEA e escala de fonte.',
+      parameters: {
+        type: 'object',
+        properties: {
+          screenReader: { type: 'boolean', description: 'Usuário usa leitor de tela ou navegação assistiva.' },
+          highContrast: { type: 'boolean', description: 'Ativar contraste alto.' },
+          colorBlindMode: {
+            type: 'string',
+            enum: ['none', 'protanopia', 'deuteranopia', 'tritanopia'],
+            description: 'Modo de daltonismo solicitado ou inferido com confirmação.',
+          },
+          reduceMotion: { type: 'boolean', description: 'Reduzir ou remover animações/movimento.' },
+          simpleLanguage: {
+            type: 'boolean',
+            description: 'Usar linguagem simples, literal, previsível e frases curtas.',
+          },
+          fontScale: { type: 'number', minimum: 0.9, maximum: 1.35, description: 'Escala de fonte.' },
+          motivo: { type: 'string', description: 'Resumo curto do sinal ou pedido do usuário.' },
+        },
+      },
+    },
+  },
 ];
 
 /** Descrição dos campos (com opções) p/ a IA saber o que perguntar. */
@@ -87,13 +115,23 @@ export function buildEnrollmentPrompt(opts: {
   schoolName: string;
   fee: number;
   draft: Record<string, unknown>;
+  accessibility: AccessibilityProfile;
 }): string {
-  const { chatbotName, schoolName, fee, draft } = opts;
+  const { chatbotName, schoolName, fee, draft, accessibility } = opts;
   const jaColetado = Object.keys(draft).length
     ? Object.entries(draft)
         .map(([k, v]) => `${k}=${v}`)
         .join(', ')
     : 'nada ainda';
+
+  const accessibilityActive = [
+    accessibility.screenReader ? 'leitor de tela' : '',
+    accessibility.highContrast ? 'alto contraste' : '',
+    accessibility.colorBlindMode !== 'none' ? `daltonismo: ${accessibility.colorBlindMode}` : '',
+    accessibility.reduceMotion ? 'reduzir movimento' : '',
+    accessibility.simpleLanguage ? 'linguagem simples' : '',
+    accessibility.fontScale !== 1 ? `escala de fonte: ${accessibility.fontScale}` : '',
+  ].filter(Boolean).join(', ') || 'nenhuma preferência ativa';
 
   return `Você é ${chatbotName}, da secretaria de matrículas da ${schoolName}. Seu papel é fazer a matrícula COMPLETA do aluno por aqui, com o mesmo cuidado e atenção de uma secretária que atende pessoalmente.
 
@@ -106,11 +144,16 @@ COMO VOCÊ FALA (muito importante):
 - Se a ferramenta devolver muitos campos faltando, escolha só o próximo dado ou próximo mini-bloco lógico. Não enumere tudo que falta.
 - Confirme o que entendeu de tempos em tempos. Se algo vier errado, peça de novo com gentileza, sem culpar o aluno.
 - Mensagens curtas e leves: 2 a 4 linhas no máximo. Pode usar 1 emoji aqui e ali, sem exagero.
+- Preferências de acessibilidade ativas: ${accessibilityActive}.
+- Se "linguagem simples" estiver ativa, ou se o aluno mencionar autismo/TEA, ansiedade, dificuldade de entender ou pedir para simplificar: use frases curtas, literais, previsíveis, sem ironia, sem metáforas, sem brincadeiras ambíguas e com um passo por vez.
+- Se o aluno mencionar baixa visão, cegueira, leitor de tela, daltonismo, sensibilidade a movimento/luz ou dificuldade visual, ofereça ajustar a experiência e chame ajustar_acessibilidade com a preferência correspondente. Não trate isso como diagnóstico médico.
+- Se leitor de tela estiver ativo, escreva de forma clara, com contexto textual. Não dependa de emoji, cor ou posição visual para explicar algo.
 
 COMO VOCÊ TRABALHA (ferramentas):
 - Comece chamando consultar_oferta para saber quais dados coletar e as opções (cursos, turnos, unidades).
 - Logo no começo, se ainda não souber, identifique idioma e país/nacionalidade de forma natural. Ex.: em inglês pergunte "Are you applying with a Brazilian CPF or an international document like a passport?"; em espanhol, "¿Vas a usar CPF brasileño o documento internacional/pasaporte?"
 - Sempre que o aluno informar algum dado, chame salvar_dados com aquele(s) campo(s). Se ele já disser o curso, turno ou unidade na primeira mensagem, salve isso também antes de perguntar o próximo dado.
+- Quando o aluno pedir ou aceitar ajustes de acessibilidade, chame ajustar_acessibilidade. Depois confirme em uma frase curta que a preferência foi aplicada.
 - Se o aluno responder com vários dados de uma vez, extraia e salve TODOS os dados reconhecíveis daquela mensagem, mesmo que você tivesse perguntado só um deles. Depois continue perguntando apenas o próximo dado faltante.
 - Use exatamente os nomes de campo retornados por consultar_oferta (ex.: preferredLanguage, countryOfResidence, documentType, documentNumber, rgOrgao, birthDate, phone, naturalidade). Não invente nomes traduzidos como dataNascimento, passportNumber, telefone ou rgEmissor.
 - A ferramenta te diz o que ainda falta e se algo está inválido (ex.: CPF) — se estiver, peça a correção com naturalidade.

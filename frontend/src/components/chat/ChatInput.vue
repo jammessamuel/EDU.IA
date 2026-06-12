@@ -31,6 +31,7 @@ function handleKeydown(event: KeyboardEvent) {
         :placeholder="placeholder ?? 'Digite uma mensagem...'"
         round
         :disabled="disabled"
+        :input-props="{ 'aria-label': 'Mensagem para o atendente' }"
         style="flex: 1"
         @keydown="handleKeydown"
       />
@@ -40,6 +41,7 @@ function handleKeydown(event: KeyboardEvent) {
       type="primary"
       :disabled="disabled || !inputText.trim()"
       :color="'#25D366'"
+      aria-label="Enviar mensagem"
       @click="handleSend"
     >
       <template #icon>
