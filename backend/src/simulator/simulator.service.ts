@@ -135,13 +135,15 @@ ${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'ht
       /\b(enroll|enrollment|admission|application|apply|inscripci[oó]n|inscribirme|matricularme)\b/i;
     if (enrollmentIntent.test(text) || internationalEnrollmentIntent.test(text)) return true;
 
-    // Mantém o usuário no mesmo fluxo depois que ele iniciou matrícula,
-    // mesmo se a próxima resposta for só "sim", "Centro" ou um CPF.
-    const recentText = history
+    // Mantém o usuário no mesmo fluxo depois que ELE iniciou matrícula.
+    // Não usa mensagens da IA, porque a saudação cita "matrícula" como opção
+    // e isso não pode virar intenção automática.
+    const recentUserText = history
       .slice(-8)
+      .filter((m) => m.role === 'user')
       .map((m) => m.content)
       .join('\n');
-    return enrollmentIntent.test(recentText) || internationalEnrollmentIntent.test(recentText);
+    return enrollmentIntent.test(recentUserText) || internationalEnrollmentIntent.test(recentUserText);
   }
 
   // ── Extração de lead dinâmica ─────────────────────────────────────────────────

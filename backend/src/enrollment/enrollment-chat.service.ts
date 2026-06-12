@@ -121,7 +121,7 @@ export class EnrollmentChatService {
           /* argumentos inválidos: segue com objeto vazio */
         }
 
-        const result = await this.runTool((call as any).function.name, args, current, schoolId, userId);
+        const result = await this.runTool((call as any).function.name, args, current, schoolId, userId, text);
 
         // canais "laterais" p/ propagar estado sem mandar lixo pra IA
         if (result._draft) current = result._draft;
@@ -172,6 +172,7 @@ export class EnrollmentChatService {
     draft: Record<string, any>,
     schoolId: string,
     userId: string,
+    currentUserText: string,
   ): Promise<any> {
     const fields = EDUCATION_ENROLLMENT_FIELDS;
 
@@ -191,12 +192,14 @@ export class EnrollmentChatService {
     }
 
     if (name === 'salvar_dados') {
-      const novo = normalizeEnrollmentData(fields, { ...draft, ...(args.campos || {}) });
+      const campos = this.filterFieldsWithEvidence(args.campos || {}, draft, currentUserText, fields);
+      const novo = normalizeEnrollmentData(fields, { ...draft, ...campos });
       const erros = validateEnrollment(fields, novo, { requireMissing: false });
       const faltando = camposFaltando(fields, novo);
       return {
         ok: erros.length === 0,
-        salvos: Object.keys(args.campos || {}),
+        salvos: Object.keys(campos),
+        ignorados_por_falta_de_evidencia: Object.keys(args.campos || {}).filter((field) => !(field in campos)),
         faltando,
         erros: erros.map((e) => e.message),
         pronto_para_efetivar: faltando.length === 0 && erros.length === 0,
@@ -247,11 +250,14 @@ export class EnrollmentChatService {
     const nationalityProfile = this.detectNationalityProfile(text);
     Object.assign(found, nationalityProfile);
 
-    for (const fieldName of ['course', 'shift', 'unit', 'modalidade', 'ingresso', 'paymentMethod']) {
+    for (const fieldName of ['course', 'unit', 'modalidade', 'ingresso']) {
       const field = fields.find((candidate) => candidate.name === fieldName);
       const option = field?.options?.find((candidate) => haystack.includes(this.normalizeText(candidate)));
       if (option) found[fieldName] = option;
     }
+
+    const shift = this.extractShift(text);
+    if (shift) found.shift = shift;
 
     if (/\b(passport|passaporte|pasaporte)\b/i.test(text)) found.documentType = 'Passaporte';
     if (/\bssn\b|social security/i.test(text)) found.documentType = 'SSN';
@@ -299,6 +305,62 @@ export class EnrollmentChatService {
     if (!found.paymentMethod && /\bpix\b/i.test(text)) found.paymentMethod = 'PIX';
     if (!found.paymentMethod && /\bboleto\b/i.test(text)) found.paymentMethod = 'Boleto';
     return found;
+  }
+
+  private extractShift(text: string): string | null {
+    const normalized = this.normalizeText(text);
+    const compact = normalized.trim();
+    if (compact === 'manha') return 'manhã';
+    if (compact === 'tarde') return 'tarde';
+    if (compact === 'noite') return 'noite';
+    if (/\bturno\s*(da|de)?\s*manha\b|\b(de|pela|a)\s*manha\b|\bmatutino\b/.test(normalized)) return 'manhã';
+    if (/\bturno\s*(da|de)?\s*tarde\b|\b(de|pela|a)\s*tarde\b|\bvespertino\b/.test(normalized)) return 'tarde';
+    if (/\bturno\s*(da|de)?\s*noite\b|\b(de|pela|a)\s*noite\b|\bnoturno\b/.test(normalized)) return 'noite';
+    return null;
+  }
+
+  private filterFieldsWithEvidence(
+    campos: Record<string, unknown>,
+    draft: Record<string, any>,
+    text: string,
+    fields: EnrollmentField[],
+  ): Record<string, unknown> {
+    const filtered: Record<string, unknown> = {};
+    for (const [fieldName, value] of Object.entries(campos)) {
+      if (!this.requiresExplicitEvidence(fieldName)) {
+        filtered[fieldName] = value;
+        continue;
+      }
+
+      const alreadySaved = String(draft[fieldName] ?? '').trim();
+      if (alreadySaved && this.normalizeText(alreadySaved) === this.normalizeText(String(value))) {
+        filtered[fieldName] = value;
+        continue;
+      }
+
+      if (this.hasExplicitEvidence(fieldName, String(value), text, fields)) {
+        filtered[fieldName] = value;
+      }
+    }
+    return filtered;
+  }
+
+  private requiresExplicitEvidence(fieldName: string): boolean {
+    return ['course', 'shift', 'unit', 'modalidade', 'ingresso', 'paymentMethod'].includes(fieldName);
+  }
+
+  private hasExplicitEvidence(fieldName: string, value: string, text: string, fields: EnrollmentField[]): boolean {
+    if (fieldName === 'shift') return this.extractShift(text) === value;
+    if (fieldName === 'paymentMethod') {
+      const normalized = this.normalizeText(text);
+      if (value === 'PIX') return /\bpix\b/.test(normalized);
+      if (value === 'Boleto') return /\bboleto\b/.test(normalized);
+      if (value === 'Cartão de crédito') return /\bcartao\b|\bcredito\b/.test(normalized);
+    }
+
+    const field = fields.find((candidate) => candidate.name === fieldName);
+    const option = field?.options?.find((candidate) => this.normalizeText(candidate) === this.normalizeText(value));
+    return Boolean(option && this.normalizeText(text).includes(this.normalizeText(option)));
   }
 
   private detectLanguage(text: string): 'Português' | 'English' | 'Español' | null {
