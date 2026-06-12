@@ -355,6 +355,56 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
         <span class="signal signal--two" />
       </div>
 
+      <div class="journey-map">
+        <span class="journey-map__rail" />
+        <span class="journey-map__scan" />
+
+        <div class="journey-card journey-card--lead">
+          <span class="journey-card__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
+              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
+            </svg>
+          </span>
+          <span>
+            <strong>Lead</strong>
+            <small>WhatsApp</small>
+          </span>
+          <em>novo</em>
+        </div>
+
+        <div class="journey-card journey-card--data">
+          <span class="journey-card__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
+              <path d="M9 11l2 2 4-4" />
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </span>
+          <span>
+            <strong>Dados</strong>
+            <small>CPF/passaporte</small>
+          </span>
+          <em>ok</em>
+        </div>
+
+        <div class="journey-card journey-card--done">
+          <span class="journey-card__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+              <path d="M14 2v6h6" />
+              <path d="M9 15h6" />
+            </svg>
+          </span>
+          <span>
+            <strong>Matrícula</strong>
+            <small>PDF + QR</small>
+          </span>
+          <em>pronta</em>
+        </div>
+      </div>
+
       <div class="show">
         <div class="show__main">
           <div class="chat">
@@ -1032,6 +1082,7 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
     content: '';
     position: absolute;
     inset: 0;
+    z-index: 1;
     pointer-events: none;
     background:
       radial-gradient(circle at 50% 48%, rgba(5, 19, 16, 0.05), rgba(5, 19, 16, 0.5) 72%),
@@ -1110,6 +1161,169 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   width: 130px;
   height: 130px;
   animation-delay: -5s;
+}
+
+.journey-map {
+  display: none;
+}
+
+@media (min-width: 1180px) {
+  .journey-map {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    left: clamp(34px, 5.6vw, 94px);
+    display: block;
+    width: min(26vw, 330px);
+    height: 390px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: #d8ffec;
+  }
+
+  .journey-map__rail {
+    position: absolute;
+    top: 48px;
+    bottom: 48px;
+    left: 29px;
+    width: 1px;
+    overflow: hidden;
+    border-radius: 99px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      rgba(234, 255, 245, 0.28),
+      rgba(74, 222, 128, 0.34),
+      transparent
+    );
+  }
+
+  .journey-map__scan {
+    position: absolute;
+    top: 38px;
+    left: 26px;
+    width: 7px;
+    height: 82px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, transparent, rgba(74, 222, 128, 0.86), transparent);
+    filter: blur(0.4px);
+    opacity: 0.7;
+    animation: journeyScan 5.8s ease-in-out infinite;
+  }
+
+  .journey-card {
+    position: absolute;
+    left: 0;
+    width: min(100%, 312px);
+    min-height: 72px;
+    display: grid;
+    grid-template-columns: 38px 1fr auto;
+    align-items: center;
+    gap: 11px;
+    padding: 13px 14px;
+    border: 1px solid rgba(234, 255, 245, 0.12);
+    border-radius: 10px;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+      rgba(3, 31, 27, 0.22);
+    box-shadow:
+      0 18px 48px rgba(0, 0, 0, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(18px);
+    opacity: 0.74;
+    animation: journeyFloat 6.4s ease-in-out infinite;
+  }
+
+  .journey-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, rgba(74, 222, 128, 0.14), transparent);
+    opacity: 0;
+    animation: cardSheen 6.4s ease-in-out infinite;
+  }
+
+  .journey-card--lead {
+    top: 18px;
+  }
+
+  .journey-card--data {
+    top: 148px;
+    left: 34px;
+    animation-delay: -2s;
+  }
+
+  .journey-card--data::before {
+    animation-delay: -2s;
+  }
+
+  .journey-card--done {
+    top: 278px;
+    animation-delay: -4s;
+  }
+
+  .journey-card--done::before {
+    animation-delay: -4s;
+  }
+
+  .journey-card__icon {
+    position: relative;
+    z-index: 1;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: rgba(74, 222, 128, 0.13);
+    color: #bfffd9;
+    box-shadow: inset 0 0 0 1px rgba(234, 255, 245, 0.08);
+  }
+
+  .journey-card span,
+  .journey-card em {
+    position: relative;
+    z-index: 1;
+  }
+
+  .journey-card strong,
+  .journey-card small {
+    display: block;
+  }
+
+  .journey-card strong {
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.15;
+  }
+
+  .journey-card small {
+    margin-top: 3px;
+    color: rgba(234, 255, 245, 0.58);
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .journey-card em {
+    justify-self: end;
+    padding: 4px 7px;
+    border-radius: 7px;
+    background: rgba(74, 222, 128, 0.12);
+    color: #c8ffe2;
+    font-size: 10.5px;
+    font-style: normal;
+    font-weight: 900;
+  }
+}
+
+@media (min-width: 1180px) and (max-width: 1399px) {
+  .journey-map {
+    left: 34px;
+    width: 268px;
+    opacity: 0.58;
+    transform: translateY(-50%) scale(0.9);
+    transform-origin: left center;
+  }
 }
 
 .show {
@@ -1450,6 +1664,41 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
     opacity: 0.58;
   }
 }
+@keyframes journeyScan {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  14%,
+  72% {
+    opacity: 0.78;
+  }
+  100% {
+    transform: translateY(258px);
+    opacity: 0;
+  }
+}
+@keyframes journeyFloat {
+  50% {
+    transform: translate3d(0, -5px, 0);
+    border-color: rgba(234, 255, 245, 0.22);
+    opacity: 0.9;
+  }
+}
+@keyframes cardSheen {
+  16%,
+  54% {
+    opacity: 0;
+    transform: translateX(-34%);
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(34%);
+  }
+}
 @keyframes boardLift {
   from {
     opacity: 0;
@@ -1487,6 +1736,9 @@ const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
   .copy p,
   .beam,
   .signal,
+  .journey-map__scan,
+  .journey-card,
+  .journey-card::before,
   .automation-board,
   .automation-board__top i,
   .lead-stream__row,
