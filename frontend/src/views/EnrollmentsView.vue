@@ -24,6 +24,18 @@ const messages = ref<ChatMessage[]>([
 ])
 
 const fields = ref<EnrollmentField[]>([])
+const documentRequirements = ref({
+  brasil: [
+    'CPF e RG/CNH ou documento oficial com foto',
+    'Comprovante de residência',
+    'Histórico ou certificado escolar',
+  ],
+  internacional: [
+    'Passaporte ou documento nacional de identidade',
+    'Visto/permissão de estudo ou residência quando aplicável',
+    'Histórico/diploma com tradução ou validação quando exigido',
+  ],
+})
 const enrollments = ref<Enrollment[]>([])
 const documents = ref<EnrollmentDocument[]>([])
 const selected = ref<Enrollment | null>(null)
@@ -32,7 +44,7 @@ const isTyping = ref(false)
 const isSending = ref(false)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
-const docType = ref('RG')
+const docType = ref('PACOTE_COMPLETO')
 const docFile = ref<File | null>(null)
 const uploadBusy = ref(false)
 
@@ -64,6 +76,7 @@ async function loadFields() {
   try {
     const res = await enrollmentApi.fields()
     fields.value = res.fields
+    if (res.documentRequirements) documentRequirements.value = res.documentRequirements
   } catch {
     error.value = 'Não foi possível carregar os campos de matrícula.'
   }
@@ -235,6 +248,12 @@ function formatFileSize(value?: number | null) {
           <button class="quick-btn" @click="sendEnrollmentMessage('Tenho dúvidas sobre o processo')">
             Tirar dúvidas
           </button>
+          <button class="quick-btn" @click="sendEnrollmentMessage('I want to start my enrollment. I am American and I will use my passport.')">
+            Start in English
+          </button>
+          <button class="quick-btn" @click="sendEnrollmentMessage('Quiero empezar mi matrícula. Soy de España y voy a usar mi pasaporte.')">
+            Empezar en español
+          </button>
         </div>
 
         <ChatInput :disabled="isSending" placeholder="Escreva sua resposta aqui..." @send="sendEnrollmentMessage" />
@@ -310,7 +329,15 @@ function formatFileSize(value?: number | null) {
                 <option value="PACOTE_COMPLETO">PDF completo da matrícula</option>
                 <option>RG</option>
                 <option>CPF</option>
+                <option>PASSAPORTE</option>
+                <option>SSN</option>
+                <option>DRIVER_LICENSE</option>
+                <option>STATE_ID</option>
+                <option>NIE</option>
+                <option>DNI</option>
+                <option>VISTO_PERMISSAO</option>
                 <option>HISTORICO</option>
+                <option>HISTORICO_TRADUZIDO</option>
                 <option>COMPROVANTE_RESIDENCIA</option>
                 <option>FOTO</option>
                 <option>OUTRO</option>
@@ -322,8 +349,19 @@ function formatFileSize(value?: number | null) {
               </button>
             </div>
             <p class="upload-help">
-              Pode enviar um PDF com todos os documentos ou enviar RG, CPF, histórico e comprovante um por um.
+              Pode enviar um PDF com todos os documentos ou enviar um por um. Para estrangeiros, use passaporte/ID nacional, visto ou permissão quando aplicável e histórico traduzido quando exigido.
             </p>
+
+            <div class="document-guides">
+              <div>
+                <strong>Brasil</strong>
+                <span v-for="item in documentRequirements.brasil" :key="item">{{ item }}</span>
+              </div>
+              <div>
+                <strong>Internacional</strong>
+                <span v-for="item in documentRequirements.internacional" :key="item">{{ item }}</span>
+              </div>
+            </div>
 
             <div class="document-list">
               <button
@@ -681,6 +719,37 @@ function formatFileSize(value?: number | null) {
   line-height: 1.45;
 }
 
+.document-guides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.document-guides div {
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 16%, white);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--brand) 6%, white);
+}
+
+.document-guides strong,
+.document-guides span {
+  display: block;
+}
+
+.document-guides strong {
+  color: var(--brand);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.document-guides span {
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .upload-row select,
 .upload-row input {
   min-width: 0;
@@ -821,6 +890,7 @@ function formatFileSize(value?: number | null) {
 .payment-box span,
 .payment-box small,
 .upload-help,
+.document-guides span,
 .document-row small,
 .muted,
 .empty,
@@ -873,6 +943,15 @@ function formatFileSize(value?: number | null) {
 
 .progress__bar span {
   background: linear-gradient(90deg, var(--brand), var(--accent));
+}
+
+.document-guides div {
+  border-color: color-mix(in srgb, var(--brand) 18%, var(--border));
+  background: var(--brand-soft);
+}
+
+.document-guides strong {
+  color: var(--brand);
 }
 
 .refresh,

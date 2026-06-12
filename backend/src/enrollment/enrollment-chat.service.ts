@@ -155,7 +155,7 @@ export class EnrollmentChatService {
     const fields = EDUCATION_ENROLLMENT_FIELDS;
 
     if (name === 'consultar_oferta') {
-      return { campos: ofertaInfo(fields) };
+      return ofertaInfo(fields);
     }
 
     if (name === 'salvar_dados') {
@@ -196,14 +196,83 @@ export class EnrollmentChatService {
     const found: Record<string, string> = {};
     const haystack = this.normalizeText(text);
 
+    const language = this.detectLanguage(text);
+    if (language) found.preferredLanguage = language;
+
+    const nationalityProfile = this.detectNationalityProfile(text);
+    Object.assign(found, nationalityProfile);
+
     for (const fieldName of ['course', 'shift', 'unit', 'modalidade', 'ingresso', 'paymentMethod']) {
       const field = fields.find((candidate) => candidate.name === fieldName);
       const option = field?.options?.find((candidate) => haystack.includes(this.normalizeText(candidate)));
       if (option) found[fieldName] = option;
     }
 
+    if (/\b(passport|passaporte|pasaporte)\b/i.test(text)) found.documentType = 'Passaporte';
+    if (/\bssn\b|social security/i.test(text)) found.documentType = 'SSN';
+    if (/\bdriver'?s? license\b/i.test(text)) found.documentType = 'Driver License';
+    if (/\bstate id\b/i.test(text)) found.documentType = 'State ID';
+    if (/\bnie\b/i.test(text)) found.documentType = 'NIE';
+    if (/\bdni\b/i.test(text)) found.documentType = 'DNI';
+    if (/\bcpf\b/i.test(text)) found.documentType = 'CPF';
     if (!found.paymentMethod && /\bcart[aã]o\b/i.test(text)) found.paymentMethod = 'Cartão de crédito';
     return found;
+  }
+
+  private detectLanguage(text: string): 'Português' | 'English' | 'Español' | null {
+    const lower = text.toLowerCase();
+
+    if (
+      /[¿¡]/.test(text) ||
+      /\b(hola|quiero|matr[ií]cula|inscripci[oó]n|espa[ñn]ol|pasaporte|soy|nací|naci|tengo|documento)\b/i.test(text)
+    ) {
+      return 'Español';
+    }
+
+    if (
+      /\b(hello|hi|i am|i'm|i want|enroll|enrollment|application|american|canadian|passport|driver'?s? license|state id|social security)\b/i.test(
+        lower,
+      )
+    ) {
+      return 'English';
+    }
+
+    if (/\b(ol[aá]|quero|matr[ií]cula|inscri[cç][aã]o|brasileir|passaporte|documento|cpf)\b/i.test(lower)) {
+      return 'Português';
+    }
+
+    return null;
+  }
+
+  private detectNationalityProfile(text: string): Record<string, string> {
+    const lower = text.toLowerCase();
+    const profile: Record<string, string> = {};
+
+    if (/\b(american|u\.?s\.? citizen|usa|united states|from the us|from the u\.s\.|from america)\b/i.test(lower)) {
+      profile.nacionalidade = 'American';
+      profile.countryOfResidence = 'United States';
+      profile.preferredLanguage = 'English';
+    }
+
+    if (/\b(canadian|canada|from canada)\b/i.test(lower)) {
+      profile.nacionalidade = 'Canadian';
+      profile.countryOfResidence = 'Canada';
+      profile.preferredLanguage = 'English';
+    }
+
+    if (/\b(from spain|spaniard|soy de espa[ñn]a|vivo en espa[ñn]a|nac[ií] en espa[ñn]a)\b/i.test(lower)) {
+      profile.nacionalidade = 'Spanish';
+      profile.countryOfResidence = 'Spain';
+      profile.preferredLanguage = 'Español';
+    }
+
+    if (/\b(brasileir[oa]|sou do brasil|moro no brasil|brazilian|from brazil)\b/i.test(lower)) {
+      profile.nacionalidade = 'Brazilian';
+      profile.countryOfResidence = 'Brasil';
+      profile.preferredLanguage = lower.includes('brazilian') || lower.includes('from brazil') ? 'English' : 'Português';
+    }
+
+    return profile;
   }
 
   private normalizeText(value: string): string {

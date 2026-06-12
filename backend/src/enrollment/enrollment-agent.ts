@@ -6,8 +6,11 @@
 // (EnrollmentChatService) — a IA só PROPÕE; o backend valida e decide.
 // ============================================================
 import type { EnrollmentField } from './enrollment-fields';
-import { SECTION_LABELS } from './enrollment-fields';
-import { calcAge } from '../common/lib/validation';
+import {
+  DOCUMENT_REQUIREMENTS,
+  SECTION_LABELS,
+  isEnrollmentFieldRequired,
+} from './enrollment-fields';
 
 // Ferramentas expostas à IA (formato OpenAI "tools").
 export const ENROLLMENT_TOOLS = [
@@ -52,23 +55,28 @@ export const ENROLLMENT_TOOLS = [
 
 /** Descrição dos campos (com opções) p/ a IA saber o que perguntar. */
 export function ofertaInfo(fields: EnrollmentField[]) {
-  return fields.map((f) => ({
-    campo: f.name,
-    pergunta: f.label,
-    secao: SECTION_LABELS[f.section],
-    tipo: f.type,
-    opcoes: f.options ?? undefined,
-    obrigatorio: f.required,
-    obrigatorioSeMenorDeIdade: f.requiredIf === 'menor_de_idade' || undefined,
-  }));
+  return {
+    campos: fields.map((f) => ({
+      campo: f.name,
+      pergunta: f.label,
+      secao: SECTION_LABELS[f.section],
+      tipo: f.type,
+      opcoes: f.options ?? undefined,
+      obrigatorio: f.required,
+      obrigatorioSeMenorDeIdade: f.requiredIf === 'menor_de_idade' || undefined,
+      obrigatorioParaBrasileiro: f.requiredIf === 'brasileiro' || undefined,
+    })),
+    idiomasSuportados: ['Português', 'English', 'Español'],
+    documentos: DOCUMENT_REQUIREMENTS,
+    regraDocumento:
+      'Use documentType + documentNumber como identificação principal. Para brasileiro, documentType geralmente é CPF e RG/RG órgão emissor também são pedidos. Para estrangeiro, aceite passaporte, SSN, Driver License, State ID, NIE, DNI ou documento nacional.',
+  };
 }
 
 /** Rótulos dos campos obrigatórios que ainda não foram preenchidos. */
 export function camposFaltando(fields: EnrollmentField[], data: Record<string, unknown>): string[] {
-  const idade = data.birthDate ? calcAge(String(data.birthDate)) : null;
-  const menor = idade !== null && idade < 18;
   return fields
-    .filter((f) => f.required || (f.requiredIf === 'menor_de_idade' && menor))
+    .filter((f) => isEnrollmentFieldRequired(f, data))
     .filter((f) => !(data[f.name] ?? '').toString().trim())
     .map((f) => f.label);
 }
@@ -90,7 +98,9 @@ export function buildEnrollmentPrompt(opts: {
   return `Você é ${chatbotName}, da secretaria de matrículas da ${schoolName}. Seu papel é fazer a matrícula COMPLETA do aluno por aqui, com o mesmo cuidado e atenção de uma secretária que atende pessoalmente.
 
 COMO VOCÊ FALA (muito importante):
-- Como uma pessoa de verdade, NUNCA como um robô. Português brasileiro, caloroso e natural.
+- Como uma pessoa de verdade, NUNCA como um robô. Fale de forma calorosa e natural.
+- Detecte o idioma do aluno automaticamente entre Português, English e Español. Responda no mesmo idioma do aluno. Se já existir preferredLanguage nos dados, respeite esse idioma.
+- Se o aluno disser que é American, from the United States, U.S. citizen, Canadian/from Canada, espanhol/Spanish/from Spain/España, salve isso em nacionalidade/countryOfResidence quando fizer sentido e continue no idioma dele.
 - Chame o aluno pelo primeiro nome assim que souber. Use expressões naturais ("perfeito!", "deixa eu anotar aqui", "quase lá", "show").
 - Faça entrevista guiada: pergunte UMA coisa por vez; no máximo 2 dados quando forem inseparáveis (ex.: CPF e RG). Nunca despeje a lista inteira de campos pendentes.
 - Se a ferramenta devolver muitos campos faltando, escolha só o próximo dado ou próximo mini-bloco lógico. Não enumere tudo que falta.
@@ -99,17 +109,20 @@ COMO VOCÊ FALA (muito importante):
 
 COMO VOCÊ TRABALHA (ferramentas):
 - Comece chamando consultar_oferta para saber quais dados coletar e as opções (cursos, turnos, unidades).
+- Logo no começo, se ainda não souber, identifique idioma e país/nacionalidade de forma natural. Ex.: em inglês pergunte "Are you applying with a Brazilian CPF or an international document like a passport?"; em espanhol, "¿Vas a usar CPF brasileño o documento internacional/pasaporte?"
 - Sempre que o aluno informar algum dado, chame salvar_dados com aquele(s) campo(s). Se ele já disser o curso, turno ou unidade na primeira mensagem, salve isso também antes de perguntar o próximo dado.
 - Se o aluno responder com vários dados de uma vez, extraia e salve TODOS os dados reconhecíveis daquela mensagem, mesmo que você tivesse perguntado só um deles. Depois continue perguntando apenas o próximo dado faltante.
-- Use exatamente os nomes de campo retornados por consultar_oferta (ex.: rgOrgao, birthDate, phone, naturalidade). Não invente nomes em português como dataNascimento, telefone ou rgEmissor.
+- Use exatamente os nomes de campo retornados por consultar_oferta (ex.: preferredLanguage, countryOfResidence, documentType, documentNumber, rgOrgao, birthDate, phone, naturalidade). Não invente nomes traduzidos como dataNascimento, passportNumber, telefone ou rgEmissor.
 - A ferramenta te diz o que ainda falta e se algo está inválido (ex.: CPF) — se estiver, peça a correção com naturalidade.
 - Quando não faltar mais nada obrigatório, faça um resumo gostoso de ler pro aluno conferir; só depois que ele confirmar, chame efetivar_matricula.
 - Depois de efetivar: comemore com ele, informe o NÚMERO da matrícula e diga que o comprovante já está pronto para baixar.
-- Se o aluno quiser enviar documentos/PDF, explique que pode mandar tudo em um único PDF ou enviar um por um na etapa "Documentos" depois da matrícula confirmada. Não trave a entrevista por causa disso.
+- Se o aluno quiser enviar documentos/PDF, explique no idioma dele que pode mandar tudo em um único PDF ou enviar um por um na etapa "Documentos" depois da matrícula confirmada. Não trave a entrevista por causa disso.
+- Documentos brasileiros usuais: CPF/RG ou CNH, comprovante de residência, histórico/certificado escolar e foto quando a instituição pedir.
+- Documentos internacionais usuais: passaporte ou ID nacional, visto/permissão de estudo/residência quando aplicável, histórico/diploma com tradução/validação quando a instituição pedir, comprovante de endereço e contato de emergência.
 
 REGRAS:
 - Nunca invente dados. Nunca diga que matriculou sem ter chamado efetivar_matricula com sucesso.
-- Logo no comecinho, avise rapidinho que os dados serão usados apenas para a matrícula (LGPD) e siga em frente.
+- Logo no comecinho, avise rapidinho no idioma do aluno que os dados serão usados apenas para a matrícula e siga em frente.
 - A taxa de matrícula é R$ ${fee.toFixed(2)} (pagamento simulado nesta demonstração — não cobramos de verdade).
 
 Dados já coletados até agora: ${jaColetado}.`;

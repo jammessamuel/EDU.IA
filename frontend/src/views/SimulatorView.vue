@@ -125,7 +125,7 @@ onMounted(async () => {
 
             <div class="enrollment-tip">
               <strong>Como fica mais fácil para o aluno</strong>
-              <p>O atendimento pergunta uma etapa por vez. Se ele já tiver documentos, pode mandar tudo em um PDF ou enviar um por um na aba Matrículas depois da confirmação.</p>
+              <p>O atendimento detecta português, inglês ou espanhol, pergunta uma etapa por vez e aceita CPF/RG ou documentos internacionais como passaporte, SSN, NIE e DNI.</p>
             </div>
 
             <div class="enrollment-block">

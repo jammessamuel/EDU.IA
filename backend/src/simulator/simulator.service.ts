@@ -61,10 +61,18 @@ Colete as seguintes informações, UMA POR VEZ:
 {{fieldDescriptions}}
 Quando coletar todos os campos, agradeça e diga que um consultor vai entrar em contato.`;
 
-    return template
+    const rendered = template
       .replace(/\{\{chatbotName\}\}/g,       school?.chatbotName ?? 'Atendente Virtual')
       .replace(/\{\{workspaceName\}\}/g,     school?.name        ?? 'nossa empresa')
       .replace(/\{\{fieldDescriptions\}\}/g, fieldDescriptions);
+
+    return `${rendered}
+
+REGRA DE IDIOMA (prioridade alta):
+- Detecte automaticamente se o cliente fala Português, English ou Español.
+- Responda no mesmo idioma do cliente, com naturalidade humana.
+- Se o cliente disser que é American/from the United States, Canadian/from Canada ou Spanish/from Spain/España, reconheça isso e continue no idioma correspondente.
+- Continue coletando uma pergunta por vez.`;
   }
 
   // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -116,7 +124,9 @@ Quando coletar todos os campos, agradeça e diga que um consultor vai entrar em 
     if (Object.keys(enrollmentDraft ?? {}).length > 0) return true;
 
     const enrollmentIntent = /\b(matr[ií]cula|matricular|matricule|inscri[cç][aã]o|inscrever|inscrev)/i;
-    if (enrollmentIntent.test(text)) return true;
+    const internationalEnrollmentIntent =
+      /\b(enroll|enrollment|admission|application|apply|inscripci[oó]n|inscribirme|matricularme)\b/i;
+    if (enrollmentIntent.test(text) || internationalEnrollmentIntent.test(text)) return true;
 
     // Mantém o usuário no mesmo fluxo depois que ele iniciou matrícula,
     // mesmo se a próxima resposta for só "sim", "Centro" ou um CPF.
@@ -124,7 +134,7 @@ Quando coletar todos os campos, agradeça e diga que um consultor vai entrar em 
       .slice(-8)
       .map((m) => m.content)
       .join('\n');
-    return enrollmentIntent.test(recentText);
+    return enrollmentIntent.test(recentText) || internationalEnrollmentIntent.test(recentText);
   }
 
   // ── Extração de lead dinâmica ─────────────────────────────────────────────────

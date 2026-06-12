@@ -12,6 +12,10 @@ import type {
 export interface EnrollmentFieldsResponse {
   sections: EnrollmentSections
   fields: EnrollmentField[]
+  documentRequirements?: {
+    brasil: string[]
+    internacional: string[]
+  }
 }
 
 export const enrollmentApi = {

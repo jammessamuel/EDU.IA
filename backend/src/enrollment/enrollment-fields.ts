@@ -4,9 +4,9 @@
 // Estes campos alimentam: a validação, o prompt da IA (Fase 2) e o PDF.
 // Por enquanto são fixos p/ Educação; depois viram configuráveis por escola.
 // ============================================================
-import { isValidCpf, isValidEmail, calcAge } from '../common/lib/validation';
+import { isValidCpf, isValidEmail, calcAge, onlyDigits } from '../common/lib/validation';
 
-export type FieldType = 'text' | 'select' | 'cpf' | 'email' | 'date' | 'cep' | 'phone';
+export type FieldType = 'text' | 'select' | 'cpf' | 'email' | 'date' | 'cep' | 'phone' | 'document';
 export type Section =
   | 'pessoais'
   | 'contato'
@@ -24,8 +24,39 @@ export interface EnrollmentField {
   options?: string[];
   required: boolean;
   /** Obrigatório só em certas condições (ex.: responsável quando o aluno é menor). */
-  requiredIf?: 'menor_de_idade';
+  requiredIf?: 'menor_de_idade' | 'brasileiro';
 }
+
+export type SupportedLanguage = 'Português' | 'English' | 'Español';
+
+export const SUPPORTED_LANGUAGES: SupportedLanguage[] = ['Português', 'English', 'Español'];
+
+export const IDENTITY_DOCUMENT_TYPES = [
+  'CPF',
+  'Passaporte',
+  'SSN',
+  'Driver License',
+  'State ID',
+  'NIE',
+  'DNI',
+  'Documento nacional',
+  'Outro',
+];
+
+export const DOCUMENT_REQUIREMENTS = {
+  brasil: [
+    'CPF e RG/CNH ou documento oficial com foto',
+    'Comprovante de residência',
+    'Histórico ou certificado de conclusão do ensino médio',
+    'Foto 3x4 quando a instituição solicitar',
+  ],
+  internacional: [
+    'Passaporte ou documento nacional de identidade',
+    'Visto, permissão de estudo ou comprovante de residência quando aplicável',
+    'Histórico/diploma escolar, com tradução ou validação quando a instituição exigir',
+    'Comprovante de endereço e contato de emergência',
+  ],
+};
 
 export const SECTION_LABELS: Record<Section, string> = {
   pessoais: 'Dados pessoais',
@@ -40,27 +71,30 @@ export const SECTION_LABELS: Record<Section, string> = {
 export const EDUCATION_ENROLLMENT_FIELDS: EnrollmentField[] = [
   // Dados pessoais
   { name: 'studentName', label: 'Nome completo', section: 'pessoais', type: 'text', required: true },
-  { name: 'cpf', label: 'CPF', section: 'pessoais', type: 'cpf', required: true },
-  { name: 'rg', label: 'RG', section: 'pessoais', type: 'text', required: true },
-  { name: 'rgOrgao', label: 'Órgão emissor do RG', section: 'pessoais', type: 'text', required: true },
+  { name: 'preferredLanguage', label: 'Idioma preferido', section: 'pessoais', type: 'select', options: SUPPORTED_LANGUAGES, required: true },
+  { name: 'countryOfResidence', label: 'País de residência', section: 'pessoais', type: 'text', required: true },
+  { name: 'documentType', label: 'Tipo de documento', section: 'pessoais', type: 'select', options: IDENTITY_DOCUMENT_TYPES, required: true },
+  { name: 'documentNumber', label: 'Número do documento', section: 'pessoais', type: 'document', required: true },
+  { name: 'rg', label: 'RG ou documento complementar', section: 'pessoais', type: 'text', required: false, requiredIf: 'brasileiro' },
+  { name: 'rgOrgao', label: 'Órgão emissor do RG', section: 'pessoais', type: 'text', required: false, requiredIf: 'brasileiro' },
   { name: 'birthDate', label: 'Data de nascimento', section: 'pessoais', type: 'date', required: true },
   { name: 'sexo', label: 'Sexo', section: 'pessoais', type: 'select', options: ['Feminino', 'Masculino', 'Outro', 'Prefiro não informar'], required: true },
   { name: 'estadoCivil', label: 'Estado civil', section: 'pessoais', type: 'select', options: ['Solteiro(a)', 'Casado(a)', 'Divorciado(a)', 'Viúvo(a)', 'União estável'], required: true },
   { name: 'nacionalidade', label: 'Nacionalidade', section: 'pessoais', type: 'text', required: true },
-  { name: 'naturalidade', label: 'Naturalidade (cidade/UF)', section: 'pessoais', type: 'text', required: true },
+  { name: 'naturalidade', label: 'Naturalidade (cidade/estado/país)', section: 'pessoais', type: 'text', required: true },
 
   // Contato
   { name: 'email', label: 'E-mail', section: 'contato', type: 'email', required: true },
   { name: 'phone', label: 'Celular', section: 'contato', type: 'phone', required: true },
 
   // Endereço
-  { name: 'cep', label: 'CEP', section: 'endereco', type: 'cep', required: true },
+  { name: 'cep', label: 'CEP / ZIP / código postal', section: 'endereco', type: 'cep', required: true },
   { name: 'logradouro', label: 'Logradouro', section: 'endereco', type: 'text', required: true },
   { name: 'numero', label: 'Número', section: 'endereco', type: 'text', required: true },
   { name: 'complemento', label: 'Complemento', section: 'endereco', type: 'text', required: false },
   { name: 'bairro', label: 'Bairro', section: 'endereco', type: 'text', required: true },
   { name: 'cidade', label: 'Cidade', section: 'endereco', type: 'text', required: true },
-  { name: 'uf', label: 'UF', section: 'endereco', type: 'text', required: true },
+  { name: 'uf', label: 'UF / Estado / Província', section: 'endereco', type: 'text', required: true },
 
   // Acadêmico
   { name: 'course', label: 'Curso', section: 'academico', type: 'select', options: ['Enfermagem', 'Administração', 'Direito', 'Pedagogia'], required: true },
@@ -101,6 +135,45 @@ function normalizeKey(value: string): string {
 }
 
 const SELECT_ALIASES: Record<string, Record<string, string>> = {
+  preferredLanguage: {
+    portugues: 'Português',
+    portuguese: 'Português',
+    pt: 'Português',
+    ptbr: 'Português',
+    english: 'English',
+    ingles: 'English',
+    en: 'English',
+    spanish: 'Español',
+    espanhol: 'Español',
+    espanol: 'Español',
+    espanolcastellano: 'Español',
+    es: 'Español',
+  },
+  documentType: {
+    cpf: 'CPF',
+    passaporte: 'Passaporte',
+    passport: 'Passaporte',
+    pasaporte: 'Passaporte',
+    ssn: 'SSN',
+    socialsecurity: 'SSN',
+    socialsecuritynumber: 'SSN',
+    driverslicense: 'Driver License',
+    driverlicense: 'Driver License',
+    carteira: 'Driver License',
+    cnh: 'Driver License',
+    stateid: 'State ID',
+    stateidentity: 'State ID',
+    nie: 'NIE',
+    dni: 'DNI',
+    nationalid: 'Documento nacional',
+    nationalidentity: 'Documento nacional',
+    documentonacional: 'Documento nacional',
+    identitydocument: 'Documento nacional',
+    documentoidentidade: 'Documento nacional',
+    outro: 'Outro',
+    other: 'Outro',
+    otro: 'Outro',
+  },
   sexo: {
     f: 'Feminino',
     fem: 'Feminino',
@@ -109,10 +182,18 @@ const SELECT_ALIASES: Record<string, Record<string, string>> = {
     masc: 'Masculino',
     masculino: 'Masculino',
     homem: 'Masculino',
+    male: 'Masculino',
+    hombre: 'Masculino',
     mulher: 'Feminino',
+    female: 'Feminino',
+    mujer: 'Feminino',
     outro: 'Outro',
+    other: 'Outro',
+    otro: 'Outro',
     prefironaoinformar: 'Prefiro não informar',
     naoinformar: 'Prefiro não informar',
+    prefernottoanswer: 'Prefiro não informar',
+    prefieronodecirlo: 'Prefiro não informar',
   },
   estadoCivil: {
     solteiro: 'Solteiro(a)',
@@ -126,6 +207,14 @@ const SELECT_ALIASES: Record<string, Record<string, string>> = {
     viuvo: 'Viúvo(a)',
     viuva: 'Viúvo(a)',
     uniaoestavel: 'União estável',
+    single: 'Solteiro(a)',
+    married: 'Casado(a)',
+    divorced: 'Divorciado(a)',
+    widowed: 'Viúvo(a)',
+    soltero: 'Solteiro(a)',
+    soltera: 'Solteiro(a)',
+    viudo: 'Viúvo(a)',
+    viuda: 'Viúvo(a)',
   },
   paymentMethod: {
     pix: 'PIX',
@@ -141,16 +230,50 @@ const FIELD_ALIASES: Record<string, string> = {
   nome: 'studentName',
   nomecompleto: 'studentName',
   aluno: 'studentName',
-  cpfaluno: 'cpf',
+  student: 'studentName',
+  fullname: 'studentName',
+  fullName: 'studentName',
+  language: 'preferredLanguage',
+  idioma: 'preferredLanguage',
+  idiomapreferido: 'preferredLanguage',
+  preferredlanguage: 'preferredLanguage',
+  pais: 'countryOfResidence',
+  paisresidencia: 'countryOfResidence',
+  paisderesidencia: 'countryOfResidence',
+  country: 'countryOfResidence',
+  residencecountry: 'countryOfResidence',
+  countryofresidence: 'countryOfResidence',
+  document: 'documentNumber',
+  documento: 'documentNumber',
+  numerodocumento: 'documentNumber',
+  numerododocumento: 'documentNumber',
+  documentnumber: 'documentNumber',
+  passport: 'documentNumber',
+  passaporte: 'documentNumber',
+  pasaporte: 'documentNumber',
+  ssn: 'documentNumber',
+  nie: 'documentNumber',
+  dni: 'documentNumber',
+  cpf: 'documentNumber',
+  cpfaluno: 'documentNumber',
+  documenttype: 'documentType',
+  tipodocumento: 'documentType',
+  tipodedocumento: 'documentType',
+  identitytype: 'documentType',
   registrogeral: 'rg',
   orgaoemissor: 'rgOrgao',
   orgaoemissorrg: 'rgOrgao',
   rgorgao: 'rgOrgao',
   rgemissor: 'rgOrgao',
+  issuingagency: 'rgOrgao',
+  issuer: 'rgOrgao',
   data: 'birthDate',
   nascimento: 'birthDate',
   datanascimento: 'birthDate',
   datadenascimento: 'birthDate',
+  birthdate: 'birthDate',
+  dateofbirth: 'birthDate',
+  fechanacimiento: 'birthDate',
   gender: 'sexo',
   sex: 'sexo',
   estadocivil: 'estadoCivil',
@@ -159,28 +282,55 @@ const FIELD_ALIASES: Record<string, string> = {
   maritalstatus: 'estadoCivil',
   nacionalidadealuno: 'nacionalidade',
   nationality: 'nacionalidade',
+  nacionalidad: 'nacionalidade',
   cidadenatal: 'naturalidade',
   naturalidadeuf: 'naturalidade',
+  birthplace: 'naturalidade',
+  lugardenacimiento: 'naturalidade',
   telefone: 'phone',
   celular: 'phone',
   whatsapp: 'phone',
+  phone: 'phone',
+  mobile: 'phone',
+  zipcode: 'cep',
+  zip: 'cep',
+  postalcode: 'cep',
+  codigopostal: 'cep',
   rua: 'logradouro',
   endereco: 'logradouro',
+  address: 'logradouro',
+  street: 'logradouro',
+  direccion: 'logradouro',
   numeroendereco: 'numero',
+  number: 'numero',
   estado: 'uf',
+  state: 'uf',
+  province: 'uf',
+  provincia: 'uf',
+  city: 'cidade',
   curso: 'course',
   cursodeinteresse: 'course',
+  course: 'course',
   turno: 'shift',
+  shift: 'shift',
   unidade: 'unit',
+  campus: 'unit',
   formadeingresso: 'ingresso',
+  admissiontype: 'ingresso',
   periodo: 'periodoLetivo',
   periodoletivoingresso: 'periodoLetivo',
+  term: 'periodoLetivo',
   escola: 'escolaAnterior',
   escolaensinomedio: 'escolaAnterior',
+  previousschool: 'escolaAnterior',
+  highschool: 'escolaAnterior',
   anoconclusaoensinomedio: 'anoConclusao',
+  graduationyear: 'anoConclusao',
   pagamento: 'paymentMethod',
   formapagamento: 'paymentMethod',
   formadepagamento: 'paymentMethod',
+  payment: 'paymentMethod',
+  paymentmethod: 'paymentMethod',
 };
 
 function canonicalFieldName(name: string): string {
@@ -199,6 +349,77 @@ function normalizeSelectValue(field: EnrollmentField, value: string): string {
   return option ?? value.trim();
 }
 
+function inferDocumentTypeFromKey(key: string): string | null {
+  if (key.includes('cpf')) return 'CPF';
+  if (key.includes('passport') || key.includes('passaporte') || key.includes('pasaporte')) return 'Passaporte';
+  if (key.includes('ssn') || key.includes('socialsecurity')) return 'SSN';
+  if (key.includes('nie')) return 'NIE';
+  if (key.includes('dni')) return 'DNI';
+  if (key.includes('driver') || key.includes('cnh')) return 'Driver License';
+  if (key.includes('stateid')) return 'State ID';
+  return null;
+}
+
+function isBrazilianApplicant(data: Record<string, unknown>): boolean {
+  const docType = normalizeKey(String(data.documentType ?? ''));
+  const country = normalizeKey(String(data.countryOfResidence ?? ''));
+  const nationality = normalizeKey(String(data.nacionalidade ?? ''));
+  return (
+    docType === 'cpf' ||
+    country === 'brasil' ||
+    country === 'brazil' ||
+    nationality === 'brasileiro' ||
+    nationality === 'brasileira' ||
+    nationality === 'brazilian'
+  );
+}
+
+export function isEnrollmentFieldRequired(field: EnrollmentField, data: Record<string, unknown>): boolean {
+  const idade = data.birthDate ? calcAge(String(data.birthDate)) : null;
+  const menor = idade !== null && idade < 18;
+  if (field.required) return true;
+  if (field.requiredIf === 'menor_de_idade') return menor;
+  if (field.requiredIf === 'brasileiro') return isBrazilianApplicant(data);
+  return false;
+}
+
+function validateIdentityDocument(type: string, value: string): string | null {
+  const normalizedType = normalizeSelectValue(
+    { name: 'documentType', label: 'Tipo de documento', section: 'pessoais', type: 'select', options: IDENTITY_DOCUMENT_TYPES, required: true },
+    type,
+  );
+  const trimmed = value.trim().toUpperCase();
+  const digits = onlyDigits(trimmed);
+
+  if (normalizedType === 'CPF') {
+    return isValidCpf(trimmed) ? null : 'CPF inválido em "Número do documento".';
+  }
+
+  if (normalizedType === 'SSN') {
+    return digits.length === 9 ? null : 'SSN inválido: informe 9 dígitos.';
+  }
+
+  if (normalizedType === 'Passaporte') {
+    return /^[A-Z0-9][A-Z0-9 -]{4,18}$/.test(trimmed)
+      ? null
+      : 'Passaporte inválido: use de 5 a 19 letras/números.';
+  }
+
+  if (normalizedType === 'NIE') {
+    return /^[XYZ][0-9]{7}[A-Z]$/.test(trimmed.replace(/\s|-/g, ''))
+      ? null
+      : 'NIE inválido: use o formato espanhol, ex.: X1234567L.';
+  }
+
+  if (normalizedType === 'DNI') {
+    return /^[0-9]{8}[A-Z]$/.test(trimmed.replace(/\s|-/g, ''))
+      ? null
+      : 'DNI inválido: use 8 números e 1 letra.';
+  }
+
+  return trimmed.length >= 4 ? null : 'Número do documento muito curto.';
+}
+
 export function normalizeEnrollmentData(
   fields: EnrollmentField[],
   data: Record<string, unknown>,
@@ -206,7 +427,18 @@ export function normalizeEnrollmentData(
   const normalized: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(data)) {
-    normalized[canonicalFieldName(key)] = value;
+    const keyNorm = normalizeKey(key);
+    const canonical = canonicalFieldName(key);
+    normalized[canonical] = value;
+    const inferredDocumentType = inferDocumentTypeFromKey(keyNorm);
+    if (canonical === 'documentNumber' && inferredDocumentType && !normalized.documentType) {
+      normalized.documentType = inferredDocumentType;
+    }
+  }
+
+  const documentNumber = String(normalized.documentNumber ?? '').trim();
+  if (documentNumber && !normalized.documentType && isValidCpf(documentNumber)) {
+    normalized.documentType = 'CPF';
   }
 
   for (const field of fields) {
@@ -219,12 +451,18 @@ export function normalizeEnrollmentData(
     if (field.type === 'select') {
       normalized[field.name] = normalizeSelectValue(field, value);
     } else if (field.name === 'uf') {
-      normalized[field.name] = value.toUpperCase().slice(0, 2);
+      normalized[field.name] = value.length <= 3 ? value.toUpperCase() : value;
     } else if (field.type === 'email') {
       normalized[field.name] = value.toLowerCase();
+    } else if (field.type === 'document') {
+      normalized[field.name] = value.toUpperCase();
     } else {
       normalized[field.name] = value;
     }
+  }
+
+  if (String(normalized.documentType ?? '') === 'CPF' && normalized.documentNumber) {
+    normalized.cpf = onlyDigits(String(normalized.documentNumber));
   }
 
   return normalized;
@@ -240,11 +478,9 @@ export function validateEnrollment(
   data: Record<string, unknown>,
 ): ValidationError[] {
   const errors: ValidationError[] = [];
-  const idade = data.birthDate ? calcAge(String(data.birthDate)) : null;
-  const menor = idade !== null && idade < 18;
 
   for (const f of fields) {
-    const obrigatorio = f.required || (f.requiredIf === 'menor_de_idade' && menor);
+    const obrigatorio = isEnrollmentFieldRequired(f, data);
     const val = (data[f.name] ?? '').toString().trim();
 
     if (obrigatorio && !val) {
@@ -255,6 +491,9 @@ export function validateEnrollment(
 
     if (f.type === 'cpf' && !isValidCpf(val)) {
       errors.push({ field: f.name, message: `CPF inválido em "${f.label}".` });
+    } else if (f.type === 'document') {
+      const docError = validateIdentityDocument(String(data.documentType ?? ''), val);
+      if (docError) errors.push({ field: f.name, message: docError });
     } else if (f.type === 'email' && !isValidEmail(val)) {
       errors.push({ field: f.name, message: `E-mail inválido em "${f.label}".` });
     } else if (f.type === 'date' && calcAge(val) === null) {

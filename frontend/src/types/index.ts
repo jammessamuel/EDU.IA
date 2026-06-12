@@ -70,7 +70,7 @@ export interface Metrics {
   byDay: { date: string; count: number }[]
 }
 
-export type EnrollmentFieldType = 'text' | 'select' | 'cpf' | 'email' | 'date' | 'cep' | 'phone'
+export type EnrollmentFieldType = 'text' | 'select' | 'cpf' | 'email' | 'date' | 'cep' | 'phone' | 'document'
 
 export type EnrollmentSection =
   | 'pessoais'
@@ -90,7 +90,7 @@ export interface EnrollmentField {
   type: EnrollmentFieldType
   options?: string[]
   required: boolean
-  requiredIf?: 'menor_de_idade'
+  requiredIf?: 'menor_de_idade' | 'brasileiro'
 }
 
 export interface Enrollment {
@@ -98,7 +98,11 @@ export interface Enrollment {
   number: string
   status: string
   studentName: string
-  cpf: string
+  cpf?: string | null
+  documentType?: string | null
+  documentNumber?: string | null
+  preferredLanguage?: string | null
+  countryOfResidence?: string | null
   email?: string | null
   phone?: string | null
   course?: string | null

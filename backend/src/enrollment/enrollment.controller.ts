@@ -6,7 +6,7 @@ import { EnrollmentChatService, type ChatMessage } from './enrollment-chat.servi
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { EDUCATION_ENROLLMENT_FIELDS, SECTION_LABELS } from './enrollment-fields';
+import { DOCUMENT_REQUIREMENTS, EDUCATION_ENROLLMENT_FIELDS, SECTION_LABELS } from './enrollment-fields';
 
 @Controller('enrollments')
 export class EnrollmentController {
@@ -19,7 +19,7 @@ export class EnrollmentController {
   @Get('fields')
   @RequirePermission('leads:read:school')
   fields() {
-    return { sections: SECTION_LABELS, fields: EDUCATION_ENROLLMENT_FIELDS };
+    return { sections: SECTION_LABELS, fields: EDUCATION_ENROLLMENT_FIELDS, documentRequirements: DOCUMENT_REQUIREMENTS };
   }
 
   @Get('verify/:authCode')

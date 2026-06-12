@@ -142,10 +142,14 @@ model Enrollment {
   status String @default("RASCUNHO") // RASCUNHO, AGUARDANDO_PAGAMENTO, CONFIRMADA, CANCELADA
 
   // Identificação principal (colunas diretas p/ busca e p/ o comprovante)
-  studentName String
-  cpf         String
-  email       String?
-  phone       String?
+  studentName        String
+  cpf                String? // legado/compatibilidade; novo fluxo usa documentType + documentNumber
+  documentType       String?
+  documentNumber     String?
+  preferredLanguage  String?
+  countryOfResidence String?
+  email              String?
+  phone              String?
 
   // Acadêmico (chaves usadas em relatórios)
   course String?
@@ -175,6 +179,7 @@ model Enrollment {
   @@unique([schoolId, number])
   @@index([schoolId])
   @@index([cpf])
+  @@index([documentNumber])
   @@map("enrollments")
 }
 
