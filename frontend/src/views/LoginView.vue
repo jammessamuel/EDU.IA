@@ -128,15 +128,18 @@ const panel = computed(() =>
 
 const liveSteps = [
   { label: 'Lead novo', meta: 'WhatsApp', value: '12s' },
-  { label: 'Dados validados', meta: 'CPF e e-mail', value: 'ok' },
+  { label: 'Dados validados', meta: 'CPF/passaporte', value: 'ok' },
   { label: 'Matrícula pronta', meta: 'PDF com QR', value: '100%' },
 ]
 
 const liveLeads = [
   { name: 'Juliana', detail: 'Direito · noite', status: 'Quente' },
-  { name: 'Bruno', detail: 'Administração · centro', status: 'Follow-up' },
-  { name: 'Tatiane', detail: 'Enfermagem · manhã', status: 'Qualificado' },
+  { name: 'Bruno', detail: 'Administração · centro', status: 'PT' },
+  { name: 'Emily', detail: 'Passport · English', status: 'EN' },
 ]
+
+const onboardingLanguages = ['Português', 'English', 'Español']
+const onboardingDocuments = ['CPF/RG', 'Passaporte', 'SSN', 'NIE/DNI']
 </script>
 
 <template>
@@ -255,6 +258,27 @@ const liveLeads = [
               <div class="register-checks">
                 <span>Workspace configurado para {{ selectedVertical.name }}</span>
                 <span>Você pode ajustar campos e etapas depois em Configurações</span>
+              </div>
+
+              <div class="international-setup">
+                <div>
+                  <strong>Atendimento internacional incluído</strong>
+                  <span>A IA detecta o idioma do aluno e adapta a matrícula para brasileiro ou estrangeiro.</span>
+                </div>
+                <div class="international-setup__grid">
+                  <section>
+                    <small>Idiomas</small>
+                    <p>
+                      <b v-for="language in onboardingLanguages" :key="language">{{ language }}</b>
+                    </p>
+                  </section>
+                  <section>
+                    <small>Documentos</small>
+                    <p>
+                      <b v-for="document in onboardingDocuments" :key="document">{{ document }}</b>
+                    </p>
+                  </section>
+                </div>
               </div>
 
               <label class="field">
@@ -724,6 +748,76 @@ const liveLeads = [
 .register-checks span:first-child {
   color: var(--ink);
   font-weight: 800;
+}
+
+.international-setup {
+  display: grid;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--green-800) 22%, var(--line));
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--green-800) 10%, transparent), transparent),
+    var(--white);
+  box-shadow: var(--shadow-xs);
+}
+
+.international-setup strong,
+.international-setup span {
+  display: block;
+}
+
+.international-setup strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.international-setup span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.international-setup__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.international-setup__grid section {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cream-2) 74%, transparent);
+}
+
+.international-setup__grid small {
+  display: block;
+  color: var(--green-800);
+  font-size: 10.5px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.international-setup__grid p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.international-setup__grid b {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--green-800) 11%, var(--white));
+  color: var(--ink);
+  font-size: 10.5px;
+  line-height: 1;
+  font-weight: 900;
 }
 
 /* ── grid de verticais ── */
@@ -1285,6 +1379,10 @@ const liveLeads = [
 
   .vgrid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .international-setup__grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
