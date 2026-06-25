@@ -19,6 +19,15 @@ export class PostSaleController {
     return this.service.listIntegrationLogs(user.schoolId);
   }
 
+  @Get('students/:studentKey/profile')
+  @RequirePermission('leads:read:school')
+  studentProfile(
+    @Param('studentKey') studentKey: string,
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.studentProfile(user.schoolId, studentKey);
+  }
+
   @Patch('students/:studentKey/status')
   @RequirePermission('leads:create:school')
   updateStatus(

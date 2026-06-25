@@ -6,6 +6,7 @@ import type {
   PostSaleOverview,
   PostSaleRulerResponse,
   PostSaleSimulatedMessageResponse,
+  PostSaleStudentProfile,
 } from '@/types'
 
 export const postSalesApi = {
@@ -15,6 +16,10 @@ export const postSalesApi = {
 
   integrationLogs(): Promise<PostSaleIntegrationLog[]> {
     return apiClient.get<PostSaleIntegrationLog[]>('/post-sales/integration-logs').then((res) => res.data)
+  },
+
+  studentProfile(studentId: string): Promise<PostSaleStudentProfile> {
+    return apiClient.get<PostSaleStudentProfile>(`/post-sales/students/${studentId}/profile`).then((res) => res.data)
   },
 
   updateStatus(studentId: string, action: PostSaleAction, note?: string): Promise<PostSaleOverview> {

@@ -147,6 +147,71 @@ export class PostSaleService {
     return this.integrationLogs.recent(schoolId, 40);
   }
 
+  async studentProfile(schoolId: string, studentKey: string): Promise<Record<string, unknown>> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
+    const [enrollment, storedEvents, storedTasks, logs] = await Promise.all([
+      student.enrollmentId
+        ? this.prisma.enrollment.findFirst({
+            where: { id: student.enrollmentId, schoolId },
+            include: { documents: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.postSaleEvent.findMany({
+        where: { schoolId, studentKey: student.id },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+      }),
+      this.prisma.postSaleTask.findMany({
+        where: { schoolId, studentKey: student.id },
+        orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
+        take: 40,
+      }),
+      this.integrationLogs.forStudent(schoolId, student.id, student.enrollmentId, 60),
+    ]);
+    const course = this.profileCourse(student, runtimeConfig);
+    const paymentLogs = logs.filter((log) => log.service === 'PAGAMENTO');
+    const contractLogs = logs.filter((log) => log.service === 'CONTRATO');
+    const documentLogs = logs.filter((log) => log.service === 'DOCUMENTOS');
+    const messages = logs.filter((log) => log.service === 'WHATSAPP');
+    const enrollmentData = this.safeJson(enrollment?.data);
+
+    return {
+      generatedAt: new Date(),
+      student,
+      enrollment: enrollment ? this.serializeEnrollment(enrollment) : null,
+      personalData: this.personalDataRows(student, enrollment, enrollmentData),
+      course,
+      documents: {
+        checklist: student.checklist,
+        requirements: this.documentRequirementRows(student, enrollment, runtimeConfig),
+        uploaded: (enrollment?.documents ?? []).map((document) => this.serializeEnrollmentDocument(document)),
+        lastLog: documentLogs[0] ?? null,
+      },
+      payment: {
+        status: student.paymentStatus,
+        amount: enrollment?.paymentAmount != null ? Number(enrollment.paymentAmount) : course?.enrollmentFee ?? null,
+        method: enrollment?.paymentMethod ?? null,
+        reference: enrollment?.paymentRef ?? null,
+        lastLog: paymentLogs[0] ?? null,
+      },
+      contract: {
+        status: student.contractStatus,
+        lastLog: contractLogs[0] ?? null,
+      },
+      messages,
+      timeline: this.profileTimeline(student, enrollment, storedEvents, storedTasks),
+      nextActions: this.profileActions(student, storedTasks),
+      ruler: student.ruler,
+      risk: {
+        score: student.riskScore,
+        level: student.riskLevel,
+        label: student.statusLabel,
+        reasons: this.riskReasons(student),
+      },
+    };
+  }
+
   async updateStudentStatus(
     schoolId: string,
     studentKey: string,
@@ -625,6 +690,204 @@ export class PostSaleService {
       enrollmentId: student.enrollmentId,
       studentName: student.studentName,
     };
+  }
+
+  private profileCourse(student: LifecycleStudent, config: RuntimeSchoolConfig) {
+    const course = config.courses.find((item) => item.name === student.course) ?? null;
+    if (course) return course;
+    return {
+      id: null,
+      schoolId: config.profile.schoolId,
+      name: student.course,
+      description: 'Curso registrado na matrícula.',
+      duration: null,
+      modality: null,
+      shifts: [],
+      enrollmentFee: null,
+      monthlyFee: null,
+      cashDiscountPercent: config.commercial.cashDiscountPercent,
+      active: true,
+      updatedAt: new Date(),
+    };
+  }
+
+  private serializeEnrollment(enrollment: any) {
+    const data = this.safeJson(enrollment.data);
+    return {
+      id: enrollment.id,
+      number: enrollment.number,
+      status: enrollment.status,
+      studentName: enrollment.studentName,
+      cpf: enrollment.cpf,
+      documentType: enrollment.documentType,
+      documentNumber: enrollment.documentNumber,
+      preferredLanguage: enrollment.preferredLanguage,
+      countryOfResidence: enrollment.countryOfResidence,
+      email: enrollment.email,
+      phone: enrollment.phone,
+      course: enrollment.course,
+      shift: enrollment.shift,
+      unit: enrollment.unit,
+      data,
+      paymentStatus: enrollment.paymentStatus,
+      paymentMethod: enrollment.paymentMethod,
+      paymentAmount: enrollment.paymentAmount != null ? Number(enrollment.paymentAmount) : null,
+      paymentRef: enrollment.paymentRef,
+      authCode: enrollment.authCode,
+      createdAt: enrollment.createdAt,
+      confirmedAt: enrollment.confirmedAt,
+    };
+  }
+
+  private serializeEnrollmentDocument(document: any) {
+    return {
+      id: document.id,
+      enrollmentId: document.enrollmentId,
+      type: document.type,
+      fileName: document.fileName,
+      storagePath: document.storagePath,
+      mimeType: document.mimeType,
+      size: document.size,
+      uploadedAt: document.uploadedAt,
+    };
+  }
+
+  private personalDataRows(student: LifecycleStudent, enrollment: any | null, data: Record<string, unknown>) {
+    const rows = [
+      { section: 'Identificação', label: 'Nome completo', value: enrollment?.studentName ?? student.studentName },
+      { section: 'Identificação', label: 'Documento', value: this.documentLabel(enrollment, data) },
+      { section: 'Identificação', label: 'País de residência', value: enrollment?.countryOfResidence ?? data.countryOfResidence },
+      { section: 'Identificação', label: 'Idioma preferido', value: enrollment?.preferredLanguage ?? data.preferredLanguage },
+      { section: 'Contato', label: 'E-mail', value: enrollment?.email ?? data.email },
+      { section: 'Contato', label: 'Telefone', value: enrollment?.phone ?? data.phone },
+      { section: 'Dados pessoais', label: 'Nascimento', value: data.birthDate },
+      { section: 'Dados pessoais', label: 'Sexo', value: data.gender ?? data.sexo },
+      { section: 'Dados pessoais', label: 'Nacionalidade', value: data.nationality ?? data.nacionalidade },
+      { section: 'Endereço', label: 'CEP', value: data.cep },
+      { section: 'Endereço', label: 'Endereço', value: this.addressLine(data) },
+      { section: 'Responsável', label: 'Responsável', value: data.respName },
+      { section: 'Responsável', label: 'CPF do responsável', value: data.respCpf },
+    ];
+    return rows.filter((row) => String(row.value ?? '').trim()).map((row) => ({
+      section: row.section,
+      label: row.label,
+      value: String(row.value ?? '').trim(),
+    }));
+  }
+
+  private documentRequirementRows(student: LifecycleStudent, enrollment: any | null, config: RuntimeSchoolConfig) {
+    const audiences = this.documentAudiences(student, enrollment);
+    const uploadedDocuments = enrollment?.documents ?? [];
+    const hasPackage = uploadedDocuments.some((document) => this.normalizeKey(document.type) === 'pacotecompleto');
+
+    return config.documents
+      .filter((requirement) => audiences.includes(requirement.audience))
+      .map((requirement) => {
+        const uploaded = uploadedDocuments.find((document) => this.sameDocumentType(document.type, requirement.documentType));
+        return {
+          audience: requirement.audience,
+          documentType: requirement.documentType,
+          instructions: requirement.instructions,
+          required: requirement.required,
+          status: hasPackage || uploaded ? 'RECEBIDO' : requirement.required ? 'PENDENTE' : 'OPCIONAL',
+          fileName: uploaded?.fileName ?? (hasPackage ? 'Pacote completo enviado' : null),
+          uploadedAt: uploaded?.uploadedAt ?? null,
+        };
+      });
+  }
+
+  private documentAudiences(student: LifecycleStudent, enrollment: any | null) {
+    const data = this.safeJson(enrollment?.data);
+    const docType = `${enrollment?.documentType ?? data.documentType ?? student.documentStatus}`;
+    const country = `${enrollment?.countryOfResidence ?? data.countryOfResidence ?? ''}`;
+    const isInternational =
+      /passaporte|passport|ssn|driver|state id|nie|dni|estrangeir|internacional/i.test(docType) ||
+      (!!country && !/brasil|brazil/i.test(country));
+    const audiences = [isInternational ? 'estrangeiro' : 'brasileiro'];
+    const age = data.birthDate ? this.ageFromBirthDate(String(data.birthDate)) : null;
+    if (age !== null && age < 18) audiences.push('menor_idade');
+    return audiences;
+  }
+
+  private profileTimeline(student: LifecycleStudent, enrollment: any | null, storedEvents: any[], storedTasks: any[]) {
+    const entries: TimelineEvent[] = [
+      {
+        id: `profile-${student.id}-matricula`,
+        type: 'MATRICULA',
+        title: 'Matrícula registrada',
+        description: enrollment
+          ? `Matrícula ${enrollment.number} criada para ${student.studentName}.`
+          : `${student.studentName} entrou na jornada de pós-venda como aluno de exemplo.`,
+        createdAt: student.startedAt,
+        source: 'system',
+      },
+    ];
+
+    for (const document of enrollment?.documents ?? []) {
+      entries.push({
+        id: `profile-${document.id}-upload`,
+        type: 'DOCUMENTO_UPLOAD',
+        title: 'Documento recebido',
+        description: `${document.type}: ${document.fileName}`,
+        createdAt: document.uploadedAt,
+        source: 'manual',
+      });
+    }
+
+    for (const task of storedTasks) {
+      entries.push({
+        id: `profile-${task.id}-task`,
+        type: 'TASK_CREATED',
+        title: task.status === 'ABERTA' ? 'Tarefa em aberto' : 'Tarefa registrada',
+        description: `${task.title} (${task.ownerTeam})`,
+        createdAt: task.createdAt,
+        source: 'manual',
+      });
+    }
+
+    entries.push(...storedEvents.map((event) => this.serializeEvent(event)));
+    return entries.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  private profileActions(student: LifecycleStudent, storedTasks: any[]) {
+    const recommended = {
+      id: `recommended-${student.id}`,
+      studentId: student.id,
+      title: student.nextAction,
+      studentName: student.studentName,
+      ownerTeam: student.ownerTeam,
+      priority: student.riskLevel === 'CRITICO' ? 'Urgente' : student.riskLevel === 'ALTO' ? 'Alta' : 'Normal',
+      dueAt: student.upcomingDueAt,
+      automation: this.automationFor(student.status),
+      status: student.status === 'ONBOARDING_CONCLUIDO' ? 'CONCLUIDA' : 'RECOMENDADA',
+      source: 'automatic',
+    };
+    const tasks = storedTasks.map((task) => ({
+      id: task.id,
+      studentId: task.studentKey,
+      title: task.title,
+      studentName: task.studentName,
+      ownerTeam: task.ownerTeam,
+      priority: task.priority,
+      dueAt: task.dueAt,
+      automation: this.cleanVisibleText(task.automation ?? 'Criada pela equipe'),
+      status: task.status,
+      source: 'manual',
+    }));
+    return [recommended, ...tasks];
+  }
+
+  private riskReasons(student: LifecycleStudent) {
+    const reasons: string[] = [];
+    if (student.status === 'DOCUMENTACAO_PENDENTE') reasons.push('Documentação ainda bloqueia contrato e acesso.');
+    if (student.status === 'CONTRATO_PENDENTE') reasons.push('Contrato não está concluído.');
+    if (student.status === 'PAGAMENTO_PENDENTE') reasons.push('Pagamento da matrícula está pendente.');
+    if (student.status === 'ACESSO_PENDENTE') reasons.push('Acesso ao AVA ainda não foi liberado.');
+    if (student.status === 'RISCO_EVASAO') reasons.push('Aluno precisa de intervenção de permanência.');
+    if (student.ruler.pendingCount > 0) reasons.push(`${student.ruler.pendingCount} mensagem(ns) da régua estão pendentes.`);
+    if (student.daysSinceEnrollment >= 7 && student.progress < 80) reasons.push('Jornada com mais de 7 dias e avanço abaixo do esperado.');
+    if (!reasons.length) reasons.push('Sem bloqueios críticos no momento.');
+    return reasons;
   }
 
   private async saveStatePatch(
@@ -1113,6 +1376,59 @@ export class PostSaleService {
 
   private firstName(student: LifecycleStudent) {
     return student.studentName.trim().split(/\s+/)[0] || student.studentName;
+  }
+
+  private documentLabel(enrollment: any | null, data: Record<string, unknown>) {
+    const type = enrollment?.documentType ?? data.documentType ?? (enrollment?.cpf ? 'CPF' : null);
+    const number = enrollment?.documentNumber ?? data.documentNumber ?? enrollment?.cpf;
+    if (!type && !number) return '';
+    return [type, number].filter(Boolean).join(' ');
+  }
+
+  private addressLine(data: Record<string, unknown>) {
+    const parts = [
+      data.address ?? data.logradouro,
+      data.addressNumber ?? data.numero,
+      data.complement,
+      data.neighborhood ?? data.bairro,
+      data.city ?? data.cidade,
+      data.state ?? data.uf,
+    ];
+    return parts.filter((part) => String(part ?? '').trim()).join(', ');
+  }
+
+  private sameDocumentType(left: string, right: string) {
+    const a = this.normalizeKey(left);
+    const b = this.normalizeKey(right);
+    return a === b || a.includes(b) || b.includes(a);
+  }
+
+  private normalizeKey(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/gi, '')
+      .toLowerCase();
+  }
+
+  private ageFromBirthDate(value: string) {
+    const birth = new Date(value);
+    if (Number.isNaN(birth.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const monthDiff = now.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age -= 1;
+    return age;
+  }
+
+  private safeJson(value: string | null | undefined): Record<string, unknown> {
+    if (!value) return {};
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
   }
 
   private cleanVisibleText(text: string, student?: LifecycleStudent) {

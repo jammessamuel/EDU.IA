@@ -33,6 +33,26 @@ export class IntegrationLogService {
     return logs.map((log) => this.serialize(log));
   }
 
+  async forStudent(
+    schoolId: string,
+    studentKey: string,
+    enrollmentId?: string | null,
+    take = 40,
+  ): Promise<IntegrationLogDto[]> {
+    const logs = await this.prisma.integrationLog.findMany({
+      where: {
+        schoolId,
+        OR: [
+          { studentKey },
+          ...(enrollmentId ? [{ enrollmentId }] : []),
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+    return logs.map((log) => this.serialize(log));
+  }
+
   private serialize(log: any): IntegrationLogDto {
     return {
       id: log.id,

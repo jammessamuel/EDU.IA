@@ -474,6 +474,9 @@ function actionLabel(action: string) {
                 <span>{{ selectedStudent.statusLabel }}</span>
                 <h2>{{ selectedStudent.studentName }}</h2>
                 <p>{{ selectedStudent.course }}</p>
+                <button type="button" class="profile-link" @click="router.push(`/post-sales/students/${selectedStudent.id}`)">
+                  Abrir ficha completa
+                </button>
               </div>
 
               <div class="risk-box" :class="`risk-box--${selectedStudent.riskLevel.toLowerCase()}`">
@@ -1273,6 +1276,23 @@ function actionLabel(action: string) {
 .student-detail__head p {
   color: var(--muted);
   font-size: 13px;
+}
+
+.profile-link {
+  min-height: 34px;
+  margin-top: 10px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #fff;
+  background: var(--brand);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.profile-link:hover {
+  background: var(--brand-strong);
 }
 
 .risk-box {

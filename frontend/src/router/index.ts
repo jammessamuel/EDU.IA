@@ -40,6 +40,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/post-sales/students/:studentId',
+      name: 'post-sale-student-profile',
+      component: () => import('../views/PostSaleStudentProfileView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/validar/:authCode',
       name: 'validate-enrollment',
       component: () => import('../views/ValidateEnrollmentView.vue'),

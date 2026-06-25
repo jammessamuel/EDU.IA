@@ -324,6 +324,72 @@ export interface PostSaleRulerResponse {
   overview: PostSaleOverview
 }
 
+export interface PostSaleProfileField {
+  section: string
+  label: string
+  value: string
+}
+
+export interface PostSaleProfileCourse {
+  id: string | null
+  schoolId?: string
+  name: string
+  description: string | null
+  duration: string | null
+  modality: string | null
+  shifts: string[]
+  enrollmentFee: number | null
+  monthlyFee: number | null
+  cashDiscountPercent: number | null
+  active: boolean
+  updatedAt: string
+}
+
+export interface PostSaleProfileDocumentRequirement {
+  audience: string
+  documentType: string
+  instructions: string
+  required: boolean
+  status: 'RECEBIDO' | 'PENDENTE' | 'OPCIONAL' | string
+  fileName: string | null
+  uploadedAt: string | null
+}
+
+export interface PostSaleStudentProfile {
+  generatedAt: string
+  student: PostSaleStudent
+  enrollment: Enrollment | null
+  personalData: PostSaleProfileField[]
+  course: PostSaleProfileCourse | null
+  documents: {
+    checklist: PostSaleChecklistStep[]
+    requirements: PostSaleProfileDocumentRequirement[]
+    uploaded: EnrollmentDocument[]
+    lastLog: PostSaleIntegrationLog | null
+  }
+  payment: {
+    status: string
+    amount: number | null
+    method: string | null
+    reference: string | null
+    lastLog: PostSaleIntegrationLog | null
+  }
+  contract: {
+    status: string
+    lastLog: PostSaleIntegrationLog | null
+  }
+  messages: PostSaleIntegrationLog[]
+  timeline: PostSaleTimelineEvent[]
+  nextActions: PostSaleTask[]
+  ruler: PostSaleRulerStatus
+  risk: {
+    score: number
+    level: PostSaleRiskLevel
+    label: string
+    reasons: string[]
+  }
+}
+
 export interface SchoolProfileConfig {
   id: string
   schoolId: string
