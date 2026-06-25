@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // "native" = a minha máquina (dev); "rhel-openssl-3.0.x" = o runtime serverless da Vercel.
   // Sem o target rhel o Prisma não acha o query engine em produção e quebra no boot.
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
@@ -23,8 +23,8 @@ datasource db {
 }
 
 model Vertical {
-  id               String  @id @default(cuid())
-  slug             String  @unique
+  id               String @id @default(cuid())
+  slug             String @unique
   name             String
   icon             String
   color            String
@@ -39,21 +39,22 @@ model Vertical {
 }
 
 model School {
-  id          String   @id @default(cuid())
-  name        String
-  subdomain   String   @unique
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  subdomain String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 
   chatbotName  String  @default("IA Atendente")
   verticalId   String?
   customFields String?
   customStages String?
 
-  vertical Vertical? @relation(fields: [verticalId], references: [id])
-  users    User[]
-  leads    Lead[]
-  enrollments Enrollment[]
+  vertical        Vertical?        @relation(fields: [verticalId], references: [id])
+  users           User[]
+  leads           Lead[]
+  enrollments     Enrollment[]
+  integrationLogs IntegrationLog[]
 
   @@map("schools")
 }
@@ -111,8 +112,8 @@ model User {
   simpleLanguage Boolean @default(false)
   fontScale      Float   @default(1.0)
 
-  school School  @relation(fields: [schoolId], references: [id])
-  role   Role?   @relation(fields: [roleId], references: [id])
+  school School @relation(fields: [schoolId], references: [id])
+  role   Role?  @relation(fields: [roleId], references: [id])
 
   @@unique([schoolId, email])
   @@index([schoolId])
@@ -233,19 +234,19 @@ model PostSaleState {
 }
 
 model PostSaleTask {
-  id          String   @id @default(cuid())
-  schoolId    String
-  studentKey  String
+  id           String    @id @default(cuid())
+  schoolId     String
+  studentKey   String
   enrollmentId String?
-  studentName String
-  title       String
-  ownerTeam   String
-  priority    String   @default("Normal")
-  status      String   @default("ABERTA")
-  automation  String?
-  dueAt       DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  studentName  String
+  title        String
+  ownerTeam    String
+  priority     String    @default("Normal")
+  status       String    @default("ABERTA")
+  automation   String?
+  dueAt        DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([schoolId])
   @@index([studentKey])
@@ -254,19 +255,41 @@ model PostSaleTask {
 }
 
 model PostSaleEvent {
-  id          String   @id @default(cuid())
-  schoolId    String
-  studentKey  String
+  id           String   @id @default(cuid())
+  schoolId     String
+  studentKey   String
   enrollmentId String?
-  studentName String
-  type        String
-  title       String
-  description String
-  metadata    String   @default("{}")
-  createdAt   DateTime @default(now())
+  studentName  String
+  type         String
+  title        String
+  description  String
+  metadata     String   @default("{}")
+  createdAt    DateTime @default(now())
 
   @@index([schoolId])
   @@index([studentKey])
   @@index([enrollmentId])
   @@map("post_sale_events")
+}
+
+model IntegrationLog {
+  id              String   @id @default(cuid())
+  schoolId        String
+  studentKey      String?
+  enrollmentId    String?
+  studentName     String?
+  service         String
+  action          String
+  status          String
+  requestPayload  String   @default("{}")
+  responsePayload String   @default("{}")
+  visibleMessage  String
+  createdAt       DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, createdAt])
+  @@index([studentKey])
+  @@index([enrollmentId])
+  @@map("integration_logs")
 }

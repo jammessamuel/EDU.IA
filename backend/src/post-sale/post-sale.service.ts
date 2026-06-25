@@ -1,4 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { FakeContractAction, FakeContractService } from '../integrations/fake-contract.service';
+import { FakeDocumentAction, FakeDocumentService } from '../integrations/fake-document.service';
+import { FakePaymentAction, FakePaymentService } from '../integrations/fake-payment.service';
+import { FakeWhatsAppService } from '../integrations/fake-whatsapp.service';
+import { IntegrationLogService } from '../integrations/integration-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 type LifecycleStatus =
@@ -63,7 +68,14 @@ interface LifecycleStudent {
 
 @Injectable()
 export class PostSaleService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private integrationLogs: IntegrationLogService,
+    private fakeWhatsApp: FakeWhatsAppService,
+    private fakePayment: FakePaymentService,
+    private fakeContract: FakeContractService,
+    private fakeDocument: FakeDocumentService,
+  ) {}
 
   async overview(schoolId: string): Promise<Record<string, unknown>> {
     const enrollments = await this.prisma.enrollment.findMany({
@@ -77,7 +89,7 @@ export class PostSaleService {
     const demoStudents = this.demoStudents().slice(0, Math.max(0, 6 - students.length));
     const baseLifecycle = [...students, ...demoStudents];
     const studentKeys = baseLifecycle.map((student) => student.id);
-    const [states, events, storedTasks] = await Promise.all([
+    const [states, events, storedTasks, integrationLogs] = await Promise.all([
       this.prisma.postSaleState.findMany({ where: { schoolId, studentKey: { in: studentKeys } } }),
       this.prisma.postSaleEvent.findMany({
         where: { schoolId, studentKey: { in: studentKeys } },
@@ -89,6 +101,7 @@ export class PostSaleService {
         orderBy: [{ createdAt: 'desc' }],
         take: 24,
       }),
+      this.integrationLogs.recent(schoolId, 16),
     ]);
     const stateByStudent = new Map(states.map((state) => [state.studentKey, state]));
     const eventsByStudent = this.groupByStudent(events);
@@ -109,7 +122,12 @@ export class PostSaleService {
       tasks: this.tasks(lifecycle, storedTasks),
       automations: this.automations(),
       messageTemplates: this.messageTemplates(),
+      integrationLogs,
     };
+  }
+
+  listIntegrationLogs(schoolId: string): Promise<unknown> {
+    return this.integrationLogs.recent(schoolId, 40);
   }
 
   async updateStudentStatus(
@@ -184,18 +202,94 @@ export class PostSaleService {
     schoolId: string,
     studentKey: string,
     input: { message?: string },
-  ): Promise<{ message: string; overview: unknown }> {
+  ): Promise<{ message: string; log: unknown; overview: unknown }> {
     const student = await this.findStudent(schoolId, studentKey);
     const message = this.cleanVisibleText(input.message?.trim() || this.suggestedMessage(student), student);
+    const whatsapp = await this.fakeWhatsApp.sendMessage({
+      context: this.integrationContext(schoolId, student),
+      message,
+    });
 
     await this.recordEvent(schoolId, student, {
       type: 'WHATSAPP_SIMULADO',
-      title: 'Prévia de WhatsApp gerada',
+      title: 'WhatsApp fake registrado',
       description: message,
-      metadata: { channel: 'WhatsApp', simulated: true },
+      metadata: { channel: 'WhatsApp', fake: true, providerMessageId: whatsapp.providerMessageId, logId: whatsapp.log.id },
     });
 
-    return { message, overview: await this.overview(schoolId) };
+    return { message, log: whatsapp.log, overview: await this.overview(schoolId) };
+  }
+
+  async simulatePayment(
+    schoolId: string,
+    studentKey: string,
+    input: { action?: FakePaymentAction; amount?: number },
+  ): Promise<unknown> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const action = input.action ?? 'MARK_PAID';
+    const result = await this.fakePayment.simulate({
+      context: this.integrationContext(schoolId, student),
+      action,
+      amount: input.amount,
+    });
+
+    await this.saveStatePatch(schoolId, student, this.paymentPatch(action, student, result.paymentStatus));
+    await this.recordEvent(schoolId, student, {
+      type: 'PAGAMENTO_FAKE',
+      title: `Pagamento fake: ${result.paymentStatus}`,
+      description: result.log.visibleMessage,
+      metadata: { action, paymentRef: result.paymentRef, logId: result.log.id },
+    });
+
+    return { result, overview: await this.overview(schoolId) };
+  }
+
+  async simulateContract(
+    schoolId: string,
+    studentKey: string,
+    input: { action?: FakeContractAction },
+  ): Promise<unknown> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const action = input.action ?? 'SEND';
+    const result = await this.fakeContract.simulate({
+      context: this.integrationContext(schoolId, student),
+      action,
+    });
+
+    await this.saveStatePatch(schoolId, student, this.contractPatch(action, student, result.contractStatus));
+    await this.recordEvent(schoolId, student, {
+      type: 'CONTRATO_FAKE',
+      title: `Contrato fake: ${result.contractStatus}`,
+      description: result.log.visibleMessage,
+      metadata: { action, contractUrl: result.contractUrl, logId: result.log.id },
+    });
+
+    return { result, overview: await this.overview(schoolId) };
+  }
+
+  async simulateDocument(
+    schoolId: string,
+    studentKey: string,
+    input: { action?: FakeDocumentAction; documentType?: string; reason?: string },
+  ): Promise<unknown> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const action = input.action ?? 'RECEIVE';
+    const result = await this.fakeDocument.simulate({
+      context: this.integrationContext(schoolId, student),
+      action,
+      documentType: input.documentType,
+      reason: input.reason,
+    });
+
+    await this.saveStatePatch(schoolId, student, this.documentPatch(action, student, result.documentStatus));
+    await this.recordEvent(schoolId, student, {
+      type: 'DOCUMENTO_FAKE',
+      title: `Documento fake: ${result.documentStatus}`,
+      description: result.log.visibleMessage,
+      metadata: { action, documentType: input.documentType, logId: result.log.id },
+    });
+
+    return { result, overview: await this.overview(schoolId) };
   }
 
   private fromEnrollment(enrollment: any, index: number): LifecycleStudent {
@@ -459,6 +553,116 @@ export class PostSaleService {
     const student = overview.students?.find((item: LifecycleStudent) => item.id === studentKey);
     if (!student) throw new BadRequestException('Aluno não encontrado no pós-venda.');
     return student;
+  }
+
+  private integrationContext(schoolId: string, student: LifecycleStudent) {
+    return {
+      schoolId,
+      studentKey: student.id,
+      enrollmentId: student.enrollmentId,
+      studentName: student.studentName,
+    };
+  }
+
+  private async saveStatePatch(
+    schoolId: string,
+    student: LifecycleStudent,
+    patch: Record<string, string | number | null | undefined>,
+  ) {
+    await this.prisma.postSaleState.upsert({
+      where: { schoolId_studentKey: { schoolId, studentKey: student.id } },
+      create: {
+        schoolId,
+        studentKey: student.id,
+        enrollmentId: student.enrollmentId,
+        ...patch,
+      },
+      update: patch,
+    });
+  }
+
+  private paymentPatch(action: FakePaymentAction, student: LifecycleStudent, paymentStatus: string) {
+    switch (action) {
+      case 'MARK_PAID':
+        return this.actionPatch('PAYMENT_PAID', student);
+      case 'FAIL':
+        return {
+          status: 'PAGAMENTO_PENDENTE',
+          paymentStatus,
+          nextAction: 'Reenviar cobrança ou oferecer outra forma de pagamento',
+          ownerTeam: 'Financeiro',
+          riskScore: Math.min(100, student.riskScore + 8),
+        };
+      case 'REFUND':
+        return {
+          status: 'PAGAMENTO_PENDENTE',
+          paymentStatus,
+          nextAction: 'Confirmar nova forma de pagamento',
+          ownerTeam: 'Financeiro',
+          riskScore: Math.min(100, student.riskScore + 10),
+        };
+      case 'PENDING':
+        return {
+          status: 'PAGAMENTO_PENDENTE',
+          paymentStatus,
+          nextAction: 'Acompanhar cobrança em aberto',
+          ownerTeam: 'Financeiro',
+          riskScore: Math.min(100, student.riskScore + 3),
+        };
+      default:
+        throw new BadRequestException('Ação de pagamento fake não suportada.');
+    }
+  }
+
+  private contractPatch(action: FakeContractAction, student: LifecycleStudent, contractStatus: string) {
+    switch (action) {
+      case 'SEND':
+        return this.actionPatch('CONTRACT_SENT', student);
+      case 'VIEW':
+        return {
+          status: 'CONTRATO_PENDENTE',
+          contractStatus,
+          nextAction: 'Aguardar assinatura do contrato',
+          ownerTeam: 'Secretaria',
+          riskScore: Math.min(student.riskScore, 35),
+        };
+      case 'SIGN':
+        return this.actionPatch('CONTRACT_SIGNED', student);
+      case 'EXPIRE':
+        return {
+          status: 'CONTRATO_PENDENTE',
+          contractStatus,
+          nextAction: 'Reenviar link de assinatura',
+          ownerTeam: 'Secretaria',
+          riskScore: Math.min(100, student.riskScore + 8),
+        };
+      default:
+        throw new BadRequestException('Ação de contrato fake não suportada.');
+    }
+  }
+
+  private documentPatch(action: FakeDocumentAction, student: LifecycleStudent, documentStatus: string) {
+    switch (action) {
+      case 'RECEIVE':
+        return this.actionPatch('DOCUMENTS_RECEIVED', student);
+      case 'APPROVE':
+        return {
+          ...this.actionPatch('DOCUMENTS_RECEIVED', student),
+          documentStatus,
+        };
+      case 'REJECT':
+        return {
+          status: 'DOCUMENTACAO_PENDENTE',
+          documentStatus,
+          contractStatus: 'Aguardando documentos',
+          accessStatus: 'Bloqueado',
+          nextAction: 'Solicitar reenvio de documentos',
+          ownerTeam: 'Secretaria',
+          riskScore: Math.min(100, student.riskScore + 8),
+        };
+      default:
+        throw new BadRequestException('Ação de documento fake não suportada.');
+    }
   }
 
   private actionPatch(action: PostSaleAction | undefined, student: LifecycleStudent) {

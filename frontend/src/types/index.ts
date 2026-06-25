@@ -261,6 +261,21 @@ export interface PostSaleMessageTemplate {
   text: string
 }
 
+export interface PostSaleIntegrationLog {
+  id: string
+  schoolId: string
+  studentKey: string | null
+  enrollmentId: string | null
+  studentName: string | null
+  service: 'WHATSAPP' | 'PAGAMENTO' | 'CONTRATO' | 'DOCUMENTOS'
+  action: string
+  status: string
+  requestPayload: Record<string, unknown>
+  responsePayload: Record<string, unknown>
+  visibleMessage: string
+  createdAt: string
+}
+
 export interface PostSaleOverview {
   generatedAt: string
   hasDemoData: boolean
@@ -270,9 +285,16 @@ export interface PostSaleOverview {
   tasks: PostSaleTask[]
   automations: PostSaleAutomation[]
   messageTemplates: PostSaleMessageTemplate[]
+  integrationLogs: PostSaleIntegrationLog[]
 }
 
 export interface PostSaleSimulatedMessageResponse {
   message: string
+  log: PostSaleIntegrationLog
+  overview: PostSaleOverview
+}
+
+export interface PostSaleFakeActionResponse {
+  result: Record<string, unknown>
   overview: PostSaleOverview
 }

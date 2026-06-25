@@ -13,6 +13,12 @@ export class PostSaleController {
     return this.service.overview(user.schoolId);
   }
 
+  @Get('integration-logs')
+  @RequirePermission('leads:read:school')
+  integrationLogs(@CurrentUser() user: { schoolId: string }): Promise<unknown> {
+    return this.service.listIntegrationLogs(user.schoolId);
+  }
+
   @Patch('students/:studentKey/status')
   @RequirePermission('leads:create:school')
   updateStatus(
@@ -41,5 +47,35 @@ export class PostSaleController {
     @CurrentUser() user: { schoolId: string },
   ): Promise<unknown> {
     return this.service.simulateMessage(user.schoolId, studentKey, body);
+  }
+
+  @Post('students/:studentKey/fake/payment')
+  @RequirePermission('leads:create:school')
+  simulatePayment(
+    @Param('studentKey') studentKey: string,
+    @Body() body: { action?: any; amount?: number },
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.simulatePayment(user.schoolId, studentKey, body);
+  }
+
+  @Post('students/:studentKey/fake/contract')
+  @RequirePermission('leads:create:school')
+  simulateContract(
+    @Param('studentKey') studentKey: string,
+    @Body() body: { action?: any },
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.simulateContract(user.schoolId, studentKey, body);
+  }
+
+  @Post('students/:studentKey/fake/document')
+  @RequirePermission('leads:create:school')
+  simulateDocument(
+    @Param('studentKey') studentKey: string,
+    @Body() body: { action?: any; documentType?: string; reason?: string },
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.simulateDocument(user.schoolId, studentKey, body);
   }
 }

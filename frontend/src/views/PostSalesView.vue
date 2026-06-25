@@ -21,9 +21,23 @@ import {
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
-import type { PostSaleAction, PostSaleLifecycleStatus, PostSaleOverview, PostSaleStudent, PostSaleTask } from '@/types'
+import type {
+  PostSaleAction,
+  PostSaleIntegrationLog,
+  PostSaleLifecycleStatus,
+  PostSaleOverview,
+  PostSaleStudent,
+  PostSaleTask,
+} from '@/types'
 
 type FilterKey = 'TODOS' | 'RISCO' | PostSaleLifecycleStatus
+type PaymentAction = 'MARK_PAID' | 'FAIL' | 'REFUND' | 'PENDING'
+type ContractAction = 'SEND' | 'VIEW' | 'SIGN' | 'EXPIRE'
+type DocumentAction = 'RECEIVE' | 'APPROVE' | 'REJECT'
+type FakeServiceActionItem =
+  | { key: string; service: 'payment'; action: PaymentAction; label: string }
+  | { key: string; service: 'contract'; action: ContractAction; label: string }
+  | { key: string; service: 'document'; action: DocumentAction; label: string }
 
 const router = useRouter()
 const overview = ref<PostSaleOverview | null>(null)
@@ -53,6 +67,36 @@ const actionOptions: Array<{ action: PostSaleAction; label: string }> = [
   { action: 'PAYMENT_PAID', label: 'Pagamento pago' },
   { action: 'ACCESS_RELEASED', label: 'Acesso liberado' },
   { action: 'RISK_RESOLVED', label: 'Risco tratado' },
+]
+
+const fakeActionGroups: Array<{ title: string; helper: string; actions: FakeServiceActionItem[] }> = [
+  {
+    title: 'Pagamento fake',
+    helper: 'Gateway local',
+    actions: [
+      { key: 'pay-paid', service: 'payment', action: 'MARK_PAID', label: 'Pago' },
+      { key: 'pay-fail', service: 'payment', action: 'FAIL', label: 'Falhou' },
+      { key: 'pay-refund', service: 'payment', action: 'REFUND', label: 'Estornado' },
+    ],
+  },
+  {
+    title: 'Contrato fake',
+    helper: 'Assinatura local',
+    actions: [
+      { key: 'contract-send', service: 'contract', action: 'SEND', label: 'Enviar' },
+      { key: 'contract-view', service: 'contract', action: 'VIEW', label: 'Visualizar' },
+      { key: 'contract-sign', service: 'contract', action: 'SIGN', label: 'Assinar' },
+    ],
+  },
+  {
+    title: 'Documentos fake',
+    helper: 'Checklist local',
+    actions: [
+      { key: 'doc-receive', service: 'document', action: 'RECEIVE', label: 'Receber' },
+      { key: 'doc-approve', service: 'document', action: 'APPROVE', label: 'Aprovar' },
+      { key: 'doc-reject', service: 'document', action: 'REJECT', label: 'Recusar' },
+    ],
+  },
 ]
 
 const summaryCards = computed(() => {
@@ -185,6 +229,34 @@ async function generateMessagePreview() {
   }
 }
 
+function fakeActionKey(item: FakeServiceActionItem) {
+  return `FAKE_${item.service}_${item.action}`
+}
+
+async function runFakeService(item: FakeServiceActionItem) {
+  if (!selectedStudent.value || actionBusy.value) return
+  actionBusy.value = fakeActionKey(item)
+  error.value = null
+  messagePreview.value = null
+  try {
+    const studentId = selectedStudent.value.id
+    const response =
+      item.service === 'payment'
+        ? await postSalesApi.simulatePayment(studentId, item.action)
+        : item.service === 'contract'
+          ? await postSalesApi.simulateContract(studentId, item.action)
+          : await postSalesApi.simulateDocument(studentId, item.action)
+
+    const log = response.result.log as { visibleMessage?: string } | undefined
+    messagePreview.value = log?.visibleMessage ?? 'Simulação registrada no histórico de integrações.'
+    applyOverview(response.overview)
+  } catch {
+    error.value = 'Não foi possível executar a simulação agora.'
+  } finally {
+    actionBusy.value = null
+  }
+}
+
 function funnelWidth(count: number) {
   return Math.max(4, Math.round((count / funnelMax.value) * 100))
 }
@@ -218,6 +290,34 @@ function timelineIcon(type: string) {
 
 function taskAutomationLabel(task: PostSaleTask) {
   return task.automation.replace(/Tarefa manual/gi, 'Criada pela equipe')
+}
+
+function serviceLabel(log: PostSaleIntegrationLog) {
+  const labels: Record<PostSaleIntegrationLog['service'], string> = {
+    WHATSAPP: 'WhatsApp fake',
+    PAGAMENTO: 'Pagamento fake',
+    CONTRATO: 'Contrato fake',
+    DOCUMENTOS: 'Documentos fake',
+  }
+  return labels[log.service]
+}
+
+function actionLabel(action: string) {
+  const labels: Record<string, string> = {
+    SEND_MESSAGE: 'Mensagem enviada',
+    MARK_PAID: 'Pagamento pago',
+    FAIL: 'Pagamento falhou',
+    REFUND: 'Pagamento estornado',
+    PENDING: 'Pagamento pendente',
+    SEND: 'Contrato enviado',
+    VIEW: 'Contrato visualizado',
+    SIGN: 'Contrato assinado',
+    EXPIRE: 'Contrato expirado',
+    RECEIVE: 'Documento recebido',
+    APPROVE: 'Documento aprovado',
+    REJECT: 'Documento recusado',
+  }
+  return labels[action] ?? action
 }
 </script>
 
@@ -412,6 +512,25 @@ function taskAutomationLabel(task: PostSaleTask) {
                   <NIcon :component="PaperPlaneOutline" size="16" />
                   {{ actionBusy === 'SIMULATE_MESSAGE' ? 'Gerando...' : 'Gerar prévia de WhatsApp' }}
                 </button>
+                <div class="fake-service-actions">
+                  <div v-for="group in fakeActionGroups" :key="group.title" class="fake-service-group">
+                    <div>
+                      <strong>{{ group.title }}</strong>
+                      <small>{{ group.helper }}</small>
+                    </div>
+                    <div>
+                      <button
+                        v-for="item in group.actions"
+                        :key="item.key"
+                        type="button"
+                        :disabled="!!actionBusy"
+                        @click="runFakeService(item)"
+                      >
+                        {{ actionBusy === fakeActionKey(item) ? '...' : item.label }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <NAlert v-if="messagePreview" type="success" class="message-preview">
                   {{ messagePreview }}
                 </NAlert>
@@ -530,6 +649,34 @@ function taskAutomationLabel(task: PostSaleTask) {
               <p>{{ automation.message }}</p>
               <small>{{ automation.channel }} · {{ automation.trigger }}</small>
             </article>
+          </div>
+        </section>
+
+        <section class="logs-section">
+          <div class="panel-head">
+            <div>
+              <h2>Logs dos serviços fake</h2>
+              <p>Histórico local de WhatsApp, pagamento, contrato e documentos para demonstrar integrações sem API real.</p>
+            </div>
+            <span>{{ overview.integrationLogs.length }} eventos</span>
+          </div>
+
+          <div v-if="overview.integrationLogs.length" class="log-list">
+            <article v-for="log in overview.integrationLogs" :key="log.id" class="log-row">
+              <div class="log-row__top">
+                <span>{{ serviceLabel(log) }}</span>
+                <strong>{{ log.status }}</strong>
+              </div>
+              <h3>{{ actionLabel(log.action) }}</h3>
+              <p>{{ log.visibleMessage }}</p>
+              <small>{{ log.studentName || 'Aluno' }} · {{ formatDate(log.createdAt) }}</small>
+            </article>
+          </div>
+
+          <div v-else class="logs-empty">
+            <NIcon :component="PaperPlaneOutline" size="22" />
+            <strong>Nenhum serviço fake acionado ainda</strong>
+            <p>Use os botões no detalhe do aluno para registrar eventos de demonstração.</p>
           </div>
         </section>
 
@@ -1200,6 +1347,7 @@ function taskAutomationLabel(task: PostSaleTask) {
 
 .quick-actions button,
 .whatsapp-sim,
+.fake-service-group button,
 .task-form button {
   min-height: 34px;
   display: inline-flex;
@@ -1218,6 +1366,7 @@ function taskAutomationLabel(task: PostSaleTask) {
 
 .quick-actions button:hover,
 .whatsapp-sim:hover,
+.fake-service-group button:hover,
 .task-form button:hover {
   border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
   background: var(--brand-soft);
@@ -1226,6 +1375,7 @@ function taskAutomationLabel(task: PostSaleTask) {
 
 .quick-actions button:disabled,
 .whatsapp-sim:disabled,
+.fake-service-group button:disabled,
 .task-form button:disabled {
   opacity: 0.55;
   cursor: wait;
@@ -1246,6 +1396,52 @@ function taskAutomationLabel(task: PostSaleTask) {
 
 .message-preview {
   margin-top: 10px;
+}
+
+.fake-service-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.fake-service-group {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.7fr) minmax(0, 1.3fr);
+  gap: 8px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.fake-service-group strong,
+.fake-service-group small {
+  display: block;
+}
+
+.fake-service-group strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.fake-service-group small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.fake-service-group > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.fake-service-group button {
+  min-height: 30px;
+  padding: 6px;
+  font-size: 10px;
 }
 
 .checklist h3 {
@@ -1448,6 +1644,7 @@ function taskAutomationLabel(task: PostSaleTask) {
 }
 
 .automation-section,
+.logs-section,
 .templates-section {
   margin-top: 16px;
 }
@@ -1498,6 +1695,95 @@ function taskAutomationLabel(task: PostSaleTask) {
   font-size: 11px;
 }
 
+.log-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.log-row {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.log-row__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.log-row__top span,
+.log-row__top strong {
+  min-width: 0;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.log-row__top span {
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.log-row__top strong {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+}
+
+.log-row h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.log-row p {
+  margin: 6px 0;
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.log-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.logs-empty {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--surface);
+  text-align: center;
+}
+
+.logs-empty > .n-icon {
+  color: var(--brand);
+}
+
+.logs-empty strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.logs-empty p {
+  margin: 0;
+  max-width: 360px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .template-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1539,6 +1825,7 @@ function taskAutomationLabel(task: PostSaleTask) {
 
   .post-layout,
   .automation-grid,
+  .log-list,
   .template-list {
     grid-template-columns: 1fr;
   }
@@ -1575,6 +1862,8 @@ function taskAutomationLabel(task: PostSaleTask) {
   }
 
   .quick-actions,
+  .fake-service-group,
+  .fake-service-group > div:last-child,
   .task-form__row {
     grid-template-columns: 1fr;
   }
