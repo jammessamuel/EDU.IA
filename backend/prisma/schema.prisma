@@ -208,3 +208,65 @@ model EnrollmentDocument {
   @@index([enrollmentId])
   @@map("enrollment_documents")
 }
+
+model PostSaleState {
+  id             String   @id @default(cuid())
+  schoolId       String
+  studentKey     String
+  enrollmentId   String?
+  status         String?
+  documentStatus String?
+  contractStatus String?
+  paymentStatus  String?
+  accessStatus   String?
+  riskScore      Int?
+  nextAction     String?
+  ownerTeam      String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([schoolId, studentKey])
+  @@index([schoolId])
+  @@index([enrollmentId])
+  @@map("post_sale_states")
+}
+
+model PostSaleTask {
+  id          String   @id @default(cuid())
+  schoolId    String
+  studentKey  String
+  enrollmentId String?
+  studentName String
+  title       String
+  ownerTeam   String
+  priority    String   @default("Normal")
+  status      String   @default("ABERTA")
+  automation  String?
+  dueAt       DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([studentKey])
+  @@index([enrollmentId])
+  @@map("post_sale_tasks")
+}
+
+model PostSaleEvent {
+  id          String   @id @default(cuid())
+  schoolId    String
+  studentKey  String
+  enrollmentId String?
+  studentName String
+  type        String
+  title       String
+  description String
+  metadata    String   @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([studentKey])
+  @@index([enrollmentId])
+  @@map("post_sale_events")
+}

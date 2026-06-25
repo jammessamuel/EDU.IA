@@ -166,6 +166,13 @@ export type PostSaleLifecycleStatus =
 
 export type PostSaleRiskLevel = 'BAIXO' | 'MEDIO' | 'ALTO' | 'CRITICO'
 export type PostSaleStepStatus = 'done' | 'pending' | 'blocked' | 'attention'
+export type PostSaleAction =
+  | 'DOCUMENTS_RECEIVED'
+  | 'CONTRACT_SENT'
+  | 'CONTRACT_SIGNED'
+  | 'PAYMENT_PAID'
+  | 'ACCESS_RELEASED'
+  | 'RISK_RESOLVED'
 
 export interface PostSaleChecklistStep {
   key: string
@@ -174,11 +181,21 @@ export interface PostSaleChecklistStep {
   helper: string
 }
 
+export interface PostSaleTimelineEvent {
+  id: string
+  type: string
+  title: string
+  description: string
+  createdAt: string
+  source: 'system' | 'manual'
+}
+
 export interface PostSaleStudent {
   id: string
   enrollmentId: string | null
   studentName: string
   course: string
+  startedAt: string
   status: PostSaleLifecycleStatus
   statusLabel: string
   progress: number
@@ -194,6 +211,7 @@ export interface PostSaleStudent {
   lastContactAt: string
   upcomingDueAt: string
   checklist: PostSaleChecklistStep[]
+  timeline: PostSaleTimelineEvent[]
   isDemo: boolean
 }
 
@@ -223,8 +241,10 @@ export interface PostSaleTask {
   studentName: string
   ownerTeam: string
   priority: string
+  status?: string
   dueAt: string
   automation: string
+  source?: 'automatic' | 'manual'
 }
 
 export interface PostSaleAutomation {
@@ -250,4 +270,9 @@ export interface PostSaleOverview {
   tasks: PostSaleTask[]
   automations: PostSaleAutomation[]
   messageTemplates: PostSaleMessageTemplate[]
+}
+
+export interface PostSaleSimulatedMessageResponse {
+  message: string
+  overview: PostSaleOverview
 }

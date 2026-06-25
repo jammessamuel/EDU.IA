@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 type LifecycleStatus =
@@ -12,6 +12,13 @@ type LifecycleStatus =
 
 type RiskLevel = 'BAIXO' | 'MEDIO' | 'ALTO' | 'CRITICO';
 type StepStatus = 'done' | 'pending' | 'blocked' | 'attention';
+type PostSaleAction =
+  | 'DOCUMENTS_RECEIVED'
+  | 'CONTRACT_SENT'
+  | 'CONTRACT_SIGNED'
+  | 'PAYMENT_PAID'
+  | 'ACCESS_RELEASED'
+  | 'RISK_RESOLVED';
 
 interface ChecklistStep {
   key: string;
@@ -20,11 +27,21 @@ interface ChecklistStep {
   helper: string;
 }
 
+interface TimelineEvent {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  createdAt: Date;
+  source: 'system' | 'manual';
+}
+
 interface LifecycleStudent {
   id: string;
   enrollmentId: string | null;
   studentName: string;
   course: string;
+  startedAt: Date;
   status: LifecycleStatus;
   statusLabel: string;
   progress: number;
@@ -40,6 +57,7 @@ interface LifecycleStudent {
   lastContactAt: Date;
   upcomingDueAt: Date;
   checklist: ChecklistStep[];
+  timeline: TimelineEvent[];
   isDemo: boolean;
 }
 
@@ -47,7 +65,7 @@ interface LifecycleStudent {
 export class PostSaleService {
   constructor(private prisma: PrismaService) {}
 
-  async overview(schoolId: string) {
+  async overview(schoolId: string): Promise<Record<string, unknown>> {
     const enrollments = await this.prisma.enrollment.findMany({
       where: { schoolId },
       include: { documents: true },
@@ -57,7 +75,30 @@ export class PostSaleService {
 
     const students = enrollments.map((enrollment, index) => this.fromEnrollment(enrollment, index));
     const demoStudents = this.demoStudents().slice(0, Math.max(0, 6 - students.length));
-    const lifecycle = [...students, ...demoStudents];
+    const baseLifecycle = [...students, ...demoStudents];
+    const studentKeys = baseLifecycle.map((student) => student.id);
+    const [states, events, storedTasks] = await Promise.all([
+      this.prisma.postSaleState.findMany({ where: { schoolId, studentKey: { in: studentKeys } } }),
+      this.prisma.postSaleEvent.findMany({
+        where: { schoolId, studentKey: { in: studentKeys } },
+        orderBy: { createdAt: 'desc' },
+        take: 160,
+      }),
+      this.prisma.postSaleTask.findMany({
+        where: { schoolId, status: 'ABERTA' },
+        orderBy: [{ createdAt: 'desc' }],
+        take: 24,
+      }),
+    ]);
+    const stateByStudent = new Map(states.map((state) => [state.studentKey, state]));
+    const eventsByStudent = this.groupByStudent(events);
+    const lifecycle = baseLifecycle.map((student) => {
+      const withState = this.applyState(student, stateByStudent.get(student.id));
+      return {
+        ...withState,
+        timeline: this.timelineFor(withState, eventsByStudent.get(student.id) ?? []),
+      };
+    });
 
     return {
       generatedAt: new Date(),
@@ -65,10 +106,98 @@ export class PostSaleService {
       summary: this.summary(lifecycle),
       funnel: this.funnel(lifecycle),
       students: lifecycle,
-      tasks: this.tasks(lifecycle),
+      tasks: this.tasks(lifecycle, storedTasks),
       automations: this.automations(),
       messageTemplates: this.messageTemplates(),
     };
+  }
+
+  async updateStudentStatus(
+    schoolId: string,
+    studentKey: string,
+    input: { action?: string; note?: string },
+  ): Promise<unknown> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const action = input.action as PostSaleAction | undefined;
+    const patch = this.actionPatch(action, student);
+
+    await this.prisma.postSaleState.upsert({
+      where: { schoolId_studentKey: { schoolId, studentKey } },
+      create: {
+        schoolId,
+        studentKey,
+        enrollmentId: student.enrollmentId,
+        ...patch,
+        notes: input.note?.trim() || null,
+      },
+      update: {
+        ...patch,
+        notes: input.note?.trim() || undefined,
+      },
+    });
+
+    await this.recordEvent(schoolId, student, {
+      type: 'STATUS_UPDATE',
+      title: this.actionTitle(action),
+      description: input.note?.trim() || this.actionDescription(action, student),
+      metadata: { action },
+    });
+
+    return this.overview(schoolId);
+  }
+
+  async createTask(
+    schoolId: string,
+    studentKey: string,
+    input: { title?: string; ownerTeam?: string; priority?: string; dueInDays?: number },
+  ): Promise<unknown> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const title = input.title?.trim();
+    if (!title) throw new BadRequestException('Informe o título da tarefa.');
+
+    const dueAt = this.addDays(new Date(), Number.isFinite(input.dueInDays) ? Number(input.dueInDays) : 1);
+    await this.prisma.postSaleTask.create({
+      data: {
+        schoolId,
+        studentKey,
+        enrollmentId: student.enrollmentId,
+        studentName: student.studentName,
+        title,
+        ownerTeam: input.ownerTeam?.trim() || student.ownerTeam,
+        priority: input.priority?.trim() || 'Normal',
+        automation: 'Tarefa manual',
+        dueAt,
+      },
+    });
+
+    await this.recordEvent(schoolId, student, {
+      type: 'TASK_CREATED',
+      title: 'Tarefa criada',
+      description: title,
+      metadata: { ownerTeam: input.ownerTeam, priority: input.priority, dueAt },
+    });
+
+    return this.overview(schoolId);
+  }
+
+  async simulateMessage(
+    schoolId: string,
+    studentKey: string,
+    input: { message?: string },
+  ): Promise<{ message: string; overview: unknown }> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const message = (input.message?.trim() || this.suggestedMessage(student))
+      .replaceAll('{{nome}}', student.studentName.split(' ')[0] || student.studentName)
+      .replaceAll('{{pendencia}}', student.nextAction.toLowerCase());
+
+    await this.recordEvent(schoolId, student, {
+      type: 'WHATSAPP_SIMULADO',
+      title: 'WhatsApp simulado',
+      description: message,
+      metadata: { channel: 'WhatsApp', simulated: true },
+    });
+
+    return { message, overview: await this.overview(schoolId) };
   }
 
   private fromEnrollment(enrollment: any, index: number): LifecycleStudent {
@@ -104,6 +233,7 @@ export class PostSaleService {
       enrollmentId: enrollment.id,
       studentName: enrollment.studentName,
       course: enrollment.course ?? 'Curso não informado',
+      startedAt: enrollment.confirmedAt ?? enrollment.createdAt,
       status,
       statusLabel: this.statusLabel(status),
       progress,
@@ -119,6 +249,7 @@ export class PostSaleService {
       lastContactAt: this.addDays(enrollment.createdAt, Math.min(daysSinceEnrollment, 7)),
       upcomingDueAt: this.addDays(new Date(), this.nextDueOffset(status)),
       checklist,
+      timeline: [],
       isDemo: false,
     };
   }
@@ -204,6 +335,7 @@ export class PostSaleService {
       enrollmentId: null,
       studentName: demo.studentName,
       course: demo.course,
+      startedAt: this.addDays(new Date(), -demo.daysSinceEnrollment),
       status: demo.status,
       statusLabel: this.statusLabel(demo.status),
       progress: demo.progress,
@@ -219,6 +351,7 @@ export class PostSaleService {
       lastContactAt: this.addDays(new Date(), -Math.min(demo.daysSinceEnrollment, 5)),
       upcomingDueAt: this.addDays(new Date(), this.nextDueOffset(demo.status)),
       checklist: this.demoChecklist(demo.status),
+      timeline: [],
       isDemo: true,
     }));
   }
@@ -282,6 +415,232 @@ export class PostSaleService {
     });
   }
 
+  private applyState(student: LifecycleStudent, state?: any): LifecycleStudent {
+    if (!state) {
+      return {
+        ...student,
+        timeline: this.timelineFor(student, []),
+      };
+    }
+
+    const next: LifecycleStudent = {
+      ...student,
+      status: (state.status || student.status) as LifecycleStatus,
+      documentStatus: state.documentStatus || student.documentStatus,
+      contractStatus: state.contractStatus || student.contractStatus,
+      paymentStatus: state.paymentStatus || student.paymentStatus,
+      accessStatus: state.accessStatus || student.accessStatus,
+      riskScore: state.riskScore ?? student.riskScore,
+      nextAction: state.nextAction || student.nextAction,
+      ownerTeam: state.ownerTeam || student.ownerTeam,
+    };
+    next.statusLabel = this.statusLabel(next.status);
+    next.riskLevel = this.riskLevel(next.riskScore);
+    next.checklist = this.checklistFromStudent(next);
+    next.progress = Math.round((next.checklist.filter((step) => step.status === 'done').length / next.checklist.length) * 100);
+    return next;
+  }
+
+  private checklistFromStudent(student: LifecycleStudent): ChecklistStep[] {
+    const hasMinimumDocs = /recebid|validada/i.test(student.documentStatus);
+    const hasContract = /assinado/i.test(student.contractStatus);
+    const paymentApproved = /pago|aprovado/i.test(student.paymentStatus);
+    const accessReady = /liberado|ativo/i.test(student.accessStatus);
+    return this.checklist({
+      hasMinimumDocs,
+      hasContract,
+      paymentApproved,
+      accessReady,
+      daysSinceEnrollment: student.daysSinceEnrollment,
+      risk: student.status === 'RISCO_EVASAO',
+    });
+  }
+
+  private async findStudent(schoolId: string, studentKey: string): Promise<LifecycleStudent> {
+    const overview = (await this.overview(schoolId)) as any;
+    const student = overview.students?.find((item: LifecycleStudent) => item.id === studentKey);
+    if (!student) throw new BadRequestException('Aluno não encontrado no pós-venda.');
+    return student;
+  }
+
+  private actionPatch(action: PostSaleAction | undefined, student: LifecycleStudent) {
+    if (!action) throw new BadRequestException('Informe uma ação válida.');
+
+    switch (action) {
+      case 'DOCUMENTS_RECEIVED':
+        return {
+          status: 'CONTRATO_PENDENTE',
+          documentStatus: 'Recebida',
+          nextAction: 'Enviar contrato para assinatura',
+          ownerTeam: 'Secretaria',
+          riskScore: Math.min(student.riskScore, 34),
+        };
+      case 'CONTRACT_SENT':
+        return {
+          status: 'CONTRATO_PENDENTE',
+          contractStatus: 'Enviado',
+          nextAction: 'Acompanhar assinatura do contrato',
+          ownerTeam: 'Secretaria',
+          riskScore: Math.min(student.riskScore, 36),
+        };
+      case 'CONTRACT_SIGNED':
+        return {
+          status: student.paymentStatus === 'Pago' ? 'ACESSO_PENDENTE' : 'PAGAMENTO_PENDENTE',
+          contractStatus: 'Assinado',
+          nextAction: student.paymentStatus === 'Pago' ? 'Liberar acesso ao AVA' : 'Enviar lembrete de pagamento',
+          ownerTeam: student.paymentStatus === 'Pago' ? 'Suporte AVA' : 'Financeiro',
+          riskScore: Math.min(student.riskScore, 32),
+        };
+      case 'PAYMENT_PAID':
+        return {
+          status: /assinado/i.test(student.contractStatus) ? 'ACESSO_PENDENTE' : 'CONTRATO_PENDENTE',
+          paymentStatus: 'Pago',
+          nextAction: /assinado/i.test(student.contractStatus) ? 'Liberar acesso ao AVA' : 'Acompanhar assinatura do contrato',
+          ownerTeam: /assinado/i.test(student.contractStatus) ? 'Suporte AVA' : 'Secretaria',
+          riskScore: Math.min(student.riskScore, 30),
+        };
+      case 'ACCESS_RELEASED':
+        return {
+          status: 'EM_ACOMPANHAMENTO',
+          accessStatus: 'Liberado',
+          nextAction: 'Checar primeiro acesso e experiência',
+          ownerTeam: 'Sucesso do Aluno',
+          riskScore: Math.min(student.riskScore, 24),
+        };
+      case 'RISK_RESOLVED':
+        return {
+          status: 'EM_ACOMPANHAMENTO',
+          accessStatus: /sem primeiro acesso/i.test(student.accessStatus) ? 'Liberado' : student.accessStatus,
+          nextAction: 'Checar experiência do aluno em 3 dias',
+          ownerTeam: 'Sucesso do Aluno',
+          riskScore: 22,
+        };
+      default:
+        throw new BadRequestException('Ação não suportada.');
+    }
+  }
+
+  private actionTitle(action?: PostSaleAction) {
+    const titles: Record<PostSaleAction, string> = {
+      DOCUMENTS_RECEIVED: 'Documentos marcados como recebidos',
+      CONTRACT_SENT: 'Contrato marcado como enviado',
+      CONTRACT_SIGNED: 'Contrato marcado como assinado',
+      PAYMENT_PAID: 'Pagamento marcado como pago',
+      ACCESS_RELEASED: 'Acesso ao AVA liberado',
+      RISK_RESOLVED: 'Risco tratado',
+    };
+    if (!action) return 'Status atualizado';
+    return titles[action] ?? 'Status atualizado';
+  }
+
+  private actionDescription(action: PostSaleAction | undefined, student: LifecycleStudent) {
+    const descriptions: Record<PostSaleAction, string> = {
+      DOCUMENTS_RECEIVED: `${student.studentName} teve a documentação marcada como recebida.`,
+      CONTRACT_SENT: `Link de contrato marcado como enviado para ${student.studentName}.`,
+      CONTRACT_SIGNED: `${student.studentName} teve o contrato marcado como assinado.`,
+      PAYMENT_PAID: `${student.studentName} teve o pagamento marcado como confirmado.`,
+      ACCESS_RELEASED: `Acesso ao AVA liberado para ${student.studentName}.`,
+      RISK_RESOLVED: `Risco de evasão tratado e aluno voltou para acompanhamento.`,
+    };
+    if (!action) return 'Status atualizado manualmente.';
+    return descriptions[action] ?? 'Status atualizado manualmente.';
+  }
+
+  private async recordEvent(
+    schoolId: string,
+    student: LifecycleStudent,
+    event: { type: string; title: string; description: string; metadata?: Record<string, unknown> },
+  ) {
+    return this.prisma.postSaleEvent.create({
+      data: {
+        schoolId,
+        studentKey: student.id,
+        enrollmentId: student.enrollmentId,
+        studentName: student.studentName,
+        type: event.type,
+        title: event.title,
+        description: event.description,
+        metadata: JSON.stringify(event.metadata ?? {}),
+      },
+    });
+  }
+
+  private timelineFor(student: LifecycleStudent, storedEvents: any[]): TimelineEvent[] {
+    const base: TimelineEvent[] = [
+      {
+        id: `base-${student.id}-matricula`,
+        type: 'MATRICULA',
+        title: 'Matrícula registrada',
+        description: `${student.studentName} entrou na jornada de pós-venda.`,
+        createdAt: student.startedAt,
+        source: 'system',
+      },
+      {
+        id: `base-${student.id}-boas-vindas`,
+        type: 'BOAS_VINDAS',
+        title: 'Boas-vindas programadas',
+        description: 'Mensagem inicial com documentos, contrato, pagamento e acesso ao AVA.',
+        createdAt: this.timelineDate(student.startedAt, 0),
+        source: 'system',
+      },
+    ];
+
+    if (/recebid|validada/i.test(student.documentStatus)) {
+      base.push({
+        id: `base-${student.id}-docs`,
+        type: 'DOCUMENTOS',
+        title: 'Documentação em análise',
+        description: student.documentStatus,
+        createdAt: this.timelineDate(student.startedAt, 1),
+        source: 'system',
+      });
+    }
+    if (/assinado|enviado/i.test(student.contractStatus)) {
+      base.push({
+        id: `base-${student.id}-contrato`,
+        type: 'CONTRATO',
+        title: 'Contrato acompanhado',
+        description: student.contractStatus,
+        createdAt: this.timelineDate(student.startedAt, 2),
+        source: 'system',
+      });
+    }
+    if (/pago|pendente/i.test(student.paymentStatus)) {
+      base.push({
+        id: `base-${student.id}-financeiro`,
+        type: 'FINANCEIRO',
+        title: 'Financeiro monitorado',
+        description: student.paymentStatus,
+        createdAt: this.timelineDate(student.startedAt, 3),
+        source: 'system',
+      });
+    }
+
+    const manual = storedEvents.map((event) => this.serializeEvent(event));
+    return [...manual, ...base].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 10);
+  }
+
+  private serializeEvent(event: any): TimelineEvent {
+    return {
+      id: event.id,
+      type: event.type,
+      title: event.title,
+      description: event.description,
+      createdAt: event.createdAt,
+      source: 'manual',
+    };
+  }
+
+  private groupByStudent(items: any[]) {
+    const map = new Map<string, any[]>();
+    for (const item of items) {
+      const current = map.get(item.studentKey) ?? [];
+      current.push(item);
+      map.set(item.studentKey, current);
+    }
+    return map;
+  }
+
   private summary(students: LifecycleStudent[]) {
     return {
       totalStudents: students.length,
@@ -315,8 +674,21 @@ export class PostSaleService {
     }));
   }
 
-  private tasks(students: LifecycleStudent[]) {
-    return students
+  private tasks(students: LifecycleStudent[], storedTasks: any[] = []) {
+    const manualTasks = storedTasks.map((task) => ({
+      id: task.id,
+      studentId: task.studentKey,
+      title: task.title,
+      studentName: task.studentName,
+      ownerTeam: task.ownerTeam,
+      priority: task.priority,
+      dueAt: task.dueAt,
+      automation: task.automation ?? 'Tarefa manual',
+      status: task.status,
+      source: 'manual',
+    }));
+
+    const automaticTasks = students
       .filter((student) => student.status !== 'ONBOARDING_CONCLUIDO')
       .slice(0, 8)
       .map((student) => ({
@@ -328,7 +700,10 @@ export class PostSaleService {
         priority: student.riskLevel === 'CRITICO' ? 'Urgente' : student.riskLevel === 'ALTO' ? 'Alta' : 'Normal',
         dueAt: student.upcomingDueAt,
         automation: this.automationFor(student.status),
+        status: 'ABERTA',
+        source: 'automatic',
       }));
+    return [...manualTasks, ...automaticTasks].slice(0, 14);
   }
 
   private automations() {
@@ -403,6 +778,22 @@ export class PostSaleService {
         text: 'Vi que seu acesso ao AVA ainda não apareceu por aqui. Quer que eu te mande o passo a passo para entrar?',
       },
     ];
+  }
+
+  private suggestedMessage(student: LifecycleStudent) {
+    if (student.status === 'DOCUMENTACAO_PENDENTE') {
+      return 'Oi, {{nome}}! Para liberar sua matrícula, falta {{pendencia}}. Pode me enviar tudo em um único PDF ou arquivo por arquivo, como preferir.';
+    }
+    if (student.status === 'CONTRATO_PENDENTE') {
+      return 'Oi, {{nome}}! Seu contrato está em andamento. Vou te acompanhar por aqui até a assinatura ficar concluída.';
+    }
+    if (student.status === 'PAGAMENTO_PENDENTE') {
+      return 'Oi, {{nome}}! Estou passando para te ajudar com o pagamento da matrícula. Se preferir, posso reenviar PIX, boleto ou link.';
+    }
+    if (student.status === 'RISCO_EVASAO') {
+      return 'Oi, {{nome}}! Notei que seu acesso ainda não avançou como esperado. Quer que eu te ajude agora com o passo a passo?';
+    }
+    return 'Oi, {{nome}}! Passando para acompanhar sua experiência e ver se ficou alguma dúvida sobre acesso, aulas ou documentos.';
   }
 
   private statusLabel(status: LifecycleStatus) {
@@ -499,5 +890,11 @@ export class PostSaleService {
     const next = new Date(date);
     next.setDate(next.getDate() + days);
     return next;
+  }
+
+  private timelineDate(date: Date | string, days: number) {
+    const candidate = this.addDays(date, days);
+    const now = new Date();
+    return candidate.getTime() > now.getTime() ? now : candidate;
   }
 }

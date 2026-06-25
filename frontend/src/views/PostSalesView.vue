@@ -3,12 +3,15 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NAlert, NIcon, NScrollbar, NSpin } from 'naive-ui'
 import {
+  AddCircleOutline,
   CalendarOutline,
   CardOutline,
   ChatbubbleEllipsesOutline,
   CheckmarkCircleOutline,
+  CreateOutline,
   DocumentTextOutline,
   LaptopOutline,
+  PaperPlaneOutline,
   PeopleOutline,
   RefreshOutline,
   ShieldCheckmarkOutline,
@@ -18,7 +21,7 @@ import {
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
-import type { PostSaleLifecycleStatus, PostSaleOverview, PostSaleStudent } from '@/types'
+import type { PostSaleAction, PostSaleLifecycleStatus, PostSaleOverview, PostSaleStudent } from '@/types'
 
 type FilterKey = 'TODOS' | 'RISCO' | PostSaleLifecycleStatus
 
@@ -28,6 +31,12 @@ const selectedId = ref<string | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const activeFilter = ref<FilterKey>('TODOS')
+const actionBusy = ref<string | null>(null)
+const taskTitle = ref('')
+const taskOwner = ref('Secretaria')
+const taskPriority = ref('Normal')
+const taskDueInDays = ref(1)
+const simulatedMessage = ref<string | null>(null)
 
 const filterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'TODOS', label: 'Todos' },
@@ -35,6 +44,15 @@ const filterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'CONTRATO_PENDENTE', label: 'Contrato' },
   { key: 'PAGAMENTO_PENDENTE', label: 'Pagamento' },
   { key: 'RISCO', label: 'Risco' },
+]
+
+const actionOptions: Array<{ action: PostSaleAction; label: string }> = [
+  { action: 'DOCUMENTS_RECEIVED', label: 'Documentos recebidos' },
+  { action: 'CONTRACT_SENT', label: 'Contrato enviado' },
+  { action: 'CONTRACT_SIGNED', label: 'Contrato assinado' },
+  { action: 'PAYMENT_PAID', label: 'Pagamento pago' },
+  { action: 'ACCESS_RELEASED', label: 'Acesso liberado' },
+  { action: 'RISK_RESOLVED', label: 'Risco tratado' },
 ]
 
 const summaryCards = computed(() => {
@@ -105,8 +123,66 @@ async function loadOverview() {
   }
 }
 
+function applyOverview(next: PostSaleOverview) {
+  overview.value = next
+  if (!selectedId.value || !next.students.some((student) => student.id === selectedId.value)) {
+    selectedId.value = next.students[0]?.id ?? null
+  }
+}
+
 function selectStudent(student: PostSaleStudent) {
   selectedId.value = student.id
+  simulatedMessage.value = null
+}
+
+async function runAction(action: PostSaleAction) {
+  if (!selectedStudent.value || actionBusy.value) return
+  actionBusy.value = action
+  error.value = null
+  simulatedMessage.value = null
+  try {
+    applyOverview(await postSalesApi.updateStatus(selectedStudent.value.id, action))
+  } catch {
+    error.value = 'Não foi possível atualizar o status do aluno.'
+  } finally {
+    actionBusy.value = null
+  }
+}
+
+async function createTask() {
+  if (!selectedStudent.value || !taskTitle.value.trim() || actionBusy.value) return
+  actionBusy.value = 'CREATE_TASK'
+  error.value = null
+  try {
+    applyOverview(
+      await postSalesApi.createTask(selectedStudent.value.id, {
+        title: taskTitle.value.trim(),
+        ownerTeam: taskOwner.value,
+        priority: taskPriority.value,
+        dueInDays: taskDueInDays.value,
+      }),
+    )
+    taskTitle.value = ''
+  } catch {
+    error.value = 'Não foi possível criar a tarefa interna.'
+  } finally {
+    actionBusy.value = null
+  }
+}
+
+async function simulateWhatsApp() {
+  if (!selectedStudent.value || actionBusy.value) return
+  actionBusy.value = 'SIMULATE_MESSAGE'
+  error.value = null
+  try {
+    const res = await postSalesApi.simulateMessage(selectedStudent.value.id)
+    simulatedMessage.value = res.message
+    applyOverview(res.overview)
+  } catch {
+    error.value = 'Não foi possível simular a mensagem agora.'
+  } finally {
+    actionBusy.value = null
+  }
 }
 
 function funnelWidth(count: number) {
@@ -128,6 +204,16 @@ function riskLabel(student: PostSaleStudent) {
   if (student.riskLevel === 'ALTO') return 'Alto'
   if (student.riskLevel === 'MEDIO') return 'Médio'
   return 'Baixo'
+}
+
+function timelineIcon(type: string) {
+  if (type.includes('WHATSAPP')) return PaperPlaneOutline
+  if (type.includes('TASK')) return AddCircleOutline
+  if (type.includes('STATUS')) return CreateOutline
+  if (type.includes('CONTRATO')) return ShieldCheckmarkOutline
+  if (type.includes('FINANCEIRO')) return CardOutline
+  if (type.includes('DOCUMENT')) return DocumentTextOutline
+  return CalendarOutline
 }
 </script>
 
@@ -300,6 +386,33 @@ function riskLabel(student: PostSaleStudent) {
                 </div>
               </div>
 
+              <div class="ops-block">
+                <h3>Ações rápidas</h3>
+                <div class="quick-actions">
+                  <button
+                    v-for="option in actionOptions"
+                    :key="option.action"
+                    type="button"
+                    :disabled="!!actionBusy"
+                    @click="runAction(option.action)"
+                  >
+                    {{ actionBusy === option.action ? 'Salvando...' : option.label }}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  class="whatsapp-sim"
+                  :disabled="!!actionBusy"
+                  @click="simulateWhatsApp"
+                >
+                  <NIcon :component="PaperPlaneOutline" size="16" />
+                  {{ actionBusy === 'SIMULATE_MESSAGE' ? 'Gerando...' : 'Simular WhatsApp' }}
+                </button>
+                <NAlert v-if="simulatedMessage" type="success" class="message-preview">
+                  {{ simulatedMessage }}
+                </NAlert>
+              </div>
+
               <div class="checklist">
                 <h3>Checklist de onboarding</h3>
                 <div v-for="step in selectedStudent.checklist" :key="step.key" class="check-row" :class="`check-row--${step.status}`">
@@ -309,6 +422,20 @@ function riskLabel(student: PostSaleStudent) {
                   <div>
                     <strong>{{ step.label }}</strong>
                     <small>{{ step.helper }}</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <h3>Timeline do aluno</h3>
+                <div v-for="event in selectedStudent.timeline" :key="event.id" class="timeline-row">
+                  <span class="timeline-row__icon">
+                    <NIcon :component="timelineIcon(event.type)" size="15" />
+                  </span>
+                  <div>
+                    <strong>{{ event.title }}</strong>
+                    <small>{{ formatDate(event.createdAt) }} · {{ event.source === 'manual' ? 'operador' : 'sistema' }}</small>
+                    <p>{{ event.description }}</p>
                   </div>
                 </div>
               </div>
@@ -330,11 +457,51 @@ function riskLabel(student: PostSaleStudent) {
                 </div>
               </div>
 
+              <div v-if="selectedStudent" class="task-form">
+                <label>
+                  <span>Nova tarefa interna</span>
+                  <input v-model="taskTitle" type="text" placeholder="Ex.: ligar para confirmar documentos" />
+                </label>
+                <div class="task-form__row">
+                  <label>
+                    <span>Equipe</span>
+                    <select v-model="taskOwner">
+                      <option>Secretaria</option>
+                      <option>Financeiro</option>
+                      <option>Suporte AVA</option>
+                      <option>Retenção</option>
+                      <option>Sucesso do Aluno</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Prioridade</span>
+                    <select v-model="taskPriority">
+                      <option>Normal</option>
+                      <option>Alta</option>
+                      <option>Urgente</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Prazo</span>
+                    <select v-model.number="taskDueInDays">
+                      <option :value="0">Hoje</option>
+                      <option :value="1">1 dia</option>
+                      <option :value="3">3 dias</option>
+                      <option :value="5">5 dias</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="button" :disabled="!taskTitle.trim() || !!actionBusy" @click="createTask">
+                  <NIcon :component="AddCircleOutline" size="15" />
+                  {{ actionBusy === 'CREATE_TASK' ? 'Criando...' : 'Criar tarefa' }}
+                </button>
+              </div>
+
               <div class="task-list">
                 <div v-for="task in overview.tasks" :key="task.id" class="task-row">
                   <span :class="{ urgent: task.priority !== 'Normal' }">{{ task.priority }}</span>
                   <strong>{{ task.title }}</strong>
-                  <small>{{ task.studentName }} · {{ task.ownerTeam }} · {{ task.automation }}</small>
+                  <small>{{ task.studentName }} · {{ task.ownerTeam }} · {{ task.automation }}<template v-if="task.source === 'manual'"> · manual</template></small>
                 </div>
               </div>
             </section>
@@ -1005,6 +1172,78 @@ function riskLabel(student: PostSaleStudent) {
   font-size: 11px;
 }
 
+.ops-block {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.ops-block h3,
+.timeline h3 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.quick-actions button,
+.whatsapp-sim,
+.task-form button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.quick-actions button:hover,
+.whatsapp-sim:hover,
+.task-form button:hover {
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.quick-actions button:disabled,
+.whatsapp-sim:disabled,
+.task-form button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.whatsapp-sim {
+  width: 100%;
+  margin-top: 8px;
+  color: #fff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.whatsapp-sim:hover {
+  color: #fff;
+  background: var(--brand-strong);
+}
+
+.message-preview {
+  margin-top: 10px;
+}
+
 .checklist h3 {
   margin: 0 0 10px;
   color: var(--text);
@@ -1055,6 +1294,107 @@ function riskLabel(student: PostSaleStudent) {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.timeline {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-row {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-row__icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 999px;
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.timeline-row strong,
+.timeline-row small,
+.timeline-row p {
+  display: block;
+}
+
+.timeline-row strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.timeline-row small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.timeline-row p {
+  margin: 4px 0 0;
+  color: var(--muted-strong);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.task-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.task-form span {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.task-form input,
+.task-form select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 9px;
+  color: var(--text);
+  background: var(--input-bg);
+  font-size: 12px;
+}
+
+.task-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 86px;
+  gap: 7px;
+}
+
+.task-form button {
+  color: #fff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.task-form button:disabled {
+  cursor: not-allowed;
 }
 
 .task-list {
@@ -1228,6 +1568,11 @@ function riskLabel(student: PostSaleStudent) {
   .student-row__status {
     grid-column: 2;
     justify-self: stretch;
+  }
+
+  .quick-actions,
+  .task-form__row {
+    grid-template-columns: 1fr;
   }
 
   .funnel-row {
