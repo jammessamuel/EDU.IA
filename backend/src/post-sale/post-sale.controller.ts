@@ -49,6 +49,16 @@ export class PostSaleController {
     return this.service.simulateMessage(user.schoolId, studentKey, body);
   }
 
+  @Post('students/:studentKey/ruler/simulate')
+  @RequirePermission('leads:create:school')
+  simulateRuler(
+    @Param('studentKey') studentKey: string,
+    @Body() body: { dayOffset?: number | null },
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.simulateRuler(user.schoolId, studentKey, body);
+  }
+
   @Post('students/:studentKey/fake/payment')
   @RequirePermission('leads:create:school')
   simulatePayment(

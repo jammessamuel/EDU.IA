@@ -1,5 +1,12 @@
 import { apiClient } from './client'
-import type { PostSaleAction, PostSaleFakeActionResponse, PostSaleIntegrationLog, PostSaleOverview, PostSaleSimulatedMessageResponse } from '@/types'
+import type {
+  PostSaleAction,
+  PostSaleFakeActionResponse,
+  PostSaleIntegrationLog,
+  PostSaleOverview,
+  PostSaleRulerResponse,
+  PostSaleSimulatedMessageResponse,
+} from '@/types'
 
 export const postSalesApi = {
   overview(): Promise<PostSaleOverview> {
@@ -28,6 +35,12 @@ export const postSalesApi = {
   simulateMessage(studentId: string, message?: string): Promise<PostSaleSimulatedMessageResponse> {
     return apiClient
       .post<PostSaleSimulatedMessageResponse>(`/post-sales/students/${studentId}/messages/simulate`, { message })
+      .then((res) => res.data)
+  },
+
+  simulateRuler(studentId: string, dayOffset?: number | null): Promise<PostSaleRulerResponse> {
+    return apiClient
+      .post<PostSaleRulerResponse>(`/post-sales/students/${studentId}/ruler/simulate`, { dayOffset })
       .then((res) => res.data)
   },
 

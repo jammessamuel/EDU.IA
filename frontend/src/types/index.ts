@@ -190,6 +190,17 @@ export interface PostSaleTimelineEvent {
   source: 'system' | 'manual'
 }
 
+export interface PostSaleRulerStatus {
+  status: 'PENDENTE' | 'AGENDADA' | 'CONCLUIDA'
+  nextDay: number | null
+  nextTitle: string | null
+  nextMessage: string | null
+  sentDays: number[]
+  sentCount: number
+  pendingCount: number
+  lastSentAt: string | null
+}
+
 export interface PostSaleStudent {
   id: string
   enrollmentId: string | null
@@ -212,6 +223,7 @@ export interface PostSaleStudent {
   upcomingDueAt: string
   checklist: PostSaleChecklistStep[]
   timeline: PostSaleTimelineEvent[]
+  ruler: PostSaleRulerStatus
   isDemo: boolean
 }
 
@@ -254,6 +266,9 @@ export interface PostSaleAutomation {
   trigger: string
   message: string
   status: string
+  sentCount: number
+  pendingCount: number
+  scheduledCount: number
 }
 
 export interface PostSaleMessageTemplate {
@@ -296,6 +311,16 @@ export interface PostSaleSimulatedMessageResponse {
 
 export interface PostSaleFakeActionResponse {
   result: Record<string, unknown>
+  overview: PostSaleOverview
+}
+
+export interface PostSaleRulerResponse {
+  result: {
+    day: number
+    title: string
+    message: string
+    log: PostSaleIntegrationLog
+  }
   overview: PostSaleOverview
 }
 

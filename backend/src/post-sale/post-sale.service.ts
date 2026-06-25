@@ -42,6 +42,17 @@ interface TimelineEvent {
   source: 'system' | 'manual';
 }
 
+interface StudentRulerStatus {
+  status: 'PENDENTE' | 'AGENDADA' | 'CONCLUIDA';
+  nextDay: number | null;
+  nextTitle: string | null;
+  nextMessage: string | null;
+  sentDays: number[];
+  sentCount: number;
+  pendingCount: number;
+  lastSentAt: Date | null;
+}
+
 interface LifecycleStudent {
   id: string;
   enrollmentId: string | null;
@@ -64,6 +75,7 @@ interface LifecycleStudent {
   upcomingDueAt: Date;
   checklist: ChecklistStep[];
   timeline: TimelineEvent[];
+  ruler: StudentRulerStatus;
   isDemo: boolean;
 }
 
@@ -110,9 +122,11 @@ export class PostSaleService {
     const eventsByStudent = this.groupByStudent(events);
     const lifecycle = baseLifecycle.map((student) => {
       const withState = this.applyState(student, stateByStudent.get(student.id));
+      const storedEvents = eventsByStudent.get(student.id) ?? [];
       return {
         ...withState,
-        timeline: this.timelineFor(withState, eventsByStudent.get(student.id) ?? []),
+        ruler: this.rulerStatus(withState, runtimeConfig, storedEvents),
+        timeline: this.timelineFor(withState, storedEvents),
       };
     });
 
@@ -123,7 +137,7 @@ export class PostSaleService {
       funnel: this.funnel(lifecycle),
       students: lifecycle,
       tasks: this.tasks(lifecycle, storedTasks),
-      automations: this.automations(runtimeConfig),
+      automations: this.automations(runtimeConfig, lifecycle),
       messageTemplates: this.messageTemplates(runtimeConfig),
       integrationLogs,
     };
@@ -222,6 +236,49 @@ export class PostSaleService {
     });
 
     return { message, log: whatsapp.log, overview: await this.overview(schoolId) };
+  }
+
+  async simulateRuler(
+    schoolId: string,
+    studentKey: string,
+    input: { dayOffset?: number | null },
+  ): Promise<{ result: Record<string, unknown>; overview: unknown }> {
+    const student = await this.findStudent(schoolId, studentKey);
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
+    const template = this.pickRulerTemplate(student, runtimeConfig, input.dayOffset);
+    if (!template) {
+      throw new BadRequestException('Nenhum template ativo da régua foi encontrado para este aluno.');
+    }
+
+    const message = this.schoolConfig.renderTemplate(template.whatsappText, this.studentVariables(student, runtimeConfig));
+    const whatsapp = await this.fakeWhatsApp.sendMessage({
+      context: this.integrationContext(schoolId, student),
+      message,
+    });
+
+    await this.recordEvent(schoolId, student, {
+      type: 'REGUA_DISPARADA',
+      title: `${template.title} disparada`,
+      description: message,
+      metadata: {
+        dayOffset: template.dayOffset,
+        templateKey: template.key,
+        channel: 'WhatsApp',
+        fake: true,
+        providerMessageId: whatsapp.providerMessageId,
+        logId: whatsapp.log.id,
+      },
+    });
+
+    return {
+      result: {
+        day: template.dayOffset ?? 0,
+        title: template.title,
+        message,
+        log: whatsapp.log,
+      },
+      overview: await this.overview(schoolId),
+    };
   }
 
   async simulatePayment(
@@ -346,6 +403,7 @@ export class PostSaleService {
       upcomingDueAt: this.addDays(new Date(), this.nextDueOffset(status)),
       checklist,
       timeline: [],
+      ruler: this.emptyRuler(),
       isDemo: false,
     };
   }
@@ -448,6 +506,7 @@ export class PostSaleService {
       upcomingDueAt: this.addDays(new Date(), this.nextDueOffset(demo.status)),
       checklist: this.demoChecklist(demo.status),
       timeline: [],
+      ruler: this.emptyRuler(),
       isDemo: true,
     }));
   }
@@ -837,6 +896,14 @@ export class PostSaleService {
     };
   }
 
+  private eventMetadata(event: any): Record<string, unknown> {
+    try {
+      return JSON.parse(event.metadata ?? '{}') as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
   private groupByStudent(items: any[]) {
     const map = new Map<string, any[]>();
     for (const item of items) {
@@ -856,7 +923,7 @@ export class PostSaleService {
       accessPending: students.filter((student) => student.status === 'ACESSO_PENDENTE').length,
       highRisk: students.filter((student) => ['ALTO', 'CRITICO'].includes(student.riskLevel)).length,
       onboardingComplete: students.filter((student) => student.status === 'ONBOARDING_CONCLUIDO').length,
-      automationsQueued: students.filter((student) => student.status !== 'ONBOARDING_CONCLUIDO').length * 2,
+      automationsQueued: students.reduce((sum, student) => sum + student.ruler.pendingCount, 0),
       averageProgress: students.length
         ? Math.round(students.reduce((sum, student) => sum + student.progress, 0) / students.length)
         : 0,
@@ -912,10 +979,8 @@ export class PostSaleService {
     return [...manualTasks, ...automaticTasks].slice(0, 14);
   }
 
-  private automations(config: RuntimeSchoolConfig) {
-    return config.templates
-      .filter((template) => template.category === 'regua' && template.dayOffset !== null)
-      .sort((a, b) => (a.dayOffset ?? 0) - (b.dayOffset ?? 0))
+  private automations(config: RuntimeSchoolConfig, students: LifecycleStudent[]) {
+    return this.rulerTemplates(config)
       .map((template) => ({
         day: template.dayOffset ?? 0,
         title: template.title,
@@ -923,7 +988,74 @@ export class PostSaleService {
         trigger: template.stage,
         message: this.schoolConfig.renderTemplate(template.whatsappText, this.schoolConfig.defaultVariables(config)),
         status: template.active ? 'Ativa' : 'Inativa',
+        sentCount: students.filter((student) => student.ruler.sentDays.includes(template.dayOffset ?? 0)).length,
+        pendingCount: students.filter(
+          (student) => student.ruler.nextDay === template.dayOffset && student.ruler.status === 'PENDENTE',
+        ).length,
+        scheduledCount: students.filter(
+          (student) => student.ruler.nextDay === template.dayOffset && student.ruler.status === 'AGENDADA',
+        ).length,
       }));
+  }
+
+  private rulerTemplates(config: RuntimeSchoolConfig) {
+    return config.templates
+      .filter((template) => template.category === 'regua' && template.dayOffset !== null)
+      .sort((a, b) => (a.dayOffset ?? 0) - (b.dayOffset ?? 0));
+  }
+
+  private rulerStatus(student: LifecycleStudent, config: RuntimeSchoolConfig, storedEvents: any[]): StudentRulerStatus {
+    const templates = this.rulerTemplates(config);
+    const sentEntries = storedEvents
+      .filter((event) => event.type === 'REGUA_DISPARADA')
+      .map((event) => ({
+        day: Number(this.eventMetadata(event).dayOffset),
+        createdAt: event.createdAt as Date,
+      }))
+      .filter((entry) => Number.isFinite(entry.day));
+    const sentDays = [...new Set(sentEntries.map((entry) => entry.day))].sort((a, b) => a - b);
+    const unsentTemplates = templates.filter((template) => !sentDays.includes(template.dayOffset ?? -1));
+    const dueTemplates = unsentTemplates.filter((template) => (template.dayOffset ?? 0) <= student.daysSinceEnrollment);
+    const nextTemplate = dueTemplates[0] ?? unsentTemplates[0] ?? null;
+    const lastSentAt =
+      sentEntries.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]?.createdAt ?? null;
+
+    return {
+      status: dueTemplates.length > 0 ? 'PENDENTE' : nextTemplate ? 'AGENDADA' : 'CONCLUIDA',
+      nextDay: nextTemplate?.dayOffset ?? null,
+      nextTitle: nextTemplate?.title ?? null,
+      nextMessage: nextTemplate
+        ? this.schoolConfig.renderTemplate(nextTemplate.whatsappText, this.studentVariables(student, config))
+        : null,
+      sentDays,
+      sentCount: sentDays.length,
+      pendingCount: dueTemplates.length,
+      lastSentAt,
+    };
+  }
+
+  private pickRulerTemplate(student: LifecycleStudent, config: RuntimeSchoolConfig, requestedDay?: number | null) {
+    const templates = this.rulerTemplates(config);
+    if (typeof requestedDay === 'number' && Number.isFinite(requestedDay)) {
+      return templates.find((template) => template.dayOffset === requestedDay) ?? null;
+    }
+    if (typeof student.ruler.nextDay === 'number') {
+      return templates.find((template) => template.dayOffset === student.ruler.nextDay) ?? null;
+    }
+    return templates[0] ?? null;
+  }
+
+  private emptyRuler(): StudentRulerStatus {
+    return {
+      status: 'AGENDADA',
+      nextDay: null,
+      nextTitle: null,
+      nextMessage: null,
+      sentDays: [],
+      sentCount: 0,
+      pendingCount: 0,
+      lastSentAt: null,
+    };
   }
 
   private messageTemplates(config: RuntimeSchoolConfig) {

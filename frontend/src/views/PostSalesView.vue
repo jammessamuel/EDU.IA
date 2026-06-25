@@ -233,6 +233,10 @@ function fakeActionKey(item: FakeServiceActionItem) {
   return `FAKE_${item.service}_${item.action}`
 }
 
+function rulerActionKey(dayOffset?: number | null) {
+  return `RULER_${dayOffset ?? 'NEXT'}`
+}
+
 async function runFakeService(item: FakeServiceActionItem) {
   if (!selectedStudent.value || actionBusy.value) return
   actionBusy.value = fakeActionKey(item)
@@ -252,6 +256,22 @@ async function runFakeService(item: FakeServiceActionItem) {
     applyOverview(response.overview)
   } catch {
     error.value = 'Não foi possível executar a simulação agora.'
+  } finally {
+    actionBusy.value = null
+  }
+}
+
+async function simulateRuler(dayOffset?: number | null) {
+  if (!selectedStudent.value || actionBusy.value) return
+  actionBusy.value = rulerActionKey(dayOffset)
+  error.value = null
+  messagePreview.value = null
+  try {
+    const response = await postSalesApi.simulateRuler(selectedStudent.value.id, dayOffset)
+    messagePreview.value = response.result.message
+    applyOverview(response.overview)
+  } catch {
+    error.value = 'Não foi possível simular a régua para este aluno.'
   } finally {
     actionBusy.value = null
   }
@@ -278,8 +298,14 @@ function riskLabel(student: PostSaleStudent) {
   return 'Baixo'
 }
 
+function rulerStatusLabel(status: PostSaleStudent['ruler']['status']) {
+  if (status === 'PENDENTE') return 'Pendente agora'
+  if (status === 'CONCLUIDA') return 'Concluída'
+  return 'Agendada'
+}
+
 function timelineIcon(type: string) {
-  if (type.includes('WHATSAPP')) return PaperPlaneOutline
+  if (type.includes('WHATSAPP') || type.includes('REGUA')) return PaperPlaneOutline
   if (type.includes('TASK')) return AddCircleOutline
   if (type.includes('STATUS')) return CreateOutline
   if (type.includes('CONTRATO')) return ShieldCheckmarkOutline
@@ -490,6 +516,40 @@ function actionLabel(action: string) {
                 </div>
               </div>
 
+              <div class="ruler-box" :class="`ruler-box--${selectedStudent.ruler.status.toLowerCase()}`">
+                <div class="ruler-box__head">
+                  <div>
+                    <span>Régua automática</span>
+                    <strong>{{ rulerStatusLabel(selectedStudent.ruler.status) }}</strong>
+                  </div>
+                  <small>{{ selectedStudent.ruler.sentCount }} enviados</small>
+                </div>
+                <div class="ruler-box__next">
+                  <span>Próximo marco</span>
+                  <strong v-if="selectedStudent.ruler.nextTitle">
+                    Dia {{ selectedStudent.ruler.nextDay }} · {{ selectedStudent.ruler.nextTitle }}
+                  </strong>
+                  <strong v-else>Todos os marcos foram concluídos</strong>
+                  <small v-if="selectedStudent.ruler.lastSentAt">
+                    Último envio {{ formatDate(selectedStudent.ruler.lastSentAt) }}
+                  </small>
+                </div>
+                <p v-if="selectedStudent.ruler.nextMessage">{{ selectedStudent.ruler.nextMessage }}</p>
+                <div class="ruler-days" aria-label="Marcos já disparados">
+                  <span v-if="!selectedStudent.ruler.sentDays.length">Nenhum dia disparado ainda</span>
+                  <span v-for="day in selectedStudent.ruler.sentDays" :key="day">Dia {{ day }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="ruler-send"
+                  :disabled="!!actionBusy || selectedStudent.ruler.status === 'CONCLUIDA'"
+                  @click="simulateRuler()"
+                >
+                  <NIcon :component="PaperPlaneOutline" size="16" />
+                  {{ actionBusy === rulerActionKey() ? 'Disparando...' : 'Disparar próximo marco fake' }}
+                </button>
+              </div>
+
               <div class="ops-block">
                 <h3>Ações rápidas</h3>
                 <div class="quick-actions">
@@ -647,7 +707,21 @@ function actionLabel(action: string) {
               </div>
               <h3>{{ automation.title }}</h3>
               <p>{{ automation.message }}</p>
-              <small>{{ automation.channel }} · {{ automation.trigger }}</small>
+              <div class="automation-card__metrics">
+                <span>{{ automation.pendingCount }} pendentes</span>
+                <span>{{ automation.scheduledCount }} agendados</span>
+                <span>{{ automation.sentCount }} enviados</span>
+              </div>
+              <div class="automation-card__footer">
+                <small>{{ automation.channel }} · {{ automation.trigger }}</small>
+                <button
+                  type="button"
+                  :disabled="!selectedStudent || !!actionBusy"
+                  @click="simulateRuler(automation.day)"
+                >
+                  {{ actionBusy === rulerActionKey(automation.day) ? '...' : 'Simular no aluno' }}
+                </button>
+              </div>
             </article>
           </div>
         </section>
@@ -1398,6 +1472,124 @@ function actionLabel(action: string) {
   margin-top: 10px;
 }
 
+.ruler-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--border));
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--surface), var(--brand-soft));
+}
+
+.ruler-box--pendente {
+  border-color: color-mix(in srgb, var(--warning) 36%, var(--border));
+  background: linear-gradient(135deg, var(--surface), var(--warning-soft));
+}
+
+.ruler-box--concluida {
+  border-color: color-mix(in srgb, var(--accent-strong) 32%, var(--border));
+  background: linear-gradient(135deg, var(--surface), color-mix(in srgb, var(--accent-strong) 10%, transparent));
+}
+
+.ruler-box__head,
+.ruler-box__next {
+  min-width: 0;
+}
+
+.ruler-box__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ruler-box__head span,
+.ruler-box__next span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ruler-box__head strong,
+.ruler-box__next strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.ruler-box__head small {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--brand);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.ruler-box__next small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ruler-box p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ruler-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ruler-days span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--muted-strong);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.ruler-send {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #fff;
+  background: var(--brand);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ruler-send:hover {
+  background: var(--brand-strong);
+}
+
+.ruler-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .fake-service-actions {
   display: grid;
   gap: 8px;
@@ -1695,6 +1887,56 @@ function actionLabel(action: string) {
   font-size: 11px;
 }
 
+.automation-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.automation-card__metrics span {
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted-strong);
+  background: var(--surface-soft);
+  font-size: 10px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.automation-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.automation-card__footer button {
+  min-height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  color: var(--brand);
+  background: var(--brand-soft);
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.automation-card__footer button:hover {
+  border-color: color-mix(in srgb, var(--brand) 36%, var(--border));
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+}
+
+.automation-card__footer button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .log-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1864,6 +2106,7 @@ function actionLabel(action: string) {
   .quick-actions,
   .fake-service-group,
   .fake-service-group > div:last-child,
+  .automation-card__metrics,
   .task-form__row {
     grid-template-columns: 1fr;
   }
