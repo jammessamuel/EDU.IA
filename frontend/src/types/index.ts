@@ -154,3 +154,100 @@ export interface EnrollmentVerifyResponse {
   valid: boolean
   enrollment: Enrollment
 }
+
+export type PostSaleLifecycleStatus =
+  | 'DOCUMENTACAO_PENDENTE'
+  | 'CONTRATO_PENDENTE'
+  | 'PAGAMENTO_PENDENTE'
+  | 'ACESSO_PENDENTE'
+  | 'EM_ACOMPANHAMENTO'
+  | 'RISCO_EVASAO'
+  | 'ONBOARDING_CONCLUIDO'
+
+export type PostSaleRiskLevel = 'BAIXO' | 'MEDIO' | 'ALTO' | 'CRITICO'
+export type PostSaleStepStatus = 'done' | 'pending' | 'blocked' | 'attention'
+
+export interface PostSaleChecklistStep {
+  key: string
+  label: string
+  status: PostSaleStepStatus
+  helper: string
+}
+
+export interface PostSaleStudent {
+  id: string
+  enrollmentId: string | null
+  studentName: string
+  course: string
+  status: PostSaleLifecycleStatus
+  statusLabel: string
+  progress: number
+  riskScore: number
+  riskLevel: PostSaleRiskLevel
+  documentStatus: string
+  contractStatus: string
+  paymentStatus: string
+  accessStatus: string
+  nextAction: string
+  ownerTeam: string
+  daysSinceEnrollment: number
+  lastContactAt: string
+  upcomingDueAt: string
+  checklist: PostSaleChecklistStep[]
+  isDemo: boolean
+}
+
+export interface PostSaleSummary {
+  totalStudents: number
+  documentsPending: number
+  contractsPending: number
+  paymentsPending: number
+  accessPending: number
+  highRisk: number
+  onboardingComplete: number
+  automationsQueued: number
+  averageProgress: number
+}
+
+export interface PostSaleFunnelStage {
+  key: PostSaleLifecycleStatus
+  label: string
+  color: string
+  count: number
+}
+
+export interface PostSaleTask {
+  id: string
+  studentId: string
+  title: string
+  studentName: string
+  ownerTeam: string
+  priority: string
+  dueAt: string
+  automation: string
+}
+
+export interface PostSaleAutomation {
+  day: number
+  title: string
+  channel: string
+  trigger: string
+  message: string
+  status: string
+}
+
+export interface PostSaleMessageTemplate {
+  title: string
+  text: string
+}
+
+export interface PostSaleOverview {
+  generatedAt: string
+  hasDemoData: boolean
+  summary: PostSaleSummary
+  funnel: PostSaleFunnelStage[]
+  students: PostSaleStudent[]
+  tasks: PostSaleTask[]
+  automations: PostSaleAutomation[]
+  messageTemplates: PostSaleMessageTemplate[]
+}
