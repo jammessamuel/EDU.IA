@@ -15,17 +15,36 @@ import {
 } from './enrollment-fields';
 import { gerarComprovantePdf } from './comprovante-pdf';
 import { PaymentProvider } from './payment.provider';
+import { RuntimeSchoolConfig, SchoolConfigService } from '../school-config/school-config.service';
 
 @Injectable()
 export class EnrollmentService {
   constructor(
     private prisma: PrismaService,
     private payments: PaymentProvider,
+    private schoolConfig: SchoolConfigService,
   ) {}
 
   /** Campos da matrícula da escola (por ora fixos p/ Educação). */
-  private fieldsFor(_schoolId: string) {
-    return EDUCATION_ENROLLMENT_FIELDS;
+  async fieldsFor(schoolId: string) {
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
+    return this.fieldsForConfig(runtimeConfig);
+  }
+
+  async fieldSchema(schoolId: string) {
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
+    const documentsFor = (audience: string) =>
+      runtimeConfig.documents
+        .filter((document) => document.audience === audience)
+        .map((document) => `${document.documentType}${document.required ? '' : ' (opcional)'} - ${document.instructions}`);
+    return {
+      fields: this.fieldsForConfig(runtimeConfig),
+      documentRequirements: {
+        brasil: documentsFor('brasileiro'),
+        internacional: documentsFor('estrangeiro'),
+        menorIdade: documentsFor('menor_idade'),
+      },
+    };
   }
 
   /**
@@ -37,7 +56,8 @@ export class EnrollmentService {
     data: Record<string, any>,
     opts: { leadId?: string; simulatePayment?: boolean } = {},
   ) {
-    const fields = this.fieldsFor(schoolId);
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
+    const fields = this.fieldsForConfig(runtimeConfig);
     const normalized = normalizeEnrollmentData(fields, data) as Record<string, any>;
     const errors = validateEnrollment(fields, normalized);
     if (errors.length) {
@@ -49,9 +69,11 @@ export class EnrollmentService {
 
     const simulate = opts.simulatePayment ?? true;
     const textOrNull = (value: unknown) => (value == null || value === '' ? null : String(value));
+    const courseOffer = runtimeConfig.courses.find((course) => course.name === normalized.course);
+    const enrollmentFee = courseOffer?.enrollmentFee ?? DEFAULT_ENROLLMENT_FEE;
     const payment = simulate
       ? await this.payments.charge({
-          amount: DEFAULT_ENROLLMENT_FEE,
+          amount: enrollmentFee,
           method: textOrNull(normalized.paymentMethod),
           customerName: String(normalized.studentName),
           customerEmail: textOrNull(normalized.email),
@@ -82,7 +104,7 @@ export class EnrollmentService {
         data: JSON.stringify(normalized),
         paymentStatus,
         paymentMethod: textOrNull(normalized.paymentMethod),
-        paymentAmount: DEFAULT_ENROLLMENT_FEE,
+        paymentAmount: enrollmentFee,
         paymentRef: payment.reference,
         authCode,
         confirmedAt: paymentStatus === 'APROVADO' ? new Date() : null,
@@ -203,6 +225,20 @@ export class EnrollmentService {
   }
 
   // ── helpers ──
+
+  private fieldsForConfig(runtimeConfig: RuntimeSchoolConfig) {
+    const courseOptions = runtimeConfig.courses.map((course) => course.name).filter(Boolean);
+    const shiftOptions = [...new Set(runtimeConfig.courses.flatMap((course) => course.shifts))].filter(Boolean);
+    const modalityOptions = [...new Set(runtimeConfig.courses.map((course) => course.modality).filter(Boolean))];
+
+    return EDUCATION_ENROLLMENT_FIELDS.map((field) => {
+      if (field.name === 'course' && courseOptions.length) return { ...field, options: courseOptions };
+      if (field.name === 'shift' && shiftOptions.length) return { ...field, options: shiftOptions };
+      if (field.name === 'modalidade' && modalityOptions.length) return { ...field, options: modalityOptions };
+      if (field.name === 'unit') return { ...field, required: false, options: ['Sede principal'] };
+      return field;
+    });
+  }
 
   /** Número sequencial por escola/ano: "2026-0001". */
   private async generateNumber(schoolId: string): Promise<string> {

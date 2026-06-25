@@ -8,6 +8,7 @@ import { VerticalModule } from './vertical/vertical.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
 import { AccessibilityModule } from './accessibility/accessibility.module';
 import { PostSaleModule } from './post-sale/post-sale.module';
+import { SchoolConfigModule } from './school-config/school-config.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt.guard';
 import { RbacGuard } from './common/guards/rbac.guard';
@@ -22,6 +23,7 @@ import { AppService } from './app.service';
     AccessibilityModule,
     SimulatorModule,
     VerticalModule,
+    SchoolConfigModule,
     EnrollmentModule,
     PostSaleModule,
   ],

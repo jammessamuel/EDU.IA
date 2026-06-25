@@ -5,6 +5,7 @@ import { FakePaymentAction, FakePaymentService } from '../integrations/fake-paym
 import { FakeWhatsAppService } from '../integrations/fake-whatsapp.service';
 import { IntegrationLogService } from '../integrations/integration-log.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RuntimeSchoolConfig, SchoolConfigService } from '../school-config/school-config.service';
 
 type LifecycleStatus =
   | 'DOCUMENTACAO_PENDENTE'
@@ -75,9 +76,11 @@ export class PostSaleService {
     private fakePayment: FakePaymentService,
     private fakeContract: FakeContractService,
     private fakeDocument: FakeDocumentService,
+    private schoolConfig: SchoolConfigService,
   ) {}
 
   async overview(schoolId: string): Promise<Record<string, unknown>> {
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
     const enrollments = await this.prisma.enrollment.findMany({
       where: { schoolId },
       include: { documents: true },
@@ -120,8 +123,8 @@ export class PostSaleService {
       funnel: this.funnel(lifecycle),
       students: lifecycle,
       tasks: this.tasks(lifecycle, storedTasks),
-      automations: this.automations(),
-      messageTemplates: this.messageTemplates(),
+      automations: this.automations(runtimeConfig),
+      messageTemplates: this.messageTemplates(runtimeConfig),
       integrationLogs,
     };
   }
@@ -204,7 +207,8 @@ export class PostSaleService {
     input: { message?: string },
   ): Promise<{ message: string; log: unknown; overview: unknown }> {
     const student = await this.findStudent(schoolId, studentKey);
-    const message = this.cleanVisibleText(input.message?.trim() || this.suggestedMessage(student), student);
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
+    const message = this.cleanVisibleText(input.message?.trim() || this.suggestedMessage(student, runtimeConfig), student);
     const whatsapp = await this.fakeWhatsApp.sendMessage({
       context: this.integrationContext(schoolId, student),
       message,
@@ -908,81 +912,45 @@ export class PostSaleService {
     return [...manualTasks, ...automaticTasks].slice(0, 14);
   }
 
-  private automations() {
-    return [
-      {
-        day: 0,
-        title: 'Boas-vindas',
+  private automations(config: RuntimeSchoolConfig) {
+    return config.templates
+      .filter((template) => template.category === 'regua' && template.dayOffset !== null)
+      .sort((a, b) => (a.dayOffset ?? 0) - (b.dayOffset ?? 0))
+      .map((template) => ({
+        day: template.dayOffset ?? 0,
+        title: template.title,
         channel: 'WhatsApp',
-        trigger: 'Matrícula confirmada',
-        message: 'Enviar boas-vindas, calendário, acesso e apresentação da assistente virtual.',
-        status: 'Ativa',
-      },
-      {
-        day: 1,
-        title: 'Documentação',
-        channel: 'WhatsApp',
-        trigger: 'Documentos pendentes',
-        message: 'Solicitar documentos faltantes e aceitar PDF único ou arquivos separados.',
-        status: 'Ativa',
-      },
-      {
-        day: 2,
-        title: 'Contrato',
-        channel: 'D4Sign',
-        trigger: 'Contrato sem assinatura',
-        message: 'Gerar contrato, enviar link e lembrar em 24h, 72h e 5 dias.',
-        status: 'Preparada',
-      },
-      {
-        day: 3,
-        title: 'Financeiro',
-        channel: 'PIX/Boleto',
-        trigger: 'Pagamento pendente',
-        message: 'Enviar cobrança e lembretes antes/depois do vencimento.',
-        status: 'Preparada',
-      },
-      {
-        day: 5,
-        title: 'Primeiro acesso',
-        channel: 'AVA',
-        trigger: 'Aluno sem acesso',
-        message: 'Checar login no AVA e mandar tutorial se ainda não entrou.',
-        status: 'Preparada',
-      },
-      {
-        day: 15,
-        title: 'Permanência',
-        channel: 'IA',
-        trigger: 'Baixo engajamento',
-        message: 'Enviar incentivo personalizado ou abrir tarefa para equipe.',
-        status: 'Preparada',
-      },
-    ];
+        trigger: template.stage,
+        message: this.schoolConfig.renderTemplate(template.whatsappText, this.schoolConfig.defaultVariables(config)),
+        status: template.active ? 'Ativa' : 'Inativa',
+      }));
   }
 
-  private messageTemplates() {
-    return [
-      {
-        title: 'Boas-vindas',
-        text: 'Oi! Que bom ter você com a gente. Sua matrícula já foi registrada e eu vou te acompanhar nos próximos passos: documentos, contrato, pagamento e acesso ao AVA.',
-      },
-      {
-        title: 'Documento pendente',
-        text: 'Para liberar sua matrícula, ainda preciso dos documentos pendentes. Você pode enviar tudo em um único PDF ou arquivo por arquivo, como ficar mais fácil.',
-      },
-      {
-        title: 'Contrato',
-        text: 'Seu contrato está pronto para assinatura. Vou te enviar o link e acompanhar por aqui até ficar tudo certo.',
-      },
-      {
-        title: 'Primeiro acesso',
-        text: 'Vi que seu acesso ao AVA ainda não apareceu por aqui. Quer que eu te mande o passo a passo para entrar?',
-      },
-    ];
+  private messageTemplates(config: RuntimeSchoolConfig) {
+    return config.templates
+      .filter((template) => template.category !== 'regua')
+      .sort((a, b) => a.order - b.order)
+      .map((template) => ({
+        title: template.title,
+        text: this.schoolConfig.renderTemplate(template.whatsappText, this.schoolConfig.defaultVariables(config)),
+      }));
   }
 
-  private suggestedMessage(student: LifecycleStudent) {
+  private suggestedMessage(student: LifecycleStudent, config: RuntimeSchoolConfig) {
+    const keyByStatus: Partial<Record<LifecycleStatus, string>> = {
+      DOCUMENTACAO_PENDENTE: 'document_pending',
+      CONTRATO_PENDENTE: 'contract_pending',
+      PAGAMENTO_PENDENTE: 'payment_pending',
+      ACESSO_PENDENTE: 'first_access',
+      EM_ACOMPANHAMENTO: 'first_access',
+      RISCO_EVASAO: 'evasion_risk',
+      ONBOARDING_CONCLUIDO: 'reactivation',
+    };
+    const template = this.schoolConfig.templateByKey(config, keyByStatus[student.status] ?? 'welcome');
+    if (template) {
+      return this.schoolConfig.renderTemplate(template.whatsappText, this.studentVariables(student, config));
+    }
+
     const firstName = this.firstName(student);
     const nextAction = student.nextAction.toLowerCase();
 
@@ -1001,6 +969,16 @@ export class PostSaleService {
     return `Oi, ${firstName}! Estou passando para acompanhar sua experiência e ver se ficou alguma dúvida sobre acesso, aulas ou documentos.`;
   }
 
+  private studentVariables(student: LifecycleStudent, config: RuntimeSchoolConfig) {
+    const course = config.courses.find((item) => item.name === student.course) ?? config.courses[0];
+    return this.schoolConfig.defaultVariables(config, {
+      nome: this.firstName(student),
+      curso: student.course,
+      valor: this.formatCurrency(course?.enrollmentFee ?? 150),
+      pendencia: student.nextAction.toLowerCase(),
+    });
+  }
+
   private firstName(student: LifecycleStudent) {
     return student.studentName.trim().split(/\s+/)[0] || student.studentName;
   }
@@ -1013,6 +991,8 @@ export class PostSaleService {
       .replace(/\{\{\s*nome\s*\}\}/gi, name)
       .replace(/\{\{\s*pendencia\s*\}\}/gi, pending)
       .replace(/\{\{\s*[^}]+\s*\}\}/g, '')
+      .replace(/\{\s*nome\s*\}/gi, name)
+      .replace(/\{\s*pendencia\s*\}/gi, pending)
       .replace(/\bWhatsApp\s+simulado\b/gi, 'Prévia de WhatsApp')
       .replace(/\bTarefa\s+manual\b/gi, 'Criada pela equipe')
       .replace(/\s{2,}/g, ' ')
@@ -1119,5 +1099,12 @@ export class PostSaleService {
     const candidate = this.addDays(date, days);
     const now = new Date();
     return candidate.getTime() > now.getTime() ? now : candidate;
+  }
+
+  private formatCurrency(value: number | null | undefined) {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value ?? 0);
   }
 }

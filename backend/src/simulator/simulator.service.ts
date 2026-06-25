@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerticalService, VerticalField } from '../vertical/vertical.service';
 import { EnrollmentChatService } from '../enrollment/enrollment-chat.service';
-import { institutionInfoForPrompt } from '../enrollment/institution-info';
+import { RuntimeSchoolConfig, SchoolConfigService } from '../school-config/school-config.service';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -21,6 +21,7 @@ export class SimulatorService {
     private prisma: PrismaService,
     private verticalService: VerticalService,
     private enrollmentChat: EnrollmentChatService,
+    private schoolConfig: SchoolConfigService,
   ) {}
 
   // Só instancio o OpenAI quando o chat realmente vai ser usado.
@@ -42,7 +43,7 @@ export class SimulatorService {
 
   // ── Prompt dinâmico por vertical ─────────────────────────────────────────────
 
-  private async buildPrompt(schoolId: string): Promise<string> {
+  private async buildPrompt(schoolId: string, runtimeConfig: RuntimeSchoolConfig): Promise<string> {
     const school = await this.prisma.school.findUnique({
       where: { id: schoolId },
       include: { vertical: true },
@@ -52,6 +53,7 @@ export class SimulatorService {
       return this.buildEducationPrompt(
         school.chatbotName ?? 'IA Atendente',
         school.name ?? 'nossa instituição',
+        runtimeConfig,
       );
     }
 
@@ -67,7 +69,7 @@ export class SimulatorService {
     const template = school?.vertical?.promptTemplate ?? `Você é {{chatbotName}}, atendente virtual da {{workspaceName}}.
 Colete as seguintes informações, UMA POR VEZ:
 {{fieldDescriptions}}
-Quando coletar todos os campos, agradeça e diga que um consultor vai entrar em contato.`;
+Quando coletar todos os campos, continue o atendimento e ofereça fazer a matrícula por aqui.`;
 
     const rendered = template
       .replace(/\{\{chatbotName\}\}/g,       school?.chatbotName ?? 'Atendente Virtual')
@@ -81,13 +83,17 @@ REGRA DE IDIOMA (prioridade alta):
 - Responda no mesmo idioma do cliente, com naturalidade humana.
 - Se o cliente disser que é American/from the United States, Canadian/from Canada ou Spanish/from Spain/España, reconheça isso e continue no idioma correspondente.
 - Continue coletando uma pergunta por vez.
-- Se o cliente perguntar horário, localização, endereço, como chegar, condução/transporte, desconto à vista, valores ou PDF/material do curso, responda usando as informações institucionais abaixo.
+- Se o cliente perguntar horário, localização, endereço, como chegar, condução/transporte, documentos, desconto à vista, valores ou cursos, responda usando as informações configuráveis abaixo.
 - Evite respostas gravadas. Puxe assunto como uma pessoa: entenda a intenção, responda o que foi perguntado e faça uma próxima pergunta leve.
 
-${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app')}`;
+${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
   }
 
-  private buildEducationPrompt(chatbotName: string, workspaceName: string): string {
+  private buildEducationPrompt(
+    chatbotName: string,
+    workspaceName: string,
+    runtimeConfig: RuntimeSchoolConfig,
+  ): string {
     return `Você é ${chatbotName}, atendente de IA da ${workspaceName}. Você atende alunos pelo WhatsApp/simulador e deve resolver a conversa por conta própria.
 
 OBJETIVO:
@@ -103,13 +109,16 @@ COMO CONVERSAR:
 - Só pergunte unidade e turno depois que o aluno deixar claro que quer fazer matrícula ou pedir disponibilidade.
 - Se ele perguntar promoção/desconto, responda a condição e ofereça seguir com a matrícula por aqui.
 - Se ele pedir localização, diga o endereço e como chegar, sem transformar isso automaticamente em matrícula.
+- Se ele perguntar documentos, responda conforme o tipo de aluno: brasileiro, estrangeiro ou menor de idade.
+- Só use cursos ativos da configuração. Se um curso estiver inativo, não ofereça.
+- Não invente unidades. A localização oficial configurada é a referência institucional.
 - Nunca encerre com "até logo" enquanto ainda existe possibilidade de avançar. Termine com uma próxima pergunta útil.
 
 QUANDO VIRAR MATRÍCULA:
 - Se o aluno disser "quero fazer matrícula", "quero me matricular", "quero inscrição", "pode fazer", "vamos fazer", "sim, quero começar" ou equivalente, o sistema chamará o fluxo completo de matrícula.
 - Nesse caso, a própria IA coleta dados, valida e efetiva a matrícula. Não transfira para humano.
 
-${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app')}`;
+${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
   }
 
   // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -135,7 +144,14 @@ ${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'ht
 
     history.push({ role: 'user', content: text });
 
-    const systemPrompt = await this.buildPrompt(schoolId);
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
+    const directReply = this.answerFromConfig(text, runtimeConfig);
+    if (directReply) {
+      history.push({ role: 'assistant', content: directReply });
+      return { reply: directReply, lead: null, mode: 'lead', enrollmentDraft: null, enrollment: null };
+    }
+
+    const systemPrompt = await this.buildPrompt(schoolId, runtimeConfig);
 
     const response = await this.client.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -153,6 +169,96 @@ ${institutionInfoForPrompt(this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'ht
     const rawLead = await this.tryExtractAndSaveLead(history, schoolId);
     const lead = rawLead ? this.serializeLead(rawLead) : null;
     return { reply, lead, mode: 'lead', enrollmentDraft: null, enrollment: null };
+  }
+
+  private answerFromConfig(text: string, runtimeConfig: RuntimeSchoolConfig): string | null {
+    const normalized = this.normalizeText(text);
+
+    if (/\b(horario|hora|funcionamento|aberto|atendimento|secretaria|financeiro)\b/.test(normalized)) {
+      return `Claro. Nosso horário é: ${this.schoolConfig.formatBusinessHours(runtimeConfig.profile.businessHours)}.\n\nQuer que eu te ajude com curso, valores ou matrícula?`;
+    }
+
+    if (/\b(localizacao|localiza|endereco|onde fica|como chegar|conducao|transporte|onibus|metro|mapa)\b/.test(normalized)) {
+      const address = [runtimeConfig.profile.address, runtimeConfig.profile.city, runtimeConfig.profile.state]
+        .filter(Boolean)
+        .join(', ');
+      return [
+        `Ficamos em ${address}.`,
+        runtimeConfig.profile.referencePoints ? `Referência: ${runtimeConfig.profile.referencePoints}` : '',
+        runtimeConfig.profile.transportInfo ? `Como chegar: ${runtimeConfig.profile.transportInfo}` : '',
+        runtimeConfig.profile.mapLink ? `Mapa: ${runtimeConfig.profile.mapLink}` : '',
+        'Quer ver cursos/valores ou já começar sua matrícula por aqui?',
+      ].filter(Boolean).join('\n');
+    }
+
+    if (/\b(documento|documentacao|passaporte|cpf|rg|rne|rnm|dni|nie|menor)\b/.test(normalized)) {
+      const audience = this.detectDocumentAudience(normalized);
+      const documents = runtimeConfig.documents.filter((document) => document.audience === audience);
+      const label = audience === 'estrangeiro'
+        ? 'aluno estrangeiro'
+        : audience === 'menor_idade'
+          ? 'aluno menor de idade'
+          : 'aluno brasileiro';
+      const lines = documents.map((document) => {
+        const required = document.required ? 'obrigatório' : 'opcional';
+        return `- ${document.documentType} (${required}): ${document.instructions}`;
+      });
+
+      return `Para ${label}, a lista configurada é:\n${lines.join('\n')}\n\nPode mandar tudo em um PDF único ou arquivo por arquivo. Quer começar a matrícula?`;
+    }
+
+    if (/\b(curso|cursos|graduacao|faculdade|direito|enfermagem|administracao|pedagogia)\b/.test(normalized)) {
+      const courses = runtimeConfig.courses.map((course) => {
+        const shifts = course.shifts.length ? ` Turnos: ${course.shifts.join(', ')}.` : '';
+        const monthly = course.monthlyFee ? ` Mensalidade: ${this.formatCurrency(course.monthlyFee)}.` : '';
+        return `- *${course.name}*: ${course.description} ${course.duration ? `Duração: ${course.duration}.` : ''} ${course.modality ? `Modalidade: ${course.modality}.` : ''}${shifts}${monthly}`;
+      });
+      return `Temos estes cursos ativos agora:\n${courses.join('\n')}\n\nQual deles você quer conhecer melhor ou matricular?`;
+    }
+
+    if (/\b(desconto|promocao|promocional|avista|a vista|valor|preco|mensalidade|matricula|pagamento)\b/.test(normalized)) {
+      const commercial = runtimeConfig.commercial;
+      const courseValues = runtimeConfig.courses
+        .map((course) => {
+          const enrollment = course.enrollmentFee ? `matrícula ${this.formatCurrency(course.enrollmentFee)}` : '';
+          const monthly = course.monthlyFee ? `mensalidade ${this.formatCurrency(course.monthlyFee)}` : '';
+          const discount = course.cashDiscountPercent ? `à vista até ${course.cashDiscountPercent}%` : '';
+          return `- ${course.name}: ${[enrollment, monthly, discount].filter(Boolean).join(' | ')}`;
+        })
+        .join('\n');
+      const promo = commercial.campaignActive
+        ? this.schoolConfig.renderTemplate(commercial.promotionText, {
+            desconto: commercial.cashDiscountPercent ?? 0,
+          })
+        : 'No momento não há campanha ativa cadastrada.';
+      return `${promo}\n\nValores configurados:\n${courseValues}\n\nQuer que eu simule a matrícula de algum curso?`;
+    }
+
+    return null;
+  }
+
+  private detectDocumentAudience(normalizedText: string): 'brasileiro' | 'estrangeiro' | 'menor_idade' {
+    if (/\b(menor|responsavel|responsavel legal|underage|menor de edad)\b/.test(normalizedText)) {
+      return 'menor_idade';
+    }
+    if (/\b(estrangeiro|internacional|passaporte|passport|pasaporte|americano|canadense|canadian|american|spanish|espanhol|dni|nie|rne|rnm)\b/.test(normalizedText)) {
+      return 'estrangeiro';
+    }
+    return 'brasileiro';
+  }
+
+  private formatCurrency(value: number | null | undefined) {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value ?? 0);
+  }
+
+  private normalizeText(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
   }
 
   private shouldUseEnrollmentFlow(

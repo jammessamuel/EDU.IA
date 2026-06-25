@@ -298,3 +298,84 @@ export interface PostSaleFakeActionResponse {
   result: Record<string, unknown>
   overview: PostSaleOverview
 }
+
+export interface SchoolProfileConfig {
+  id: string
+  schoolId: string
+  businessHours: Record<string, string>
+  address: string
+  city: string
+  state: string
+  mapLink: string
+  referencePoints: string
+  transportInfo: string
+  supportChannels: Record<string, string>
+  updatedAt: string
+}
+
+export interface CommunicationTemplateConfig {
+  id: string
+  schoolId: string
+  key: string
+  title: string
+  stage: string
+  category: 'ia' | 'pos_venda' | 'regua' | string
+  dayOffset: number | null
+  whatsappText: string
+  defaultWhatsappText: string
+  active: boolean
+  order: number
+  updatedAt: string
+}
+
+export interface CourseOfferConfig {
+  id: string
+  schoolId: string
+  name: string
+  description: string
+  duration: string
+  modality: string
+  shifts: string[]
+  enrollmentFee: number | null
+  monthlyFee: number | null
+  cashDiscountPercent: number | null
+  active: boolean
+  updatedAt: string
+}
+
+export interface DocumentRequirementConfig {
+  id: string
+  schoolId: string
+  audience: 'brasileiro' | 'estrangeiro' | 'menor_idade' | string
+  documentType: string
+  instructions: string
+  required: boolean
+  active: boolean
+  order: number
+  updatedAt: string
+}
+
+export interface CommercialConditionConfig {
+  id: string
+  schoolId: string
+  cashDiscountPercent: number | null
+  campaignActive: boolean
+  campaignValidUntil: string | null
+  promotionText: string
+  updatedAt: string
+}
+
+export interface SchoolConfigOverview {
+  profile: SchoolProfileConfig
+  templates: CommunicationTemplateConfig[]
+  courses: CourseOfferConfig[]
+  documents: DocumentRequirementConfig[]
+  commercial: CommercialConditionConfig
+}
+
+export interface TemplatePreviewResponse {
+  key: string
+  title: string
+  rendered: string
+  variables: Record<string, string | number | boolean | null>
+}

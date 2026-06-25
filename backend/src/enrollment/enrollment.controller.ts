@@ -6,7 +6,7 @@ import { EnrollmentChatService, type ChatMessage } from './enrollment-chat.servi
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { DOCUMENT_REQUIREMENTS, EDUCATION_ENROLLMENT_FIELDS, SECTION_LABELS } from './enrollment-fields';
+import { SECTION_LABELS } from './enrollment-fields';
 
 @Controller('enrollments')
 export class EnrollmentController {
@@ -18,8 +18,9 @@ export class EnrollmentController {
   // Campos do formulário de matrícula — o frontend e a IA usam pra saber o que coletar.
   @Get('fields')
   @RequirePermission('leads:read:school')
-  fields() {
-    return { sections: SECTION_LABELS, fields: EDUCATION_ENROLLMENT_FIELDS, documentRequirements: DOCUMENT_REQUIREMENTS };
+  async fields(@CurrentUser() user: { schoolId: string }) {
+    const schema = await this.service.fieldSchema(user.schoolId);
+    return { sections: SECTION_LABELS, ...schema };
   }
 
   @Get('verify/:authCode')

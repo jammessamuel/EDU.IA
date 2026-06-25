@@ -5,11 +5,12 @@ import { FakePaymentService } from '../integrations/fake-payment.service';
 import { FakeWhatsAppService } from '../integrations/fake-whatsapp.service';
 import { IntegrationLogService } from '../integrations/integration-log.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { SchoolConfigModule } from '../school-config/school-config.module';
 import { PostSaleController } from './post-sale.controller';
 import { PostSaleService } from './post-sale.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, SchoolConfigModule],
   controllers: [PostSaleController],
   providers: [
     PostSaleService,

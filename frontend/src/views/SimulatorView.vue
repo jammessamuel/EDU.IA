@@ -49,6 +49,7 @@ function leadSummary(lead: Lead) {
 }
 
 onMounted(async () => {
+  store.loadWelcome()
   store.fetchLeads()
   try {
     const res = await enrollmentApi.fields()

@@ -26,7 +26,7 @@ import {
   camposFaltando,
   buildEnrollmentPrompt,
 } from './enrollment-agent';
-import { INSTITUTION_INFO } from './institution-info';
+import { RuntimeSchoolConfig, SchoolConfigService } from '../school-config/school-config.service';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -42,6 +42,7 @@ export class EnrollmentChatService {
     private prisma: PrismaService,
     private enrollments: EnrollmentService,
     private accessibility: AccessibilityService,
+    private schoolConfig: SchoolConfigService,
   ) {}
 
   private get client(): OpenAI {
@@ -75,8 +76,9 @@ export class EnrollmentChatService {
     accessibility: AccessibilityProfile | null;
   }> {
     const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
     let accessibility = await this.accessibility.getForUser(userId);
-    const fields = EDUCATION_ENROLLMENT_FIELDS;
+    const fields = this.fieldsForConfig(runtimeConfig);
     const recentUserText = [
       ...history
         .filter((message) => message.role === 'user')
@@ -93,10 +95,11 @@ export class EnrollmentChatService {
     const systemPrompt = buildEnrollmentPrompt({
       chatbotName: school?.chatbotName ?? 'Atendente de Matrículas',
       schoolName: school?.name ?? 'nossa instituição',
-      fee: DEFAULT_ENROLLMENT_FEE,
+      fee: runtimeConfig.courses[0]?.enrollmentFee ?? DEFAULT_ENROLLMENT_FEE,
       draft: initialDraft,
       accessibility,
       frontendUrl: this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app',
+      institutionPrompt: this.schoolConfig.institutionPrompt(runtimeConfig),
     });
 
     const messages: any[] = [
@@ -129,7 +132,15 @@ export class EnrollmentChatService {
           /* argumentos inválidos: segue com objeto vazio */
         }
 
-        const result = await this.runTool((call as any).function.name, args, current, schoolId, userId, text);
+        const result = await this.runTool(
+          (call as any).function.name,
+          args,
+          current,
+          schoolId,
+          userId,
+          text,
+          runtimeConfig,
+        );
 
         // canais "laterais" p/ propagar estado sem mandar lixo pra IA
         if (result._draft) current = result._draft;
@@ -181,21 +192,29 @@ export class EnrollmentChatService {
     schoolId: string,
     userId: string,
     currentUserText: string,
+    runtimeConfig: RuntimeSchoolConfig,
   ): Promise<any> {
-    const fields = EDUCATION_ENROLLMENT_FIELDS;
+    const fields = this.fieldsForConfig(runtimeConfig);
 
     if (name === 'consultar_oferta') {
       return ofertaInfo(fields);
     }
 
     if (name === 'consultar_instituicao') {
-      const frontendUrl = (this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app').replace(/\/$/, '');
       return {
-        ...INSTITUTION_INFO,
-        materiais: INSTITUTION_INFO.materiais.map((material) => ({
-          ...material,
-          url: `${frontendUrl}${material.arquivo}`,
-        })),
+        horarios: runtimeConfig.profile.businessHours,
+        endereco: {
+          logradouro: runtimeConfig.profile.address,
+          cidade: runtimeConfig.profile.city,
+          uf: runtimeConfig.profile.state,
+          mapa: runtimeConfig.profile.mapLink,
+          referencias: runtimeConfig.profile.referencePoints,
+          conducao: runtimeConfig.profile.transportInfo,
+        },
+        canais: runtimeConfig.profile.supportChannels,
+        descontos: runtimeConfig.commercial,
+        cursos: runtimeConfig.courses,
+        documentos: runtimeConfig.documents,
       };
     }
 
@@ -245,6 +264,20 @@ export class EnrollmentChatService {
     }
 
     return { ok: false, erro: `Ferramenta desconhecida: ${name}` };
+  }
+
+  private fieldsForConfig(runtimeConfig: RuntimeSchoolConfig): EnrollmentField[] {
+    const courseOptions = runtimeConfig.courses.map((course) => course.name).filter(Boolean);
+    const shiftOptions = [...new Set(runtimeConfig.courses.flatMap((course) => course.shifts))].filter(Boolean);
+    const modalityOptions = [...new Set(runtimeConfig.courses.map((course) => course.modality).filter(Boolean))];
+
+    return EDUCATION_ENROLLMENT_FIELDS.map((field) => {
+      if (field.name === 'course' && courseOptions.length) return { ...field, options: courseOptions };
+      if (field.name === 'shift' && shiftOptions.length) return { ...field, options: shiftOptions };
+      if (field.name === 'modalidade' && modalityOptions.length) return { ...field, options: modalityOptions };
+      if (field.name === 'unit') return { ...field, required: false, options: ['Sede principal'] };
+      return field;
+    });
   }
 
   private extractObviousFields(text: string, fields: EnrollmentField[]): Record<string, string> {

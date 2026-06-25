@@ -1,14 +1,15 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { simulatorApi } from '@/api/simulator'
+import { schoolConfigApi } from '@/api/schoolConfig'
 import type { ChatMessage, Enrollment, Lead } from '@/types'
 import { useAccessibility } from '@/composables/useAccessibility'
 
-function makeWelcome(): ChatMessage {
+function makeWelcome(text?: string): ChatMessage {
   return {
     id: 'welcome',
     from: 'ai',
-    text: 'Oi, tudo bem? Me conta rapidinho o que você procura: curso, matrícula, valores, localização ou horário de atendimento?',
+    text: text || 'Oi! Tudo bem? Posso te ajudar com cursos, valores, documentos ou já começar sua matrícula por aqui.',
     timestamp: new Date(),
   }
 }
@@ -27,6 +28,25 @@ export const useSimulatorStore = defineStore('simulator', () => {
   const hasLeads = computed(() => leads.value.length > 0)
   const leadCount = computed(() => leads.value.length)
   const isEnrollmentMode = computed(() => mode.value === 'enrollment')
+
+  async function loadWelcome(): Promise<void> {
+    try {
+      const overview = await schoolConfigApi.overview()
+      const template = overview.templates.find((item) => item.key === 'welcome' && item.active)
+      if (!template) return
+      const rendered = template.whatsappText
+        .replace(/\{escola\}/g, 'EDU.IA')
+        .replace(/\{nome\}/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/Oi,\s*!/g, 'Oi!')
+        .trim()
+      if (messages.value.length === 1 && messages.value[0]?.id === 'welcome') {
+        messages.value = [makeWelcome(rendered)]
+      }
+    } catch {
+      // Fallback local: o simulador não deve quebrar por falha de configuração.
+    }
+  }
 
   async function sendMessage(text: string): Promise<void> {
     if (!text.trim() || isSending.value) return
@@ -87,6 +107,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
   function resetSession(): void {
     // Conversa é mantida no cliente — reset é puramente local.
     messages.value = [makeWelcome()]
+    void loadWelcome()
     error.value = null
     isTyping.value = false
     isSending.value = false
@@ -120,6 +141,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     isEnrollmentMode,
     enrollmentDraft,
     createdEnrollment,
+    loadWelcome,
     sendMessage,
     resetSession,
     fetchLeads,

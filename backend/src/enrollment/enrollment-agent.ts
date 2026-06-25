@@ -127,8 +127,9 @@ export function buildEnrollmentPrompt(opts: {
   draft: Record<string, unknown>;
   accessibility: AccessibilityProfile;
   frontendUrl?: string | null;
+  institutionPrompt?: string;
 }): string {
-  const { chatbotName, schoolName, fee, draft, accessibility, frontendUrl } = opts;
+  const { chatbotName, schoolName, fee, draft, accessibility, frontendUrl, institutionPrompt } = opts;
   const jaColetado = Object.keys(draft).length
     ? Object.entries(draft)
         .map(([k, v]) => `${k}=${v}`)
@@ -184,7 +185,7 @@ REGRAS:
 - Logo no comecinho, avise rapidinho no idioma do aluno que os dados serão usados apenas para a matrícula e siga em frente.
 - A taxa de matrícula é R$ ${fee.toFixed(2)} (pagamento simulado nesta demonstração — não cobramos de verdade).
 
-${institutionInfoForPrompt(frontendUrl)}
+${institutionPrompt ?? institutionInfoForPrompt(frontendUrl)}
 
 Dados já coletados até agora: ${jaColetado}.`;
 }

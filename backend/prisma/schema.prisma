@@ -50,13 +50,113 @@ model School {
   customFields String?
   customStages String?
 
-  vertical        Vertical?        @relation(fields: [verticalId], references: [id])
+  vertical        Vertical?               @relation(fields: [verticalId], references: [id])
   users           User[]
   leads           Lead[]
   enrollments     Enrollment[]
   integrationLogs IntegrationLog[]
+  profile         SchoolProfile?
+  templates       CommunicationTemplate[]
+  courseOffers    CourseOffer[]
+  documents       DocumentRequirement[]
+  commercial      CommercialCondition?
 
   @@map("schools")
+}
+
+model SchoolProfile {
+  id              String   @id @default(cuid())
+  schoolId        String   @unique
+  businessHours   String   @default("{}")
+  address         String   @default("")
+  city            String   @default("")
+  state           String   @default("")
+  mapLink         String   @default("")
+  referencePoints String   @default("")
+  transportInfo   String   @default("")
+  supportChannels String   @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("school_profiles")
+}
+
+model CommunicationTemplate {
+  id                  String   @id @default(cuid())
+  schoolId            String
+  key                 String
+  title               String
+  stage               String
+  category            String
+  dayOffset           Int?
+  whatsappText        String
+  defaultWhatsappText String
+  active              Boolean  @default(true)
+  order               Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, key])
+  @@index([schoolId, active])
+  @@map("communication_templates")
+}
+
+model CourseOffer {
+  id                  String   @id @default(cuid())
+  schoolId            String
+  name                String
+  description         String   @default("")
+  duration            String   @default("")
+  modality            String   @default("")
+  shifts              String   @default("[]")
+  enrollmentFee       Decimal? @db.Decimal(10, 2)
+  monthlyFee          Decimal? @db.Decimal(10, 2)
+  cashDiscountPercent Decimal? @db.Decimal(5, 2)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, active])
+  @@map("course_offers")
+}
+
+model DocumentRequirement {
+  id           String   @id @default(cuid())
+  schoolId     String
+  audience     String
+  documentType String
+  instructions String   @default("")
+  required     Boolean  @default(true)
+  active       Boolean  @default(true)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, audience, active])
+  @@map("document_requirements")
+}
+
+model CommercialCondition {
+  id                  String    @id @default(cuid())
+  schoolId            String    @unique
+  cashDiscountPercent Decimal?  @db.Decimal(5, 2)
+  campaignActive      Boolean   @default(false)
+  campaignValidUntil  DateTime?
+  promotionText       String    @default("")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("commercial_conditions")
 }
 
 model Role {
