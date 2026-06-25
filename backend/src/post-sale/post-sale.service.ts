@@ -165,7 +165,7 @@ export class PostSaleService {
         title,
         ownerTeam: input.ownerTeam?.trim() || student.ownerTeam,
         priority: input.priority?.trim() || 'Normal',
-        automation: 'Tarefa manual',
+        automation: 'Criada pela equipe',
         dueAt,
       },
     });
@@ -186,13 +186,11 @@ export class PostSaleService {
     input: { message?: string },
   ): Promise<{ message: string; overview: unknown }> {
     const student = await this.findStudent(schoolId, studentKey);
-    const message = (input.message?.trim() || this.suggestedMessage(student))
-      .replaceAll('{{nome}}', student.studentName.split(' ')[0] || student.studentName)
-      .replaceAll('{{pendencia}}', student.nextAction.toLowerCase());
+    const message = this.cleanVisibleText(input.message?.trim() || this.suggestedMessage(student), student);
 
     await this.recordEvent(schoolId, student, {
       type: 'WHATSAPP_SIMULADO',
-      title: 'WhatsApp simulado',
+      title: 'Prévia de WhatsApp gerada',
       description: message,
       metadata: { channel: 'WhatsApp', simulated: true },
     });
@@ -542,8 +540,8 @@ export class PostSaleService {
       ACCESS_RELEASED: `Acesso ao AVA liberado para ${student.studentName}.`,
       RISK_RESOLVED: `Risco de evasão tratado e aluno voltou para acompanhamento.`,
     };
-    if (!action) return 'Status atualizado manualmente.';
-    return descriptions[action] ?? 'Status atualizado manualmente.';
+    if (!action) return 'Status atualizado pela equipe.';
+    return descriptions[action] ?? 'Status atualizado pela equipe.';
   }
 
   private async recordEvent(
@@ -559,7 +557,7 @@ export class PostSaleService {
         studentName: student.studentName,
         type: event.type,
         title: event.title,
-        description: event.description,
+        description: this.cleanVisibleText(event.description, student),
         metadata: JSON.stringify(event.metadata ?? {}),
       },
     });
@@ -624,8 +622,8 @@ export class PostSaleService {
     return {
       id: event.id,
       type: event.type,
-      title: event.title,
-      description: event.description,
+      title: this.cleanVisibleText(event.title),
+      description: this.cleanVisibleText(event.description),
       createdAt: event.createdAt,
       source: 'manual',
     };
@@ -683,7 +681,7 @@ export class PostSaleService {
       ownerTeam: task.ownerTeam,
       priority: task.priority,
       dueAt: task.dueAt,
-      automation: task.automation ?? 'Tarefa manual',
+      automation: this.cleanVisibleText(task.automation ?? 'Criada pela equipe'),
       status: task.status,
       source: 'manual',
     }));
@@ -763,11 +761,11 @@ export class PostSaleService {
     return [
       {
         title: 'Boas-vindas',
-        text: 'Oi, {{nome}}! Sua matrícula foi registrada. Vou te acompanhar nos próximos passos: documentos, contrato, pagamento e acesso ao AVA.',
+        text: 'Oi! Que bom ter você com a gente. Sua matrícula já foi registrada e eu vou te acompanhar nos próximos passos: documentos, contrato, pagamento e acesso ao AVA.',
       },
       {
         title: 'Documento pendente',
-        text: 'Para liberar sua matrícula, falta {{pendencia}}. Pode me enviar tudo em um único PDF ou arquivo por arquivo, como preferir.',
+        text: 'Para liberar sua matrícula, ainda preciso dos documentos pendentes. Você pode enviar tudo em um único PDF ou arquivo por arquivo, como ficar mais fácil.',
       },
       {
         title: 'Contrato',
@@ -781,19 +779,40 @@ export class PostSaleService {
   }
 
   private suggestedMessage(student: LifecycleStudent) {
+    const firstName = this.firstName(student);
+    const nextAction = student.nextAction.toLowerCase();
+
     if (student.status === 'DOCUMENTACAO_PENDENTE') {
-      return 'Oi, {{nome}}! Para liberar sua matrícula, falta {{pendencia}}. Pode me enviar tudo em um único PDF ou arquivo por arquivo, como preferir.';
+      return `Oi, ${firstName}! Para liberar sua matrícula, ainda preciso te ajudar com ${nextAction}. Pode me enviar tudo em um único PDF ou arquivo por arquivo, como ficar mais fácil para você.`;
     }
     if (student.status === 'CONTRATO_PENDENTE') {
-      return 'Oi, {{nome}}! Seu contrato está em andamento. Vou te acompanhar por aqui até a assinatura ficar concluída.';
+      return `Oi, ${firstName}! Seu contrato está em andamento. Vou te acompanhar por aqui até a assinatura ficar concluída.`;
     }
     if (student.status === 'PAGAMENTO_PENDENTE') {
-      return 'Oi, {{nome}}! Estou passando para te ajudar com o pagamento da matrícula. Se preferir, posso reenviar PIX, boleto ou link.';
+      return `Oi, ${firstName}! Estou passando para te ajudar com o pagamento da matrícula. Se preferir, posso reenviar PIX, boleto ou link.`;
     }
     if (student.status === 'RISCO_EVASAO') {
-      return 'Oi, {{nome}}! Notei que seu acesso ainda não avançou como esperado. Quer que eu te ajude agora com o passo a passo?';
+      return `Oi, ${firstName}! Notei que seu acesso ainda não avançou como esperado. Quer que eu te ajude agora com o passo a passo?`;
     }
-    return 'Oi, {{nome}}! Passando para acompanhar sua experiência e ver se ficou alguma dúvida sobre acesso, aulas ou documentos.';
+    return `Oi, ${firstName}! Estou passando para acompanhar sua experiência e ver se ficou alguma dúvida sobre acesso, aulas ou documentos.`;
+  }
+
+  private firstName(student: LifecycleStudent) {
+    return student.studentName.trim().split(/\s+/)[0] || student.studentName;
+  }
+
+  private cleanVisibleText(text: string, student?: LifecycleStudent) {
+    const name = student ? this.firstName(student) : 'aluno';
+    const pending = student?.nextAction.toLowerCase() ?? 'a próxima pendência';
+
+    return text
+      .replace(/\{\{\s*nome\s*\}\}/gi, name)
+      .replace(/\{\{\s*pendencia\s*\}\}/gi, pending)
+      .replace(/\{\{\s*[^}]+\s*\}\}/g, '')
+      .replace(/\bWhatsApp\s+simulado\b/gi, 'Prévia de WhatsApp')
+      .replace(/\bTarefa\s+manual\b/gi, 'Criada pela equipe')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   }
 
   private statusLabel(status: LifecycleStatus) {

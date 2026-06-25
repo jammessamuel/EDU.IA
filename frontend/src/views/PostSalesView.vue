@@ -21,7 +21,7 @@ import {
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
-import type { PostSaleAction, PostSaleLifecycleStatus, PostSaleOverview, PostSaleStudent } from '@/types'
+import type { PostSaleAction, PostSaleLifecycleStatus, PostSaleOverview, PostSaleStudent, PostSaleTask } from '@/types'
 
 type FilterKey = 'TODOS' | 'RISCO' | PostSaleLifecycleStatus
 
@@ -36,7 +36,7 @@ const taskTitle = ref('')
 const taskOwner = ref('Secretaria')
 const taskPriority = ref('Normal')
 const taskDueInDays = ref(1)
-const simulatedMessage = ref<string | null>(null)
+const messagePreview = ref<string | null>(null)
 
 const filterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'TODOS', label: 'Todos' },
@@ -132,14 +132,14 @@ function applyOverview(next: PostSaleOverview) {
 
 function selectStudent(student: PostSaleStudent) {
   selectedId.value = student.id
-  simulatedMessage.value = null
+  messagePreview.value = null
 }
 
 async function runAction(action: PostSaleAction) {
   if (!selectedStudent.value || actionBusy.value) return
   actionBusy.value = action
   error.value = null
-  simulatedMessage.value = null
+  messagePreview.value = null
   try {
     applyOverview(await postSalesApi.updateStatus(selectedStudent.value.id, action))
   } catch {
@@ -170,16 +170,16 @@ async function createTask() {
   }
 }
 
-async function simulateWhatsApp() {
+async function generateMessagePreview() {
   if (!selectedStudent.value || actionBusy.value) return
   actionBusy.value = 'SIMULATE_MESSAGE'
   error.value = null
   try {
     const res = await postSalesApi.simulateMessage(selectedStudent.value.id)
-    simulatedMessage.value = res.message
+    messagePreview.value = res.message
     applyOverview(res.overview)
   } catch {
-    error.value = 'Não foi possível simular a mensagem agora.'
+    error.value = 'Não foi possível gerar a prévia da mensagem agora.'
   } finally {
     actionBusy.value = null
   }
@@ -215,6 +215,10 @@ function timelineIcon(type: string) {
   if (type.includes('DOCUMENT')) return DocumentTextOutline
   return CalendarOutline
 }
+
+function taskAutomationLabel(task: PostSaleTask) {
+  return task.automation.replace(/Tarefa manual/gi, 'Criada pela equipe')
+}
 </script>
 
 <template>
@@ -245,7 +249,7 @@ function timelineIcon(type: string) {
 
       <template v-else-if="overview">
         <NAlert v-if="overview.hasDemoData" type="info" class="demo-alert">
-          Alguns alunos estão marcados como demonstração para mostrar a jornada completa enquanto a base real ganha volume.
+          Há alunos de exemplo para mostrar a jornada completa enquanto a base real ganha volume.
         </NAlert>
 
         <NAlert v-if="error" type="error" closable class="demo-alert" @close="error = null">
@@ -320,7 +324,7 @@ function timelineIcon(type: string) {
                     <span class="student-row__main">
                       <strong>
                         {{ student.studentName }}
-                        <em v-if="student.isDemo">Demo</em>
+                        <em v-if="student.isDemo">Exemplo</em>
                       </strong>
                       <small>{{ student.course }} · {{ student.daysSinceEnrollment }} dias de jornada</small>
                     </span>
@@ -403,13 +407,13 @@ function timelineIcon(type: string) {
                   type="button"
                   class="whatsapp-sim"
                   :disabled="!!actionBusy"
-                  @click="simulateWhatsApp"
+                  @click="generateMessagePreview"
                 >
                   <NIcon :component="PaperPlaneOutline" size="16" />
-                  {{ actionBusy === 'SIMULATE_MESSAGE' ? 'Gerando...' : 'Simular WhatsApp' }}
+                  {{ actionBusy === 'SIMULATE_MESSAGE' ? 'Gerando...' : 'Gerar prévia de WhatsApp' }}
                 </button>
-                <NAlert v-if="simulatedMessage" type="success" class="message-preview">
-                  {{ simulatedMessage }}
+                <NAlert v-if="messagePreview" type="success" class="message-preview">
+                  {{ messagePreview }}
                 </NAlert>
               </div>
 
@@ -434,7 +438,7 @@ function timelineIcon(type: string) {
                   </span>
                   <div>
                     <strong>{{ event.title }}</strong>
-                    <small>{{ formatDate(event.createdAt) }} · {{ event.source === 'manual' ? 'operador' : 'sistema' }}</small>
+                    <small>{{ formatDate(event.createdAt) }} · {{ event.source === 'manual' ? 'equipe' : 'sistema' }}</small>
                     <p>{{ event.description }}</p>
                   </div>
                 </div>
@@ -501,7 +505,7 @@ function timelineIcon(type: string) {
                 <div v-for="task in overview.tasks" :key="task.id" class="task-row">
                   <span :class="{ urgent: task.priority !== 'Normal' }">{{ task.priority }}</span>
                   <strong>{{ task.title }}</strong>
-                  <small>{{ task.studentName }} · {{ task.ownerTeam }} · {{ task.automation }}<template v-if="task.source === 'manual'"> · manual</template></small>
+                  <small>{{ task.studentName }} · {{ task.ownerTeam }} · {{ taskAutomationLabel(task) }}</small>
                 </div>
               </div>
             </section>
@@ -512,7 +516,7 @@ function timelineIcon(type: string) {
           <div class="panel-head">
             <div>
               <h2>Automações preparadas</h2>
-              <p>Fase 1 simula os eventos; Fase 2 pluga WhatsApp, D4Sign, financeiro e AVA.</p>
+              <p>Fluxos prontos para WhatsApp, contrato digital, financeiro e AVA conforme as integrações forem conectadas.</p>
             </div>
           </div>
 

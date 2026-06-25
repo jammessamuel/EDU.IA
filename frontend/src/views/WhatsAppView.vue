@@ -651,7 +651,7 @@ const STATUS_COLOR: Record<string, string> = {
           <div class="wa-sidebar__title">
             <span class="wa-icon">W</span> WhatsApp
           </div>
-          <span class="wa-sim-pill">simulado</span>
+          <span class="wa-sim-pill">ambiente de teste</span>
         </div>
 
         <div
@@ -704,7 +704,7 @@ const STATUS_COLOR: Record<string, string> = {
               <span v-else class="wa-chat__city">{{ contact?.city }} · qualificando…</span>
             </div>
           </div>
-          <span class="wa-badge-pill">via WhatsApp simulado</span>
+          <span class="wa-badge-pill">via ambiente de teste</span>
         </div>
 
         <div ref="messagesEl" class="wa-msgs">
