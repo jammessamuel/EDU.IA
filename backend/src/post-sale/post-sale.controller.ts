@@ -92,7 +92,7 @@ export class PostSaleController {
   @RequirePermission('leads:create:school')
   simulateDocument(
     @Param('studentKey') studentKey: string,
-    @Body() body: { action?: any; documentType?: string; reason?: string },
+    @Body() body: { action?: any; documentType?: string; reason?: string; fileName?: string },
     @CurrentUser() user: { schoolId: string },
   ): Promise<unknown> {
     return this.service.simulateDocument(user.schoolId, studentKey, body);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NAlert, NIcon, NSpin } from 'naive-ui'
 import {
@@ -34,6 +34,14 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const actionBusy = ref<string | null>(null)
 const feedback = ref<string | null>(null)
+const rejectDocumentType = ref<string | null>(null)
+const rejectReason = ref('')
+const validationDraft = ref({
+  documentType: 'CPF',
+  documentNumber: '',
+  email: '',
+  phone: '',
+})
 
 const studentId = computed(() => String(route.params.studentId ?? ''))
 const student = computed(() => profile.value?.student ?? null)
@@ -51,13 +59,16 @@ const dataSections = computed(() => {
 const statusCards = computed(() => {
   if (!profile.value) return []
   const current = profile.value
+  const documentHelper = current.documents.summary.rejected
+    ? `${current.documents.summary.rejected} recusado(s)`
+    : `${current.documents.summary.pending} pendentes`
   return [
     {
       label: 'Documentos',
       value: current.student.documentStatus,
-      helper: `${current.documents.requirements.filter((item) => item.status === 'PENDENTE').length} pendentes`,
+      helper: documentHelper,
       icon: DocumentTextOutline,
-      tone: current.student.status === 'DOCUMENTACAO_PENDENTE' ? 'warning' : 'brand',
+      tone: current.documents.summary.rejected ? 'danger' : current.student.status === 'DOCUMENTACAO_PENDENTE' ? 'warning' : 'brand',
       target: '#documentos',
     },
     {
@@ -103,7 +114,53 @@ const statusCards = computed(() => {
   ]
 })
 
+const validationChecks = computed(() => {
+  const documentType = validationDraft.value.documentType
+  const documentNumber = validationDraft.value.documentNumber.trim()
+  const isCpf = normalizeText(documentType).includes('cpf')
+  const isPassport = /passaporte|passport|pasaporte/i.test(documentType)
+  return [
+    {
+      key: 'document',
+      label: isCpf ? 'CPF' : isPassport ? 'Passaporte' : 'Documento',
+      value: documentNumber || 'Não informado',
+      ok: isCpf ? isValidCpf(documentNumber) : validateInternationalDocument(documentNumber),
+      message: isCpf
+        ? isValidCpf(documentNumber)
+          ? 'CPF válido.'
+          : 'CPF inválido ou incompleto.'
+        : validateInternationalDocument(documentNumber)
+          ? 'Documento estrangeiro com formato aceitável.'
+          : 'Informe ao menos 5 caracteres com letras ou números.',
+    },
+    {
+      key: 'email',
+      label: 'E-mail',
+      value: validationDraft.value.email || 'Não informado',
+      ok: isValidEmail(validationDraft.value.email),
+      message: isValidEmail(validationDraft.value.email) ? 'E-mail válido.' : 'Formato de e-mail inválido.',
+    },
+    {
+      key: 'phone',
+      label: 'Telefone',
+      value: validationDraft.value.phone || 'Não informado',
+      ok: isValidPhone(validationDraft.value.phone),
+      message: isValidPhone(validationDraft.value.phone) ? 'Telefone válido.' : 'Use DDD + número, com 10 a 15 dígitos.',
+    },
+  ]
+})
+
 onMounted(() => loadProfile())
+
+watch(profile, (current) => {
+  if (!current) return
+  validationDraft.value = {
+    documentType: current.enrollment?.documentType || 'CPF',
+    documentNumber: current.enrollment?.documentNumber || current.enrollment?.cpf || '',
+    email: current.enrollment?.email || '',
+    phone: current.enrollment?.phone || '',
+  }
+})
 
 async function loadProfile(showLoading = true) {
   if (!studentId.value) return
@@ -163,12 +220,49 @@ function simulateContract(action: 'SEND' | 'VIEW' | 'SIGN' | 'EXPIRE') {
   })
 }
 
-function simulateDocument(action: 'RECEIVE' | 'APPROVE' | 'REJECT') {
-  return withAction(`document-${action}`, async () => {
-    const res = await postSalesApi.simulateDocument(studentId.value, action)
+function simulateDocument(
+  action: 'RECEIVE' | 'APPROVE' | 'REJECT',
+  input: { documentType?: string; reason?: string; fileName?: string } = {},
+) {
+  return withAction(docActionKey(action, input.documentType), async () => {
+    const res = await postSalesApi.simulateDocument(studentId.value, action, input)
     const log = res.result.log as { visibleMessage?: string } | undefined
     return log?.visibleMessage
   })
+}
+
+function uploadFakeDocument(item: PostSaleProfileDocumentRequirement) {
+  return simulateDocument('RECEIVE', {
+    documentType: item.documentType,
+    fileName: fakeFileName(item.documentType),
+  })
+}
+
+function approveDocument(item: PostSaleProfileDocumentRequirement) {
+  return simulateDocument('APPROVE', { documentType: item.documentType })
+}
+
+function startReject(item: PostSaleProfileDocumentRequirement) {
+  rejectDocumentType.value = item.documentType
+  rejectReason.value = item.reason || ''
+  error.value = null
+}
+
+function cancelReject() {
+  rejectDocumentType.value = null
+  rejectReason.value = ''
+}
+
+async function confirmReject(item: PostSaleProfileDocumentRequirement) {
+  if (!rejectReason.value.trim()) {
+    error.value = 'Informe o motivo da recusa antes de registrar.'
+    return
+  }
+  await simulateDocument('REJECT', {
+    documentType: item.documentType,
+    reason: rejectReason.value.trim(),
+  })
+  cancelReject()
 }
 
 function formatDate(value?: string | null) {
@@ -210,9 +304,35 @@ function audienceLabel(value: string) {
 }
 
 function documentStatusClass(item: PostSaleProfileDocumentRequirement) {
+  if (item.status === 'APROVADO') return 'doc-approved'
   if (item.status === 'RECEBIDO') return 'doc-ok'
+  if (item.status === 'RECUSADO') return 'doc-rejected'
   if (item.status === 'PENDENTE') return 'doc-pending'
   return 'doc-optional'
+}
+
+function documentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    RECEBIDO: 'Recebido',
+    APROVADO: 'Aprovado',
+    RECUSADO: 'Recusado',
+    PENDENTE: 'Pendente',
+    OPCIONAL: 'Opcional',
+  }
+  return labels[status] ?? status
+}
+
+function docActionKey(action: string, documentType?: string) {
+  return `document-${action}-${normalizeText(documentType || 'pacote')}`
+}
+
+function fakeFileName(documentType: string) {
+  const slug = normalizeText(documentType).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return `${slug || 'documento'}-fake.pdf`
+}
+
+function validationTone(ok: boolean) {
+  return ok ? 'valid-ok' : 'valid-error'
 }
 
 function timelineIcon(event: PostSaleTimelineEvent) {
@@ -238,6 +358,43 @@ function taskTone(task: PostSaleTask) {
   if (task.priority === 'Urgente') return 'urgent'
   if (task.priority === 'Alta') return 'high'
   return 'normal'
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function isValidCpf(value: string) {
+  const cpf = onlyDigits(value)
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false
+  const calc = (factor: number) => {
+    let total = 0
+    for (let i = 0; i < factor - 1; i += 1) total += Number(cpf[i]) * (factor - i)
+    const mod = (total * 10) % 11
+    return mod === 10 ? 0 : mod
+  }
+  return calc(10) === Number(cpf[9]) && calc(11) === Number(cpf[10])
+}
+
+function validateInternationalDocument(value: string) {
+  const normalized = value.replace(/[^a-z0-9]/gi, '')
+  return normalized.length >= 5 && normalized.length <= 20
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim())
+}
+
+function isValidPhone(value: string) {
+  const digits = onlyDigits(value)
+  return digits.length >= 10 && digits.length <= 15
 }
 </script>
 
@@ -331,6 +488,48 @@ function taskTone(task: PostSaleTask) {
                 </article>
               </div>
 
+              <div class="validation-panel">
+                <div class="validation-panel__head">
+                  <div>
+                    <h3>Validação em tempo real</h3>
+                    <p>Teste CPF, passaporte/documento estrangeiro, e-mail e telefone sem salvar nada.</p>
+                  </div>
+                </div>
+                <div class="validation-form">
+                  <label>
+                    <span>Tipo</span>
+                    <select v-model="validationDraft.documentType">
+                      <option>CPF</option>
+                      <option>Passaporte</option>
+                      <option>SSN</option>
+                      <option>Driver License</option>
+                      <option>State ID</option>
+                      <option>NIE</option>
+                      <option>DNI</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Número do documento</span>
+                    <input v-model="validationDraft.documentNumber" type="text" placeholder="CPF, passaporte ou documento estrangeiro" />
+                  </label>
+                  <label>
+                    <span>E-mail</span>
+                    <input v-model="validationDraft.email" type="email" placeholder="aluno@email.com" />
+                  </label>
+                  <label>
+                    <span>Telefone</span>
+                    <input v-model="validationDraft.phone" type="tel" placeholder="+55 11 99999-9999" />
+                  </label>
+                </div>
+                <div class="validation-results">
+                  <article v-for="check in validationChecks" :key="check.key" :class="validationTone(check.ok)">
+                    <strong>{{ check.label }}</strong>
+                    <span>{{ check.ok ? 'Válido' : 'Atenção' }}</span>
+                    <p>{{ check.message }}</p>
+                  </article>
+                </div>
+              </div>
+
               <div class="course-strip">
                 <div>
                   <span>Curso</span>
@@ -356,19 +555,49 @@ function taskTone(task: PostSaleTask) {
                   <h2>Documentos</h2>
                   <p>Checklist calculado com os requisitos configuráveis da escola.</p>
                 </div>
-                <button type="button" class="panel-action" :disabled="!!actionBusy" @click="simulateDocument('RECEIVE')">
-                  {{ actionBusy === 'document-RECEIVE' ? 'Registrando...' : 'Simular recebimento' }}
-                </button>
+                <div class="document-summary">
+                  <span>{{ profile.documents.summary.pending }} pendentes</span>
+                  <span>{{ profile.documents.summary.received }} recebidos</span>
+                  <span>{{ profile.documents.summary.approved }} aprovados</span>
+                  <span>{{ profile.documents.summary.rejected }} recusados</span>
+                </div>
               </div>
 
               <div class="document-grid">
                 <article v-for="item in profile.documents.requirements" :key="`${item.audience}-${item.documentType}`" class="document-row" :class="documentStatusClass(item)">
-                  <div>
-                    <strong>{{ item.documentType }}</strong>
-                    <small>{{ audienceLabel(item.audience) }} · {{ item.required ? 'Obrigatório' : 'Opcional' }}</small>
+                  <div class="document-row__main">
+                    <div class="document-row__top">
+                      <div>
+                        <strong>{{ item.documentType }}</strong>
+                        <small>{{ audienceLabel(item.audience) }} · {{ item.required ? 'Obrigatório' : 'Opcional' }}</small>
+                      </div>
+                      <span>{{ documentStatusLabel(item.status) }}</span>
+                    </div>
                     <p>{{ item.instructions || 'Sem instrução adicional.' }}</p>
+                    <small v-if="item.fileName" class="document-file">Arquivo: {{ item.fileName }}</small>
+                    <small v-if="item.reason" class="document-reason">Motivo: {{ item.reason }}</small>
+                    <div class="document-actions">
+                      <button type="button" :disabled="!!actionBusy" @click="uploadFakeDocument(item)">
+                        {{ actionBusy === docActionKey('RECEIVE', item.documentType) ? '...' : 'Upload fake' }}
+                      </button>
+                      <button type="button" :disabled="!!actionBusy" @click="approveDocument(item)">
+                        {{ actionBusy === docActionKey('APPROVE', item.documentType) ? '...' : 'Aprovar' }}
+                      </button>
+                      <button type="button" :disabled="!!actionBusy" @click="startReject(item)">Recusar</button>
+                    </div>
+                    <div v-if="rejectDocumentType === item.documentType" class="reject-form">
+                      <label>
+                        <span>Motivo da recusa</span>
+                        <textarea v-model="rejectReason" rows="2" placeholder="Ex.: imagem ilegível, documento vencido ou arquivo incompleto"></textarea>
+                      </label>
+                      <div>
+                        <button type="button" :disabled="!!actionBusy || !rejectReason.trim()" @click="confirmReject(item)">
+                          {{ actionBusy === docActionKey('REJECT', item.documentType) ? 'Registrando...' : 'Confirmar recusa' }}
+                        </button>
+                        <button type="button" :disabled="!!actionBusy" @click="cancelReject">Cancelar</button>
+                      </div>
+                    </div>
                   </div>
-                  <span>{{ item.status }}</span>
                 </article>
               </div>
 
@@ -518,7 +747,7 @@ function taskTone(task: PostSaleTask) {
                 <a href="#pagamento">Ir para pagamento</a>
                 <a href="#contrato">Ir para contrato</a>
                 <button type="button" :disabled="!!actionBusy" @click="simulateDocument('APPROVE')">Aprovar documentos</button>
-                <button type="button" :disabled="!!actionBusy" @click="simulateDocument('REJECT')">Recusar documentos</button>
+                <a href="#documentos">Recusar documento</a>
               </div>
             </section>
           </aside>
@@ -925,6 +1154,124 @@ function taskTone(task: PostSaleTask) {
   overflow-wrap: anywhere;
 }
 
+.validation-panel {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 13px;
+  background: var(--surface-soft);
+}
+
+.validation-panel__head h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.validation-panel__head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.validation-form {
+  display: grid;
+  grid-template-columns: 150px repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.validation-form label,
+.reject-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.validation-form span,
+.reject-form span {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.validation-form input,
+.validation-form select,
+.reject-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--input-bg);
+  font-size: 12px;
+}
+
+.validation-form input,
+.validation-form select {
+  height: 36px;
+  padding: 0 9px;
+}
+
+.reject-form textarea {
+  resize: vertical;
+  padding: 8px 9px;
+}
+
+.validation-results {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.validation-results article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.validation-results strong,
+.validation-results span,
+.validation-results p {
+  display: block;
+}
+
+.validation-results strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.validation-results span {
+  width: fit-content;
+  margin-top: 5px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.validation-results p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.valid-ok span {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+}
+
+.valid-error span {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
 .course-strip {
   display: grid;
   grid-template-columns: 1.4fr 0.8fr 0.8fr;
@@ -963,6 +1310,23 @@ function taskTone(task: PostSaleTask) {
   font-weight: 900;
 }
 
+.document-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.document-summary span {
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--brand);
+  background: var(--brand-soft);
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .document-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -970,14 +1334,21 @@ function taskTone(task: PostSaleTask) {
 }
 
 .document-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   background: var(--surface);
+}
+
+.document-row__main {
+  min-width: 0;
+}
+
+.document-row__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .document-row strong,
@@ -1003,7 +1374,7 @@ function taskTone(task: PostSaleTask) {
   margin: 5px 0 0;
 }
 
-.document-row > span {
+.document-row__top > span {
   flex-shrink: 0;
   border-radius: 999px;
   padding: 4px 7px;
@@ -1011,19 +1382,82 @@ function taskTone(task: PostSaleTask) {
   font-weight: 900;
 }
 
-.doc-ok > span {
+.doc-ok .document-row__top > span,
+.doc-approved .document-row__top > span {
   color: var(--accent-strong);
   background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
 }
 
-.doc-pending > span {
+.doc-pending .document-row__top > span {
   color: var(--warning);
   background: var(--warning-soft);
 }
 
-.doc-optional > span {
+.doc-rejected .document-row__top > span {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.doc-optional .document-row__top > span {
   color: var(--muted-strong);
   background: var(--surface-muted);
+}
+
+.document-file,
+.document-reason {
+  margin-top: 6px;
+}
+
+.document-reason {
+  color: var(--danger) !important;
+}
+
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.document-actions button,
+.reject-form button {
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.document-actions button:hover,
+.reject-form button:hover {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 36%, var(--border));
+  background: var(--brand-soft);
+}
+
+.document-actions button:disabled,
+.reject-form button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.reject-form {
+  margin-top: 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--danger-soft);
+}
+
+.reject-form > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .checklist-strip {
@@ -1334,6 +1768,8 @@ function taskTone(task: PostSaleTask) {
 
   .status-grid,
   .data-sections,
+  .validation-form,
+  .validation-results,
   .course-strip,
   .document-grid,
   .checklist-strip,

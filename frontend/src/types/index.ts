@@ -351,8 +351,10 @@ export interface PostSaleProfileDocumentRequirement {
   instructions: string
   required: boolean
   status: 'RECEBIDO' | 'PENDENTE' | 'OPCIONAL' | string
+  reason: string | null
   fileName: string | null
   uploadedAt: string | null
+  updatedAt: string | null
 }
 
 export interface PostSaleStudentProfile {
@@ -364,6 +366,14 @@ export interface PostSaleStudentProfile {
   documents: {
     checklist: PostSaleChecklistStep[]
     requirements: PostSaleProfileDocumentRequirement[]
+    summary: {
+      total: number
+      required: number
+      pending: number
+      received: number
+      approved: number
+      rejected: number
+    }
     uploaded: EnrollmentDocument[]
     lastLog: PostSaleIntegrationLog | null
   }

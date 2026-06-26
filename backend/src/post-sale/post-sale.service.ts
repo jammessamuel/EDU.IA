@@ -175,6 +175,9 @@ export class PostSaleService {
     const documentLogs = logs.filter((log) => log.service === 'DOCUMENTOS');
     const messages = logs.filter((log) => log.service === 'WHATSAPP');
     const enrollmentData = this.safeJson(enrollment?.data);
+    const documentRequirements = this.documentRequirementRows(student, enrollment, runtimeConfig, storedEvents);
+    const documentSummary = this.documentSummary(documentRequirements);
+    const risk = this.profileRisk(student, documentRequirements);
 
     return {
       generatedAt: new Date(),
@@ -184,7 +187,8 @@ export class PostSaleService {
       course,
       documents: {
         checklist: student.checklist,
-        requirements: this.documentRequirementRows(student, enrollment, runtimeConfig),
+        requirements: documentRequirements,
+        summary: documentSummary,
         uploaded: (enrollment?.documents ?? []).map((document) => this.serializeEnrollmentDocument(document)),
         lastLog: documentLogs[0] ?? null,
       },
@@ -203,12 +207,7 @@ export class PostSaleService {
       timeline: this.profileTimeline(student, enrollment, storedEvents, storedTasks),
       nextActions: this.profileActions(student, storedTasks),
       ruler: student.ruler,
-      risk: {
-        score: student.riskScore,
-        level: student.riskLevel,
-        label: student.statusLabel,
-        reasons: this.riskReasons(student),
-      },
+      risk,
     };
   }
 
@@ -396,23 +395,36 @@ export class PostSaleService {
   async simulateDocument(
     schoolId: string,
     studentKey: string,
-    input: { action?: FakeDocumentAction; documentType?: string; reason?: string },
+    input: { action?: FakeDocumentAction; documentType?: string; reason?: string; fileName?: string },
   ): Promise<unknown> {
     const student = await this.findStudent(schoolId, studentKey);
     const action = input.action ?? 'RECEIVE';
+    const documentType = input.documentType?.trim() || 'Pacote de matrícula';
+    const reason = input.reason?.trim();
+    if (action === 'REJECT' && !reason) {
+      throw new BadRequestException('Informe o motivo da recusa do documento.');
+    }
+    const fileName = input.fileName?.trim() || this.fakeDocumentFileName(documentType);
     const result = await this.fakeDocument.simulate({
       context: this.integrationContext(schoolId, student),
       action,
-      documentType: input.documentType,
-      reason: input.reason,
+      documentType,
+      reason,
     });
 
-    await this.saveStatePatch(schoolId, student, this.documentPatch(action, student, result.documentStatus));
+    await this.saveStatePatch(schoolId, student, this.documentPatch(action, student, result.documentStatus, documentType));
     await this.recordEvent(schoolId, student, {
       type: 'DOCUMENTO_FAKE',
-      title: `Documento fake: ${result.documentStatus}`,
+      title: `${documentType}: ${result.documentStatus}`,
       description: result.log.visibleMessage,
-      metadata: { action, documentType: input.documentType, logId: result.log.id },
+      metadata: {
+        action,
+        documentType,
+        documentStatus: result.log.responsePayload.status,
+        reason: action === 'REJECT' ? reason : null,
+        fileName: action === 'RECEIVE' ? fileName : null,
+        logId: result.log.id,
+      },
     });
 
     return { result, overview: await this.overview(schoolId) };
@@ -775,25 +787,74 @@ export class PostSaleService {
     }));
   }
 
-  private documentRequirementRows(student: LifecycleStudent, enrollment: any | null, config: RuntimeSchoolConfig) {
+  private documentRequirementRows(
+    student: LifecycleStudent,
+    enrollment: any | null,
+    config: RuntimeSchoolConfig,
+    storedEvents: any[] = [],
+  ) {
     const audiences = this.documentAudiences(student, enrollment);
     const uploadedDocuments = enrollment?.documents ?? [];
     const hasPackage = uploadedDocuments.some((document) => this.normalizeKey(document.type) === 'pacotecompleto');
+    const fakeStates = this.documentFakeStates(storedEvents);
 
     return config.documents
       .filter((requirement) => audiences.includes(requirement.audience))
       .map((requirement) => {
         const uploaded = uploadedDocuments.find((document) => this.sameDocumentType(document.type, requirement.documentType));
+        const fake = fakeStates.get(this.normalizeKey(requirement.documentType));
+        const baseStatus = hasPackage || uploaded ? 'RECEBIDO' : requirement.required ? 'PENDENTE' : 'OPCIONAL';
         return {
           audience: requirement.audience,
           documentType: requirement.documentType,
           instructions: requirement.instructions,
           required: requirement.required,
-          status: hasPackage || uploaded ? 'RECEBIDO' : requirement.required ? 'PENDENTE' : 'OPCIONAL',
-          fileName: uploaded?.fileName ?? (hasPackage ? 'Pacote completo enviado' : null),
-          uploadedAt: uploaded?.uploadedAt ?? null,
+          status: fake?.status ?? baseStatus,
+          reason: fake?.reason ?? null,
+          fileName: fake?.fileName ?? uploaded?.fileName ?? (hasPackage ? 'Pacote completo enviado' : null),
+          uploadedAt: fake?.createdAt ?? uploaded?.uploadedAt ?? null,
+          updatedAt: fake?.createdAt ?? uploaded?.uploadedAt ?? null,
         };
       });
+  }
+
+  private documentFakeStates(storedEvents: any[]) {
+    const map = new Map<
+      string,
+      { status: string; reason: string | null; fileName: string | null; createdAt: Date }
+    >();
+    for (const event of storedEvents) {
+      if (event.type !== 'DOCUMENTO_FAKE') continue;
+      const metadata = this.eventMetadata(event);
+      const documentType = String(metadata.documentType ?? '').trim();
+      if (!documentType) continue;
+      const status = String(metadata.documentStatus ?? '').trim() || this.statusFromDocumentAction(String(metadata.action ?? ''));
+      map.set(this.normalizeKey(documentType), {
+        status,
+        reason: metadata.reason ? String(metadata.reason) : null,
+        fileName: metadata.fileName ? String(metadata.fileName) : null,
+        createdAt: event.createdAt,
+      });
+    }
+    return map;
+  }
+
+  private statusFromDocumentAction(action: string) {
+    const normalized = action.toUpperCase();
+    if (normalized === 'APPROVE') return 'APROVADO';
+    if (normalized === 'REJECT') return 'RECUSADO';
+    return 'RECEBIDO';
+  }
+
+  private documentSummary(rows: Array<{ status: string; required: boolean }>) {
+    return {
+      total: rows.length,
+      required: rows.filter((row) => row.required).length,
+      pending: rows.filter((row) => row.status === 'PENDENTE').length,
+      received: rows.filter((row) => row.status === 'RECEBIDO').length,
+      approved: rows.filter((row) => row.status === 'APROVADO').length,
+      rejected: rows.filter((row) => row.status === 'RECUSADO').length,
+    };
   }
 
   private documentAudiences(student: LifecycleStudent, enrollment: any | null) {
@@ -877,9 +938,26 @@ export class PostSaleService {
     return [recommended, ...tasks];
   }
 
-  private riskReasons(student: LifecycleStudent) {
+  private profileRisk(student: LifecycleStudent, documents: Array<{ status: string; required: boolean; documentType: string }>) {
+    const pendingRequired = documents.filter((document) => document.required && document.status === 'PENDENTE');
+    const rejected = documents.filter((document) => document.status === 'RECUSADO');
+    const documentPenalty = pendingRequired.length * 5 + rejected.length * 12;
+    const score = Math.min(100, student.riskScore + documentPenalty);
+    return {
+      score,
+      level: this.riskLevel(score),
+      label: student.statusLabel,
+      reasons: this.riskReasons(student, documents),
+    };
+  }
+
+  private riskReasons(student: LifecycleStudent, documents: Array<{ status: string; required: boolean; documentType: string }> = []) {
     const reasons: string[] = [];
+    const pendingRequired = documents.filter((document) => document.required && document.status === 'PENDENTE');
+    const rejected = documents.filter((document) => document.status === 'RECUSADO');
     if (student.status === 'DOCUMENTACAO_PENDENTE') reasons.push('Documentação ainda bloqueia contrato e acesso.');
+    if (pendingRequired.length) reasons.push(`${pendingRequired.length} documento(s) obrigatório(s) ainda estão pendentes.`);
+    if (rejected.length) reasons.push(`${rejected.length} documento(s) recusado(s) precisam ser reenviados.`);
     if (student.status === 'CONTRATO_PENDENTE') reasons.push('Contrato não está concluído.');
     if (student.status === 'PAGAMENTO_PENDENTE') reasons.push('Pagamento da matrícula está pendente.');
     if (student.status === 'ACESSO_PENDENTE') reasons.push('Acesso ao AVA ainda não foi liberado.');
@@ -967,15 +1045,32 @@ export class PostSaleService {
     }
   }
 
-  private documentPatch(action: FakeDocumentAction, student: LifecycleStudent, documentStatus: string) {
+  private documentPatch(action: FakeDocumentAction, student: LifecycleStudent, documentStatus: string, documentType: string) {
+    const isPackage = /pacote|completo|matr[ií]cula/i.test(documentType);
     switch (action) {
       case 'RECEIVE':
-        return this.actionPatch('DOCUMENTS_RECEIVED', student);
+        return isPackage
+          ? this.actionPatch('DOCUMENTS_RECEIVED', student)
+          : {
+              status: 'DOCUMENTACAO_PENDENTE',
+              documentStatus: `${documentType} recebido`,
+              nextAction: 'Conferir documentos pendentes',
+              ownerTeam: 'Secretaria',
+              riskScore: Math.max(18, student.riskScore - 4),
+            };
       case 'APPROVE':
-        return {
-          ...this.actionPatch('DOCUMENTS_RECEIVED', student),
-          documentStatus,
-        };
+        return isPackage
+          ? {
+              ...this.actionPatch('DOCUMENTS_RECEIVED', student),
+              documentStatus,
+            }
+          : {
+              status: 'DOCUMENTACAO_PENDENTE',
+              documentStatus: `${documentType} aprovado`,
+              nextAction: 'Validar documentos restantes',
+              ownerTeam: 'Secretaria',
+              riskScore: Math.max(16, student.riskScore - 6),
+            };
       case 'REJECT':
         return {
           status: 'DOCUMENTACAO_PENDENTE',
@@ -1409,6 +1504,16 @@ export class PostSaleService {
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]/gi, '')
       .toLowerCase();
+  }
+
+  private fakeDocumentFileName(documentType: string) {
+    const slug = documentType
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase();
+    return `${slug || 'documento'}-fake.pdf`;
   }
 
   private ageFromBirthDate(value: string) {

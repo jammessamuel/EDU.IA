@@ -49,6 +49,7 @@ export class FakeDocumentService implements DocumentService {
       status: result.status,
       reason: input.action === 'REJECT' ? reason : null,
     };
+    const documentLabel = input.documentType ?? 'Pacote de matrícula';
 
     const log = await this.logs.record({
       context: input.context,
@@ -60,7 +61,7 @@ export class FakeDocumentService implements DocumentService {
         reason: input.action === 'REJECT' ? reason : null,
       },
       responsePayload,
-      visibleMessage: `${result.visible} Aluno: ${input.context.studentName}.`,
+      visibleMessage: `${result.visible} Documento: ${documentLabel}. Aluno: ${input.context.studentName}.`,
     });
 
     return {

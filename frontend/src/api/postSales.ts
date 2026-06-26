@@ -61,12 +61,17 @@ export const postSalesApi = {
       .then((res) => res.data)
   },
 
-  simulateDocument(studentId: string, action: 'RECEIVE' | 'APPROVE' | 'REJECT'): Promise<PostSaleFakeActionResponse> {
+  simulateDocument(
+    studentId: string,
+    action: 'RECEIVE' | 'APPROVE' | 'REJECT',
+    input: { documentType?: string; reason?: string; fileName?: string } = {},
+  ): Promise<PostSaleFakeActionResponse> {
     return apiClient
       .post<PostSaleFakeActionResponse>(`/post-sales/students/${studentId}/fake/document`, {
         action,
-        documentType: 'Pacote de matrícula',
-        reason: 'Imagem ilegível ou documento incompleto.',
+        documentType: input.documentType ?? 'Pacote de matrícula',
+        reason: input.reason,
+        fileName: input.fileName,
       })
       .then((res) => res.data)
   },
