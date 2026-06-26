@@ -9,6 +9,8 @@ import type {
   TemplatePreviewResponse,
 } from '@/types'
 
+export type CommercialPdfKind = 'catalogo-cursos' | 'tabela-descontos' | 'fluxo-matricula'
+
 export const schoolConfigApi = {
   overview(): Promise<SchoolConfigOverview> {
     return apiClient.get<SchoolConfigOverview>('/school-config/overview').then((res) => res.data)
@@ -51,4 +53,20 @@ export const schoolConfigApi = {
   updateDocument(id: string, document: Partial<DocumentRequirementConfig>): Promise<SchoolConfigOverview> {
     return apiClient.put<SchoolConfigOverview>(`/school-config/documents/${id}`, document).then((res) => res.data)
   },
+
+  async downloadCommercialPdf(kind: CommercialPdfKind, filename?: string): Promise<void> {
+    const res = await apiClient.get<Blob>(`/school-config/commercial-pdfs/${kind}.pdf`, { responseType: 'blob' })
+    downloadBlob(res.data, filename ?? `${kind}.pdf`)
+  },
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
 }

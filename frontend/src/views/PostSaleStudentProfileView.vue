@@ -9,6 +9,7 @@ import {
   CheckmarkCircleOutline,
   CreateOutline,
   DocumentTextOutline,
+  DownloadOutline,
   LaptopOutline,
   PaperPlaneOutline,
   RefreshOutline,
@@ -19,6 +20,7 @@ import {
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
+import { schoolConfigApi, type CommercialPdfKind } from '@/api/schoolConfig'
 import type {
   PostSaleIntegrationLog,
   PostSaleProfileDocumentRequirement,
@@ -34,6 +36,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const actionBusy = ref<string | null>(null)
 const feedback = ref<string | null>(null)
+const pdfBusy = ref<CommercialPdfKind | null>(null)
 const rejectDocumentType = ref<string | null>(null)
 const rejectReason = ref('')
 const validationDraft = ref({
@@ -45,6 +48,12 @@ const validationDraft = ref({
 
 const studentId = computed(() => String(route.params.studentId ?? ''))
 const student = computed(() => profile.value?.student ?? null)
+
+const commercialMaterials: Array<{ kind: CommercialPdfKind; title: string; filename: string }> = [
+  { kind: 'catalogo-cursos', title: 'Catálogo de cursos', filename: 'catalogo-de-cursos.pdf' },
+  { kind: 'tabela-descontos', title: 'Tabela de descontos', filename: 'tabela-de-descontos.pdf' },
+  { kind: 'fluxo-matricula', title: 'Fluxo de matrícula', filename: 'fluxo-de-matricula.pdf' },
+]
 
 const dataSections = computed(() => {
   const groups = new Map<string, Array<{ label: string; value: string }>>()
@@ -263,6 +272,21 @@ async function confirmReject(item: PostSaleProfileDocumentRequirement) {
     reason: rejectReason.value.trim(),
   })
   cancelReject()
+}
+
+async function downloadCommercialPdf(material: (typeof commercialMaterials)[number]) {
+  if (pdfBusy.value) return
+  pdfBusy.value = material.kind
+  error.value = null
+  feedback.value = null
+  try {
+    await schoolConfigApi.downloadCommercialPdf(material.kind, material.filename)
+    feedback.value = `PDF "${material.title}" gerado para envio ao aluno.`
+  } catch {
+    error.value = 'Não foi possível gerar o PDF comercial agora.'
+  } finally {
+    pdfBusy.value = null
+  }
 }
 
 function formatDate(value?: string | null) {
@@ -707,6 +731,27 @@ function isValidPhone(value: string) {
           </div>
 
           <aside class="profile-side">
+            <section class="profile-panel side-panel">
+              <div class="panel-head panel-head--tight">
+                <div>
+                  <h2>Materiais comerciais</h2>
+                  <p>PDFs configuráveis para enviar durante o atendimento.</p>
+                </div>
+              </div>
+              <div class="material-downloads">
+                <button
+                  v-for="material in commercialMaterials"
+                  :key="material.kind"
+                  type="button"
+                  :disabled="!!pdfBusy"
+                  @click="downloadCommercialPdf(material)"
+                >
+                  <NIcon :component="DownloadOutline" size="15" />
+                  {{ pdfBusy === material.kind ? 'Gerando...' : material.title }}
+                </button>
+              </div>
+            </section>
+
             <section class="profile-panel side-panel" id="acoes">
               <div class="panel-head panel-head--tight">
                 <div>
@@ -825,6 +870,7 @@ function isValidPhone(value: string) {
 .panel-action,
 .message-actions button,
 .ops-buttons button,
+.material-downloads button,
 .side-actions button,
 .side-actions a {
   min-height: 36px;
@@ -847,6 +893,7 @@ function isValidPhone(value: string) {
 .panel-action:hover,
 .message-actions button:hover,
 .ops-buttons button:hover,
+.material-downloads button:hover,
 .side-actions button:hover,
 .side-actions a:hover {
   color: var(--brand);
@@ -858,6 +905,7 @@ function isValidPhone(value: string) {
 .panel-action:disabled,
 .message-actions button:disabled,
 .ops-buttons button:disabled,
+.material-downloads button:disabled,
 .side-actions button:disabled {
   opacity: 0.55;
   cursor: wait;
@@ -1729,10 +1777,16 @@ function isValidPhone(value: string) {
   line-height: 1.4;
 }
 
+.material-downloads,
 .side-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
+}
+
+.material-downloads button {
+  justify-content: flex-start;
+  min-height: 42px;
 }
 
 @media (max-width: 1180px) {

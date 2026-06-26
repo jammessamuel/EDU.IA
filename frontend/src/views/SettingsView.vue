@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NAlert, NSpin } from 'naive-ui'
+import type { Component } from 'vue'
+import { NAlert, NIcon, NSpin } from 'naive-ui'
+import { CardOutline, DocumentTextOutline, DownloadOutline, ShieldCheckmarkOutline } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
-import { schoolConfigApi } from '@/api/schoolConfig'
+import { schoolConfigApi, type CommercialPdfKind } from '@/api/schoolConfig'
 import { simulatorApi } from '@/api/simulator'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type {
@@ -20,6 +22,7 @@ const tabs = [
   { key: 'courses', label: 'Cursos' },
   { key: 'documents', label: 'Documentos' },
   { key: 'discounts', label: 'Descontos' },
+  { key: 'materials', label: 'Materiais' },
   { key: 'attendance', label: 'Atendimento' },
 ]
 
@@ -61,6 +64,36 @@ const newDocument = ref<Partial<DocumentRequirementConfig>>({
   required: true,
   active: true,
 })
+
+const commercialMaterials: Array<{
+  kind: CommercialPdfKind
+  title: string
+  description: string
+  filename: string
+  icon: Component
+}> = [
+  {
+    kind: 'catalogo-cursos',
+    title: 'Catálogo de cursos',
+    description: 'Cursos ativos, descrição, duração, modalidade, turnos e valores.',
+    filename: 'catalogo-de-cursos.pdf',
+    icon: DocumentTextOutline,
+  },
+  {
+    kind: 'tabela-descontos',
+    title: 'Tabela de descontos',
+    description: 'Campanha, desconto à vista e economia estimada por curso.',
+    filename: 'tabela-de-descontos.pdf',
+    icon: CardOutline,
+  },
+  {
+    kind: 'fluxo-matricula',
+    title: 'Fluxo de matrícula',
+    description: 'Etapas, documentos para cada público e caminho até o comprovante.',
+    filename: 'fluxo-de-matricula.pdf',
+    icon: ShieldCheckmarkOutline,
+  },
+]
 
 const iaTemplates = computed(() =>
   (config.value?.templates ?? []).filter((template) => template.category === 'ia' || template.category === 'pos_venda'),
@@ -204,6 +237,13 @@ async function addDocument() {
       active: true,
     }
     flash('Documento adicionado.')
+  })
+}
+
+async function downloadCommercialPdf(material: (typeof commercialMaterials)[number]) {
+  await runSaving(`pdf-${material.kind}`, async () => {
+    await schoolConfigApi.downloadCommercialPdf(material.kind, material.filename)
+    flash(`PDF "${material.title}" gerado.`)
   })
 }
 
@@ -628,6 +668,38 @@ function money(value: number | null | undefined) {
             </label>
           </div>
 
+          <div v-else-if="activeTab === 'materials'" class="tab-body">
+            <div class="section-title">
+              <div>
+                <h2>Materiais comerciais</h2>
+                <p>PDFs gerados com cursos, descontos, documentos, horários e localização configurados pela escola.</p>
+              </div>
+            </div>
+
+            <div class="materials-grid">
+              <article v-for="material in commercialMaterials" :key="material.kind" class="material-card">
+                <span class="material-card__icon">
+                  <NIcon :component="material.icon" size="22" />
+                </span>
+                <div>
+                  <h3>{{ material.title }}</h3>
+                  <p>{{ material.description }}</p>
+                </div>
+                <button class="btn-primary" :disabled="saving === `pdf-${material.kind}`" @click="downloadCommercialPdf(material)">
+                  <NIcon :component="DownloadOutline" size="16" />
+                  {{ saving === `pdf-${material.kind}` ? 'Gerando...' : 'Baixar PDF' }}
+                </button>
+              </article>
+            </div>
+
+            <div class="preview-box">
+              <strong>Como estes PDFs são montados</strong>
+              <p>
+                O catálogo usa apenas cursos ativos. A tabela usa os descontos configurados. O fluxo de matrícula usa os documentos exigidos para aluno brasileiro, estrangeiro e menor de idade.
+              </p>
+            </div>
+          </div>
+
           <div v-else-if="activeTab === 'attendance'" class="tab-body">
             <div class="section-title">
               <div>
@@ -964,6 +1036,57 @@ select:focus {
   font-weight: 800;
 }
 
+.materials-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.material-card {
+  min-height: 236px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--border, #d9e4df) 82%, transparent);
+  border-radius: 8px;
+  padding: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--brand, #0f8b6f) 8%, transparent), transparent 48%),
+    var(--surface, #ffffff);
+  box-shadow: 0 10px 28px rgba(17, 35, 31, 0.08);
+}
+
+.material-card__icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--brand, #0f8b6f);
+  background: color-mix(in srgb, var(--brand, #0f8b6f) 11%, var(--surface, #ffffff));
+}
+
+.material-card h3 {
+  margin: 0;
+  color: var(--text, #10201b);
+  font-size: 16px;
+}
+
+.material-card p {
+  margin: 6px 0 0;
+  color: var(--muted, #66736e);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.material-card button {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
 @media (max-width: 980px) {
   .settings-main {
     grid-template-columns: 1fr;
@@ -982,7 +1105,8 @@ select:focus {
   }
 
   .form-grid,
-  .form-grid--wide {
+  .form-grid--wide,
+  .materials-grid {
     grid-template-columns: 1fr;
   }
 }

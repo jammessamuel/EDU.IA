@@ -10,6 +10,7 @@ import {
   CheckmarkCircleOutline,
   CreateOutline,
   DocumentTextOutline,
+  DownloadOutline,
   LaptopOutline,
   PaperPlaneOutline,
   PeopleOutline,
@@ -21,6 +22,7 @@ import {
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
+import { schoolConfigApi, type CommercialPdfKind } from '@/api/schoolConfig'
 import type {
   PostSaleAction,
   PostSaleIntegrationLog,
@@ -51,6 +53,7 @@ const taskOwner = ref('Secretaria')
 const taskPriority = ref('Normal')
 const taskDueInDays = ref(1)
 const messagePreview = ref<string | null>(null)
+const pdfBusy = ref<CommercialPdfKind | null>(null)
 
 const filterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'TODOS', label: 'Todos' },
@@ -96,6 +99,27 @@ const fakeActionGroups: Array<{ title: string; helper: string; actions: FakeServ
       { key: 'doc-approve', service: 'document', action: 'APPROVE', label: 'Aprovar' },
       { key: 'doc-reject', service: 'document', action: 'REJECT', label: 'Recusar' },
     ],
+  },
+]
+
+const commercialMaterials: Array<{ kind: CommercialPdfKind; title: string; helper: string; filename: string }> = [
+  {
+    kind: 'catalogo-cursos',
+    title: 'Catálogo',
+    helper: 'Cursos e valores',
+    filename: 'catalogo-de-cursos.pdf',
+  },
+  {
+    kind: 'tabela-descontos',
+    title: 'Descontos',
+    helper: 'Campanha à vista',
+    filename: 'tabela-de-descontos.pdf',
+  },
+  {
+    kind: 'fluxo-matricula',
+    title: 'Matrícula',
+    helper: 'Etapas e documentos',
+    filename: 'fluxo-de-matricula.pdf',
   },
 ]
 
@@ -277,6 +301,19 @@ async function simulateRuler(dayOffset?: number | null) {
   }
 }
 
+async function downloadCommercialPdf(material: (typeof commercialMaterials)[number]) {
+  if (pdfBusy.value) return
+  pdfBusy.value = material.kind
+  error.value = null
+  try {
+    await schoolConfigApi.downloadCommercialPdf(material.kind, material.filename)
+  } catch {
+    error.value = 'Não foi possível gerar o PDF comercial agora.'
+  } finally {
+    pdfBusy.value = null
+  }
+}
+
 function funnelWidth(count: number) {
   return Math.max(4, Math.round((count / funnelMax.value) * 100))
 }
@@ -381,6 +418,28 @@ function actionLabel(action: string) {
         <NAlert v-if="error" type="error" closable class="demo-alert" @close="error = null">
           {{ error }}
         </NAlert>
+
+        <section class="commercial-materials" aria-label="Materiais comerciais em PDF">
+          <div>
+            <span>Materiais comerciais</span>
+            <strong>PDFs prontos para enviar ao aluno</strong>
+          </div>
+          <div class="commercial-materials__actions">
+            <button
+              v-for="material in commercialMaterials"
+              :key="material.kind"
+              type="button"
+              :disabled="!!pdfBusy"
+              @click="downloadCommercialPdf(material)"
+            >
+              <NIcon :component="DownloadOutline" size="15" />
+              <span>
+                {{ pdfBusy === material.kind ? 'Gerando...' : material.title }}
+                <small>{{ material.helper }}</small>
+              </span>
+            </button>
+          </div>
+        </section>
 
         <section class="summary-grid" aria-label="Resumo do pós-venda">
           <article v-for="card in summaryCards" :key="card.label" class="summary-card" :class="`summary-card--${card.tone}`">
@@ -864,6 +923,69 @@ function actionLabel(action: string) {
 
 .demo-alert {
   margin-bottom: 14px;
+}
+
+.commercial-materials {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-xs);
+}
+
+.commercial-materials > div:first-child span,
+.commercial-materials__actions small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.commercial-materials > div:first-child strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.commercial-materials__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.commercial-materials__actions button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text-soft);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.commercial-materials__actions button:hover {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 34%, var(--border));
+  background: var(--brand-soft);
+}
+
+.commercial-materials__actions button:disabled {
+  opacity: 0.58;
+  cursor: wait;
 }
 
 .summary-grid {
@@ -2099,12 +2221,15 @@ function actionLabel(action: string) {
   }
 
   .post-header,
-  .panel-head {
+  .panel-head,
+  .commercial-materials {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .post-actions,
-  .filters {
+  .filters,
+  .commercial-materials__actions {
     width: 100%;
     justify-content: flex-start;
   }

@@ -1,11 +1,16 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
+import { CommercialPdfService } from './commercial-pdf.service';
 import { SchoolConfigService } from './school-config.service';
 
 @Controller('school-config')
 export class SchoolConfigController {
-  constructor(private readonly service: SchoolConfigService) {}
+  constructor(
+    private readonly service: SchoolConfigService,
+    private readonly commercialPdf: CommercialPdfService,
+  ) {}
 
   @Get('overview')
   @RequirePermission('leads:read:school')
@@ -49,6 +54,19 @@ export class SchoolConfigController {
     @CurrentUser() user: { schoolId: string },
   ) {
     return this.service.previewTemplate(user.schoolId, key, body.variables ?? {});
+  }
+
+  @Get('commercial-pdfs/:kind')
+  @RequirePermission('leads:read:school')
+  async commercialPdfDownload(
+    @Param('kind') kind: string,
+    @CurrentUser() user: { schoolId: string },
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.commercialPdf.generate(user.schoolId, kind);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.end(buffer);
   }
 
   @Post('courses')
