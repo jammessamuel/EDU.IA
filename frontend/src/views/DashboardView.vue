@@ -985,10 +985,14 @@ function actionLabel(action: string) {
 
 <style scoped>
 .executive-page {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   background: var(--app-bg);
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .executive-shell {
