@@ -96,9 +96,16 @@ export const useSimulatorStore = defineStore('simulator', () => {
       if (response.enrollment) {
         createdEnrollment.value = response.enrollment
       }
-    } catch {
+    } catch (err: unknown) {
       isTyping.value = false
-      error.value = 'Não foi possível enviar a mensagem. Tente novamente.'
+      const message =
+        typeof err === 'object' &&
+        err !== null &&
+        'response' in err &&
+        typeof (err as { response?: { data?: { message?: unknown } } }).response?.data?.message === 'string'
+          ? String((err as { response: { data: { message: string } } }).response.data.message)
+          : 'Não foi possível enviar a mensagem. Tente novamente.'
+      error.value = message
     } finally {
       isSending.value = false
     }
