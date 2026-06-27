@@ -2,7 +2,15 @@
 import { computed, onMounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { NAlert, NIcon, NSpin } from 'naive-ui'
-import { CardOutline, DocumentTextOutline, DownloadOutline, ShieldCheckmarkOutline } from '@vicons/ionicons5'
+import {
+  CardOutline,
+  CheckmarkCircleOutline,
+  DocumentTextOutline,
+  DownloadOutline,
+  ShieldCheckmarkOutline,
+  TimeOutline,
+  WarningOutline,
+} from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { schoolConfigApi, type CommercialPdfKind } from '@/api/schoolConfig'
 import { simulatorApi } from '@/api/simulator'
@@ -24,6 +32,7 @@ const tabs = [
   { key: 'discounts', label: 'Descontos' },
   { key: 'materials', label: 'Materiais' },
   { key: 'attendance', label: 'Atendimento' },
+  { key: 'preproduction', label: 'Pré-produção' },
 ]
 
 const audienceLabels: Record<string, string> = {
@@ -101,6 +110,9 @@ const iaTemplates = computed(() =>
 const rulerTemplates = computed(() =>
   (config.value?.templates ?? []).filter((template) => template.category === 'regua'),
 )
+const activeCourses = computed(() => (config.value?.courses ?? []).filter((course) => course.active))
+const activeIaTemplates = computed(() => iaTemplates.value.filter((template) => template.active))
+const activeRulerTemplates = computed(() => rulerTemplates.value.filter((template) => template.active))
 const documentsByAudience = computed(() => {
   const groups: Record<string, DocumentRequirementConfig[]> = {}
   for (const document of config.value?.documents ?? []) {
@@ -109,6 +121,175 @@ const documentsByAudience = computed(() => {
     groups[audience]!.push(document)
   }
   return groups
+})
+const activeDocumentsByAudience = computed(() => {
+  const groups: Record<string, DocumentRequirementConfig[]> = {}
+  for (const document of config.value?.documents ?? []) {
+    if (!document.active) continue
+    const audience = document.audience
+    if (!groups[audience]) groups[audience] = []
+    groups[audience]!.push(document)
+  }
+  return groups
+})
+const requiredRulerDays = [0, 1, 3, 7, 15, 30]
+const configuredRulerDays = computed(() =>
+  activeRulerTemplates.value
+    .map((template) => template.dayOffset)
+    .filter((day): day is number => day !== null)
+    .sort((a, b) => a - b),
+)
+const missingRulerDays = computed(() =>
+  requiredRulerDays.filter((day) => !configuredRulerDays.value.includes(day)),
+)
+const readinessGroups = computed(() => {
+  const profile = config.value?.profile
+  const commercial = config.value?.commercial
+  const businessHours = Object.values(profile?.businessHours ?? {}).filter(hasText)
+  const supportChannels = Object.values(profile?.supportChannels ?? {}).filter(hasText)
+  const documents = activeDocumentsByAudience.value
+  const hasForeignDocs = (documents.estrangeiro ?? []).length > 0
+  const hasBrazilianDocs = (documents.brasileiro ?? []).length > 0
+  const hasMinorDocs = (documents.menor_idade ?? []).length > 0
+
+  return [
+    {
+      title: 'Demo comercial',
+      description: 'O que precisa estar pronto para apresentar e vender sem API externa real.',
+      items: [
+        {
+          title: 'Cursos ativos configurados',
+          detail: `${activeCourses.value.length} curso(s) aparecem para IA, PDFs e dashboard.`,
+          done: activeCourses.value.length > 0,
+          icon: CheckmarkCircleOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Materiais comerciais disponíveis',
+          detail: 'Catálogo, tabela de descontos e fluxo de matrícula geram PDF pela própria tela.',
+          done: true,
+          icon: DocumentTextOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Oferta e desconto claros',
+          detail: commercial?.campaignActive
+            ? `Campanha ativa com ${commercial.cashDiscountPercent ?? 0}% à vista.`
+            : 'Campanha desativada; a IA ainda usa a condição padrão configurada.',
+          done: hasText(commercial?.promotionText) && commercial?.cashDiscountPercent !== null,
+          icon: CardOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Dashboard executivo no ar',
+          detail: 'Gestor vê receita, gargalos, risco, automações, funil e conversão por curso.',
+          done: true,
+          icon: CheckmarkCircleOutline,
+          requiredForDemo: true,
+        },
+      ],
+    },
+    {
+      title: 'Atendimento e matrícula',
+      description: 'Dados que evitam a IA improvisar respostas ou pedir algo errado.',
+      items: [
+        {
+          title: 'Horários de atendimento preenchidos',
+          detail: `${businessHours.length} campos de horário com resposta configurada.`,
+          done: businessHours.length >= 5,
+          icon: TimeOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Localização e condução preenchidas',
+          detail: 'Endereço, mapa, referência e transporte são usados em perguntas frequentes.',
+          done:
+            hasText(profile?.address) &&
+            hasText(profile?.city) &&
+            hasText(profile?.mapLink) &&
+            hasText(profile?.transportInfo),
+          icon: CheckmarkCircleOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Documentos por tipo de aluno',
+          detail: `Brasileiro: ${hasBrazilianDocs ? 'ok' : 'faltando'} · estrangeiro: ${hasForeignDocs ? 'ok' : 'faltando'} · menor: ${hasMinorDocs ? 'ok' : 'faltando'}.`,
+          done: hasBrazilianDocs && hasForeignDocs && hasMinorDocs,
+          icon: ShieldCheckmarkOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Mensagens humanizadas ativas',
+          detail: `${activeIaTemplates.value.length} template(s) ativos para IA e pós-venda.`,
+          done: activeIaTemplates.value.length >= 6,
+          icon: CheckmarkCircleOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Régua dia 0/1/3/7/15/30 pronta',
+          detail: missingRulerDays.value.length
+            ? `Faltam dias: ${missingRulerDays.value.join(', ')}.`
+            : 'Todos os marcos principais estão ativos.',
+          done: missingRulerDays.value.length === 0,
+          icon: CheckmarkCircleOutline,
+          requiredForDemo: true,
+        },
+        {
+          title: 'Canais de suporte configurados',
+          detail: `${supportChannels.length} canal(is)/mensagens de suporte preenchidos.`,
+          done: supportChannels.length >= 3 && hasText(workspaceForm.value.chatbotName),
+          icon: CheckmarkCircleOutline,
+          requiredForDemo: true,
+        },
+      ],
+    },
+    {
+      title: 'Integrações reais futuras',
+      description: 'Não bloqueiam a demo; mostram o que será trocado depois dos mocks.',
+      items: [
+        {
+          title: 'WhatsApp Cloud API oficial',
+          detail: 'Próximo passo: app Meta, número, webhook e templates aprovados.',
+          done: false,
+          icon: TimeOutline,
+          requiredForDemo: false,
+        },
+        {
+          title: 'Pagamento real',
+          detail: 'Trocar PaymentService fake por gateway sem mexer na UI.',
+          done: false,
+          icon: TimeOutline,
+          requiredForDemo: false,
+        },
+        {
+          title: 'Assinatura digital',
+          detail: 'Trocar ContractService fake por D4Sign/Clicksign quando aprovado.',
+          done: false,
+          icon: TimeOutline,
+          requiredForDemo: false,
+        },
+        {
+          title: 'Projeto mãe / AVA',
+          detail: 'Conectar matrícula confirmada ao banco/API do sistema principal.',
+          done: false,
+          icon: TimeOutline,
+          requiredForDemo: false,
+        },
+      ],
+    },
+  ]
+})
+const readinessItems = computed(() =>
+  readinessGroups.value.flatMap((group) => group.items).filter((item) => item.requiredForDemo),
+)
+const readinessDone = computed(() => readinessItems.value.filter((item) => item.done).length)
+const readinessScore = computed(() =>
+  readinessItems.value.length ? Math.round((readinessDone.value / readinessItems.value.length) * 100) : 0,
+)
+const readinessStatus = computed(() => {
+  if (readinessScore.value >= 90) return 'Demo pronta para venda'
+  if (readinessScore.value >= 70) return 'Quase pronto'
+  return 'Ajustes importantes pendentes'
 })
 
 onMounted(load)
@@ -276,6 +457,10 @@ function shiftsValue(course: { shifts?: string[] }) {
 
 function money(value: number | null | undefined) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value ?? 0)
+}
+
+function hasText(value: unknown) {
+  return String(value ?? '').trim().length > 0
 }
 </script>
 
@@ -743,6 +928,65 @@ function money(value: number | null | undefined) {
               </button>
             </div>
           </div>
+
+          <div v-else-if="activeTab === 'preproduction'" class="tab-body">
+            <div class="section-title">
+              <div>
+                <h2>Pré-produção e demo comercial</h2>
+                <p>Checklist para apresentar o produto com segurança antes de conectar WhatsApp, contrato, gateway ou AVA reais.</p>
+              </div>
+            </div>
+
+            <section class="readiness-hero">
+              <div>
+                <span>Prontidão da demo</span>
+                <strong>{{ readinessScore }}%</strong>
+                <p>{{ readinessStatus }} · {{ readinessDone }}/{{ readinessItems.length }} itens essenciais concluídos.</p>
+              </div>
+              <div class="readiness-meter" aria-label="Prontidão da demo">
+                <i :style="{ width: `${readinessScore}%` }"></i>
+              </div>
+            </section>
+
+            <section class="readiness-grid">
+              <article v-for="group in readinessGroups" :key="group.title" class="readiness-group">
+                <div class="readiness-group__head">
+                  <h3>{{ group.title }}</h3>
+                  <p>{{ group.description }}</p>
+                </div>
+
+                <div class="readiness-list">
+                  <div
+                    v-for="item in group.items"
+                    :key="item.title"
+                    class="readiness-item"
+                    :class="{ 'readiness-item--done': item.done, 'readiness-item--future': !item.requiredForDemo }"
+                  >
+                    <span class="readiness-item__icon">
+                      <NIcon :component="item.done ? CheckmarkCircleOutline : item.icon" size="18" />
+                    </span>
+                    <div>
+                      <strong>{{ item.title }}</strong>
+                      <small>{{ item.detail }}</small>
+                    </div>
+                    <em v-if="item.requiredForDemo">{{ item.done ? 'OK' : 'Ajustar' }}</em>
+                    <em v-else>Futuro</em>
+                  </div>
+                </div>
+              </article>
+            </section>
+
+            <section class="demo-script">
+              <h3>Roteiro rápido para vender a demo</h3>
+              <ol>
+                <li>Entrar pelo simulador e mostrar a IA respondendo cursos, descontos, horário, localização e documentos.</li>
+                <li>Abrir uma matrícula em andamento e mostrar que o aluno pode enviar PDF único ou documento por documento.</li>
+                <li>Mostrar ficha do aluno com documentos, pagamento fake, contrato fake, timeline e risco de evasão.</li>
+                <li>Abrir o dashboard e explicar receita prevista, gargalos, ações do dia e automações disparadas.</li>
+                <li>Fechar em Configurações mostrando que a própria escola edita mensagens, cursos, descontos e documentos.</li>
+              </ol>
+            </section>
+          </div>
         </section>
       </template>
     </main>
@@ -1087,6 +1331,165 @@ select:focus {
   gap: 7px;
 }
 
+.readiness-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.55fr) minmax(260px, 0.45fr);
+  gap: 18px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand, #0f8b6f) 28%, transparent);
+  border-radius: 8px;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand, #0f8b6f) 12%, transparent), transparent 62%),
+    var(--surface, #ffffff);
+}
+
+.readiness-hero span {
+  color: var(--brand, #0f8b6f);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.readiness-hero strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text, #10201b);
+  font-size: 42px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.readiness-hero p {
+  margin: 8px 0 0;
+  color: var(--muted, #66736e);
+  font-weight: 750;
+}
+
+.readiness-meter {
+  height: 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border, #d9e4df) 72%, transparent);
+  overflow: hidden;
+}
+
+.readiness-meter i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand, #0f8b6f), var(--accent-strong, #14a85a));
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.readiness-group {
+  border: 1px solid color-mix(in srgb, var(--border, #d9e4df) 82%, transparent);
+  border-radius: 8px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface, #ffffff) 96%, var(--brand, #0f8b6f));
+}
+
+.readiness-group__head h3,
+.demo-script h3 {
+  margin: 0;
+  color: var(--text, #10201b);
+}
+
+.readiness-group__head p {
+  margin: 5px 0 0;
+  color: var(--muted, #66736e);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.readiness-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.readiness-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border, #d9e4df) 76%, transparent);
+  border-radius: 8px;
+  background: var(--surface, #ffffff);
+}
+
+.readiness-item__icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--warning, #b7791f);
+  background: color-mix(in srgb, var(--warning, #b7791f) 12%, transparent);
+}
+
+.readiness-item--done .readiness-item__icon {
+  color: var(--brand, #0f8b6f);
+  background: color-mix(in srgb, var(--brand, #0f8b6f) 12%, transparent);
+}
+
+.readiness-item--future .readiness-item__icon {
+  color: var(--muted, #66736e);
+  background: color-mix(in srgb, var(--muted, #66736e) 10%, transparent);
+}
+
+.readiness-item strong {
+  display: block;
+  color: var(--text, #10201b);
+  font-size: 13px;
+}
+
+.readiness-item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted, #66736e);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.readiness-item em {
+  color: var(--muted, #66736e);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.readiness-item--done em {
+  color: var(--brand, #0f8b6f);
+}
+
+.demo-script {
+  border: 1px solid color-mix(in srgb, var(--border, #d9e4df) 82%, transparent);
+  border-radius: 8px;
+  padding: 16px 18px;
+  background: var(--surface, #ffffff);
+}
+
+.demo-script ol {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--muted-strong, #4d625d);
+  line-height: 1.55;
+  font-weight: 750;
+}
+
+.demo-script li + li {
+  margin-top: 6px;
+}
+
 @media (max-width: 980px) {
   .settings-main {
     grid-template-columns: 1fr;
@@ -1106,7 +1509,9 @@ select:focus {
 
   .form-grid,
   .form-grid--wide,
-  .materials-grid {
+  .materials-grid,
+  .readiness-hero,
+  .readiness-grid {
     grid-template-columns: 1fr;
   }
 }
