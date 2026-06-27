@@ -40,6 +40,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/tasks',
+      name: 'tasks',
+      component: () => import('../views/TaskBoardView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/post-sales/students/:studentId',
       name: 'post-sale-student-profile',
       component: () => import('../views/PostSaleStudentProfileView.vue'),

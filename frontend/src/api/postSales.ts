@@ -15,14 +15,22 @@ export const postSalesApi = {
   },
 
   integrationLogs(): Promise<PostSaleIntegrationLog[]> {
-    return apiClient.get<PostSaleIntegrationLog[]>('/post-sales/integration-logs').then((res) => res.data)
+    return apiClient
+      .get<PostSaleIntegrationLog[]>('/post-sales/integration-logs')
+      .then((res) => res.data)
   },
 
   studentProfile(studentId: string): Promise<PostSaleStudentProfile> {
-    return apiClient.get<PostSaleStudentProfile>(`/post-sales/students/${studentId}/profile`).then((res) => res.data)
+    return apiClient
+      .get<PostSaleStudentProfile>(`/post-sales/students/${studentId}/profile`)
+      .then((res) => res.data)
   },
 
-  updateStatus(studentId: string, action: PostSaleAction, note?: string): Promise<PostSaleOverview> {
+  updateStatus(
+    studentId: string,
+    action: PostSaleAction,
+    note?: string,
+  ): Promise<PostSaleOverview> {
     return apiClient
       .patch<PostSaleOverview>(`/post-sales/students/${studentId}/status`, { action, note })
       .then((res) => res.data)
@@ -37,27 +45,57 @@ export const postSalesApi = {
       .then((res) => res.data)
   },
 
+  updateTask(
+    taskId: string,
+    input: {
+      column?: string
+      status?: string
+      assignee?: string
+      role?: string
+      priority?: string
+    },
+  ): Promise<PostSaleOverview> {
+    return apiClient
+      .patch<PostSaleOverview>(`/post-sales/tasks/${taskId}`, input)
+      .then((res) => res.data)
+  },
+
   simulateMessage(studentId: string, message?: string): Promise<PostSaleSimulatedMessageResponse> {
     return apiClient
-      .post<PostSaleSimulatedMessageResponse>(`/post-sales/students/${studentId}/messages/simulate`, { message })
+      .post<PostSaleSimulatedMessageResponse>(
+        `/post-sales/students/${studentId}/messages/simulate`,
+        { message },
+      )
       .then((res) => res.data)
   },
 
   simulateRuler(studentId: string, dayOffset?: number | null): Promise<PostSaleRulerResponse> {
     return apiClient
-      .post<PostSaleRulerResponse>(`/post-sales/students/${studentId}/ruler/simulate`, { dayOffset })
+      .post<PostSaleRulerResponse>(`/post-sales/students/${studentId}/ruler/simulate`, {
+        dayOffset,
+      })
       .then((res) => res.data)
   },
 
-  simulatePayment(studentId: string, action: 'MARK_PAID' | 'FAIL' | 'REFUND' | 'PENDING'): Promise<PostSaleFakeActionResponse> {
+  simulatePayment(
+    studentId: string,
+    action: 'MARK_PAID' | 'FAIL' | 'REFUND' | 'PENDING',
+  ): Promise<PostSaleFakeActionResponse> {
     return apiClient
-      .post<PostSaleFakeActionResponse>(`/post-sales/students/${studentId}/fake/payment`, { action })
+      .post<PostSaleFakeActionResponse>(`/post-sales/students/${studentId}/fake/payment`, {
+        action,
+      })
       .then((res) => res.data)
   },
 
-  simulateContract(studentId: string, action: 'SEND' | 'VIEW' | 'SIGN' | 'EXPIRE'): Promise<PostSaleFakeActionResponse> {
+  simulateContract(
+    studentId: string,
+    action: 'SEND' | 'VIEW' | 'SIGN' | 'EXPIRE',
+  ): Promise<PostSaleFakeActionResponse> {
     return apiClient
-      .post<PostSaleFakeActionResponse>(`/post-sales/students/${studentId}/fake/contract`, { action })
+      .post<PostSaleFakeActionResponse>(`/post-sales/students/${studentId}/fake/contract`, {
+        action,
+      })
       .then((res) => res.data)
   },
 

@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { NIcon } from 'naive-ui'
 import {
   BarChartOutline,
+  ClipboardOutline,
   GitNetworkOutline,
   LogOutOutline,
   LogoWhatsapp,
@@ -18,22 +19,23 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useTheme } from '@/composables/useTheme'
 
-const router   = useRouter()
-const route    = useRoute()
-const auth     = useAuthStore()
-const ws       = useWorkspaceStore()
+const router = useRouter()
+const route = useRoute()
+const auth = useAuthStore()
+const ws = useWorkspaceStore()
 const { isDark, themeLabel, toggleTheme } = useTheme()
 
 onMounted(() => ws.load())
 
 const links = [
-  { to: '/whatsapp',  label: 'WhatsApp', icon: LogoWhatsapp },
-  { to: '/',          label: 'Simulador', icon: PlayCircleOutline },
+  { to: '/whatsapp', label: 'WhatsApp', icon: LogoWhatsapp },
+  { to: '/', label: 'Simulador', icon: PlayCircleOutline },
   { to: '/enrollments', label: 'Matrículas', icon: SchoolOutline },
   { to: '/post-sales', label: 'Pós-venda', icon: RepeatOutline },
+  { to: '/tasks', label: 'Tarefas', icon: ClipboardOutline },
   { to: '/dashboard', label: 'Dashboard', icon: BarChartOutline },
-  { to: '/kanban',    label: 'Pipeline', icon: GitNetworkOutline },
-  { to: '/settings',  label: 'Configurações', icon: SettingsOutline },
+  { to: '/kanban', label: 'Pipeline', icon: GitNetworkOutline },
+  { to: '/settings', label: 'Configurações', icon: SettingsOutline },
 ]
 
 async function logout() {
@@ -116,8 +118,11 @@ async function logout() {
 .topbar__brand-icon {
   width: 38px;
   height: 38px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--brand, #075e54) 72%, #25d366), var(--brand, #075e54));
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--brand, #075e54) 72%, #25d366),
+    var(--brand, #075e54)
+  );
   color: #fff;
   border-radius: 8px;
   display: flex;
@@ -187,7 +192,10 @@ async function logout() {
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
   white-space: nowrap;
 }
 
@@ -263,7 +271,10 @@ async function logout() {
   background: transparent;
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .topbar__theme {

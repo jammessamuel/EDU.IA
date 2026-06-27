@@ -280,11 +280,12 @@ export class TaskAutomationService {
         leadId: task.leadId ?? null,
         origin: task.origin,
         relatedEntity,
-        status: { not: 'CONCLUIDA' },
       },
     });
 
     if (existing) {
+      if (existing.status === 'CONCLUIDA') return;
+
       await this.prisma.postSaleTask.update({
         where: { id: existing.id },
         data: {

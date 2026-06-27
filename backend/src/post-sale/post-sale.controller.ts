@@ -42,10 +42,33 @@ export class PostSaleController {
   @RequirePermission('leads:create:school')
   createTask(
     @Param('studentKey') studentKey: string,
-    @Body() body: { title?: string; ownerTeam?: string; priority?: string; dueInDays?: number },
+    @Body()
+    body: {
+      title?: string;
+      ownerTeam?: string;
+      priority?: string;
+      dueInDays?: number;
+    },
     @CurrentUser() user: { schoolId: string },
   ): Promise<unknown> {
     return this.service.createTask(user.schoolId, studentKey, body);
+  }
+
+  @Patch('tasks/:taskId')
+  @RequirePermission('leads:create:school')
+  updateTask(
+    @Param('taskId') taskId: string,
+    @Body()
+    body: {
+      column?: string;
+      status?: string;
+      assignee?: string;
+      role?: string;
+      priority?: string;
+    },
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.updateTask(user.schoolId, taskId, body);
   }
 
   @Post('students/:studentKey/messages/simulate')
@@ -92,7 +115,13 @@ export class PostSaleController {
   @RequirePermission('leads:create:school')
   simulateDocument(
     @Param('studentKey') studentKey: string,
-    @Body() body: { action?: any; documentType?: string; reason?: string; fileName?: string },
+    @Body()
+    body: {
+      action?: any;
+      documentType?: string;
+      reason?: string;
+      fileName?: string;
+    },
     @CurrentUser() user: { schoolId: string },
   ): Promise<unknown> {
     return this.service.simulateDocument(user.schoolId, studentKey, body);

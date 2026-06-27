@@ -350,6 +350,68 @@ export class PostSaleService {
     return this.overview(schoolId);
   }
 
+  async updateTask(
+    schoolId: string,
+    taskId: string,
+    input: {
+      column?: string;
+      status?: string;
+      assignee?: string;
+      role?: string;
+      priority?: string;
+    },
+  ): Promise<unknown> {
+    const task = await this.prisma.postSaleTask.findFirst({
+      where: { id: taskId, schoolId },
+    });
+    if (!task) throw new BadRequestException('Tarefa não encontrada.');
+
+    const nextColumn = this.taskColumn(input.column ?? task.column);
+    const moved = nextColumn !== task.column;
+    const completed =
+      nextColumn === 'concluido' || input.status === 'CONCLUIDA';
+    const updateData: Record<string, unknown> = {
+      column: nextColumn,
+      status: completed ? 'CONCLUIDA' : input.status?.trim() || 'ABERTA',
+      assignee: input.assignee?.trim() || task.assignee,
+      role: input.role?.trim() || task.role,
+      priority: input.priority?.trim() || task.priority,
+      firstMovedAt:
+        moved && !task.firstMovedAt ? new Date() : task.firstMovedAt,
+      resolvedAt: completed ? new Date() : null,
+    };
+
+    await this.prisma.postSaleTask.update({
+      where: { id: task.id },
+      data: updateData,
+    });
+
+    if (task.studentKey) {
+      await this.prisma.postSaleEvent.create({
+        data: {
+          schoolId,
+          studentKey: task.studentKey,
+          enrollmentId: task.enrollmentId,
+          studentName: task.studentName,
+          type: completed ? 'TASK_DONE' : 'TASK_MOVED',
+          title: completed ? 'Tarefa concluída' : 'Tarefa movimentada',
+          description: completed
+            ? `${task.title} foi marcada como concluída.`
+            : `${task.title} foi movida para ${this.taskColumnLabel(nextColumn)}.`,
+          metadata: JSON.stringify({
+            taskId: task.id,
+            fromColumn: task.column,
+            toColumn: nextColumn,
+            origin: task.origin,
+            autoResolve: task.autoResolve,
+          }),
+        },
+      });
+    }
+
+    return this.overview(schoolId);
+  }
+
   async simulateMessage(
     schoolId: string,
     studentKey: string,
@@ -1195,6 +1257,10 @@ export class PostSaleService {
       relatedEntity: this.safeJson(task.relatedEntity),
       autoResolve: task.autoResolve,
       dueAt: task.dueAt,
+      firstMovedAt: task.firstMovedAt,
+      resolvedAt: task.resolvedAt,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
       automation: this.cleanVisibleText(
         task.automation ?? 'Criada pela equipe',
       ),
@@ -1692,6 +1758,10 @@ export class PostSaleService {
       relatedEntity: this.safeJson(task.relatedEntity),
       autoResolve: task.autoResolve,
       dueAt: task.dueAt,
+      firstMovedAt: task.firstMovedAt,
+      resolvedAt: task.resolvedAt,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
       automation: this.cleanVisibleText(
         task.automation ?? 'Criada pela equipe',
       ),
@@ -2034,6 +2104,28 @@ export class PostSaleService {
       return 'sucesso_do_aluno';
     if (normalized.includes('gestor')) return 'gestor';
     return 'secretaria';
+  }
+
+  private taskColumn(value: string) {
+    const allowed = new Set([
+      'a_fazer',
+      'em_andamento',
+      'aguardando_aluno',
+      'aguardando_financeiro',
+      'concluido',
+    ]);
+    return allowed.has(value) ? value : 'a_fazer';
+  }
+
+  private taskColumnLabel(column: string) {
+    const labels: Record<string, string> = {
+      a_fazer: 'A fazer',
+      em_andamento: 'Em andamento',
+      aguardando_aluno: 'Aguardando aluno',
+      aguardando_financeiro: 'Aguardando financeiro',
+      concluido: 'Concluído',
+    };
+    return labels[column] ?? column;
   }
 
   private automationFor(status: LifecycleStatus) {
