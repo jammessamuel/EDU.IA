@@ -82,7 +82,15 @@ export interface Metrics {
   byDay: { date: string; count: number }[]
 }
 
-export type EnrollmentFieldType = 'text' | 'select' | 'cpf' | 'email' | 'date' | 'cep' | 'phone' | 'document'
+export type EnrollmentFieldType =
+  | 'text'
+  | 'select'
+  | 'cpf'
+  | 'email'
+  | 'date'
+  | 'cep'
+  | 'phone'
+  | 'document'
 
 export type EnrollmentSection =
   | 'pessoais'
@@ -248,15 +256,42 @@ export interface PostSaleFunnelStage {
 
 export interface PostSaleTask {
   id: string
-  studentId: string
+  studentId: string | null
+  leadId?: string | null
   title: string
   studentName: string
   ownerTeam: string
+  assignee?: string
+  role?: 'comercial' | 'financeiro' | 'sucesso_do_aluno' | 'secretaria' | 'gestor' | string
   priority: string
   status?: string
+  column?:
+    | 'a_fazer'
+    | 'em_andamento'
+    | 'aguardando_aluno'
+    | 'aguardando_financeiro'
+    | 'concluido'
+    | string
+  origin?:
+    | 'ia'
+    | 'matricula'
+    | 'documento'
+    | 'pagamento'
+    | 'contrato'
+    | 'risco_evasao'
+    | 'lead'
+    | 'manual'
+    | string
+  createdBy?: 'humano' | 'automacao' | string
+  relatedEntity?: Record<string, unknown> | string | null
+  autoResolve?: boolean
   dueAt: string
   automation: string
   source?: 'automatic' | 'manual'
+  firstMovedAt?: string | null
+  resolvedAt?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface PostSaleAutomation {

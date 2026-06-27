@@ -334,23 +334,37 @@ model PostSaleState {
 }
 
 model PostSaleTask {
-  id           String    @id @default(cuid())
-  schoolId     String
-  studentKey   String
-  enrollmentId String?
-  studentName  String
-  title        String
-  ownerTeam    String
-  priority     String    @default("Normal")
-  status       String    @default("ABERTA")
-  automation   String?
-  dueAt        DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  schoolId      String
+  studentKey    String?
+  leadId        String?
+  enrollmentId  String?
+  studentName   String
+  title         String
+  ownerTeam     String
+  assignee      String    @default("")
+  role          String    @default("secretaria")
+  priority      String    @default("Normal")
+  status        String    @default("ABERTA")
+  column        String    @default("a_fazer")
+  origin        String    @default("manual")
+  createdBy     String    @default("humano")
+  automation    String?
+  relatedEntity String    @default("{}")
+  autoResolve   Boolean   @default(false)
+  dueAt         DateTime?
+  firstMovedAt  DateTime?
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([schoolId])
   @@index([studentKey])
+  @@index([leadId])
   @@index([enrollmentId])
+  @@index([schoolId, status])
+  @@index([schoolId, column])
+  @@index([schoolId, origin])
   @@map("post_sale_tasks")
 }
 

@@ -59,7 +59,8 @@ interface CoursePerformanceRow {
 
 interface QueueItem {
   id: string
-  studentId: string
+  studentId: string | null
+  leadId?: string | null
   title: string
   studentName: string
   meta: string
@@ -104,16 +105,24 @@ const students = computed(() => postSale.value?.students ?? [])
 const tasks = computed(() => postSale.value?.tasks ?? [])
 const logs = computed(() => postSale.value?.integrationLogs ?? [])
 const automations = computed(() => postSale.value?.automations ?? [])
-const activeCourses = computed(() => (schoolConfig.value?.courses ?? []).filter((course) => course.active))
+const activeCourses = computed(() =>
+  (schoolConfig.value?.courses ?? []).filter((course) => course.active),
+)
 
-const periodDays = computed(() => (selectedPeriod.value === 'all' ? null : Number(selectedPeriod.value)))
+const periodDays = computed(() =>
+  selectedPeriod.value === 'all' ? null : Number(selectedPeriod.value),
+)
 const periodLabel = computed(() => {
   if (selectedPeriod.value === 'all') return 'todo o histórico'
   return `últimos ${selectedPeriod.value} dias`
 })
 
-const periodStudents = computed(() => students.value.filter((student) => inSelectedPeriod(student.startedAt)))
-const periodEnrollments = computed(() => enrollments.value.filter((enrollment) => inSelectedPeriod(enrollment.createdAt)))
+const periodStudents = computed(() =>
+  students.value.filter((student) => inSelectedPeriod(student.startedAt)),
+)
+const periodEnrollments = computed(() =>
+  enrollments.value.filter((enrollment) => inSelectedPeriod(enrollment.createdAt)),
+)
 const periodLogs = computed(() => logs.value.filter((log) => inSelectedPeriod(log.createdAt)))
 
 const ongoingStudents = computed(() =>
@@ -180,7 +189,9 @@ const automationQueuedCount = computed(() =>
 const conversionRate = computed(() => metrics.value?.conversionRate ?? 0)
 const activeLeadCount = computed(() => metrics.value?.total ?? 0)
 const riskRate = computed(() =>
-  periodStudents.value.length ? Math.round((riskStudents.value.length / periodStudents.value.length) * 100) : 0,
+  periodStudents.value.length
+    ? Math.round((riskStudents.value.length / periodStudents.value.length) * 100)
+    : 0,
 )
 
 const executiveCards = computed<ExecutiveCard[]>(() => [
@@ -242,40 +253,35 @@ const executiveCards = computed<ExecutiveCard[]>(() => [
 
 const operationalFunnel = computed(() => {
   const status = metrics.value?.byStatus ?? {}
-  return [
-    'NOVO',
-    'CONTATO',
-    'INSCRITO',
-    'MATRICULADO',
-    'POS_VENDA',
-    'ONBOARDING_CONCLUIDO',
-  ].map((key) => {
-    if (key === 'POS_VENDA') {
+  return ['NOVO', 'CONTATO', 'INSCRITO', 'MATRICULADO', 'POS_VENDA', 'ONBOARDING_CONCLUIDO'].map(
+    (key) => {
+      if (key === 'POS_VENDA') {
+        return {
+          key,
+          label: 'Pós-venda ativo',
+          count: ongoingStudents.value.length,
+          color: '#14b8a6',
+          route: '/post-sales' as RouteTarget,
+        }
+      }
+      if (key === 'ONBOARDING_CONCLUIDO') {
+        return {
+          key,
+          label: 'Onboarding concluído',
+          count: completedStudents.value.length,
+          color: '#16a34a',
+          route: '/post-sales' as RouteTarget,
+        }
+      }
       return {
         key,
-        label: 'Pós-venda ativo',
-        count: ongoingStudents.value.length,
-        color: '#14b8a6',
-        route: '/post-sales' as RouteTarget,
+        label: leadStageLabels[key] ?? key,
+        count: status[key] ?? 0,
+        color: leadStageColors[key] ?? '#64748b',
+        route: key === 'MATRICULADO' ? ('/enrollments' as RouteTarget) : ('/kanban' as RouteTarget),
       }
-    }
-    if (key === 'ONBOARDING_CONCLUIDO') {
-      return {
-        key,
-        label: 'Onboarding concluído',
-        count: completedStudents.value.length,
-        color: '#16a34a',
-        route: '/post-sales' as RouteTarget,
-      }
-    }
-    return {
-      key,
-      label: leadStageLabels[key] ?? key,
-      count: status[key] ?? 0,
-      color: leadStageColors[key] ?? '#64748b',
-      route: key === 'MATRICULADO' ? ('/enrollments' as RouteTarget) : ('/kanban' as RouteTarget),
-    }
-  })
+    },
+  )
 })
 
 const funnelMax = computed(() =>
@@ -326,9 +332,16 @@ const courseRows = computed<CoursePerformanceRow[]>(() => {
     .map((name) => {
       const leads = byCourse[name] ?? 0
       const courseStudents = periodStudents.value.filter((student) => student.course === name)
-      const completed = courseStudents.filter((student) => student.status === 'ONBOARDING_CONCLUIDO').length
+      const completed = courseStudents.filter(
+        (student) => student.status === 'ONBOARDING_CONCLUIDO',
+      ).length
       const revenue = courseStudents.reduce((sum, student) => sum + valueForStudent(student), 0)
-      const conversion = leads > 0 ? Math.round((courseStudents.length / leads) * 100) : courseStudents.length ? 100 : 0
+      const conversion =
+        leads > 0
+          ? Math.round((courseStudents.length / leads) * 100)
+          : courseStudents.length
+            ? 100
+            : 0
       return {
         name,
         leads,
@@ -350,6 +363,7 @@ const actionQueue = computed<QueueItem[]>(() => {
   const fromTasks = tasks.value.map((task) => ({
     id: task.id,
     studentId: task.studentId,
+    leadId: task.leadId ?? null,
     title: task.title,
     studentName: task.studentName,
     meta: `${task.ownerTeam} · ${taskAutomationLabel(task)}`,
@@ -373,7 +387,11 @@ const actionQueue = computed<QueueItem[]>(() => {
     }))
 
   return [...fromTasks, ...fromRisk]
-    .sort((a, b) => priorityWeight(a.priority) - priorityWeight(b.priority) || new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+    .sort(
+      (a, b) =>
+        priorityWeight(a.priority) - priorityWeight(b.priority) ||
+        new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(),
+    )
     .slice(0, 8)
 })
 
@@ -384,9 +402,7 @@ const recentLogs = computed(() =>
 )
 
 const automationRows = computed(() =>
-  [...automations.value]
-    .sort((a, b) => a.day - b.day)
-    .slice(0, 6),
+  [...automations.value].sort((a, b) => a.day - b.day).slice(0, 6),
 )
 
 const dailyLeadRows = computed(() => {
@@ -395,9 +411,7 @@ const dailyLeadRows = computed(() => {
   return days
 })
 
-const dailyLeadMax = computed(() =>
-  Math.max(1, ...dailyLeadRows.value.map((day) => day.count)),
-)
+const dailyLeadMax = computed(() => Math.max(1, ...dailyLeadRows.value.map((day) => day.count)))
 
 const managerInsights = computed(() => {
   const insights = []
@@ -479,6 +493,14 @@ function inSelectedPeriod(dateValue?: string | null) {
 
 function goTo(route: RouteTarget) {
   router.push(route)
+}
+
+function goToQueueItem(item: QueueItem) {
+  if (item.studentId) {
+    router.push(`/post-sales/students/${item.studentId}`)
+    return
+  }
+  router.push('/pipeline')
 }
 
 function goToStudent(studentId: string) {
@@ -595,7 +617,8 @@ function actionLabel(action: string) {
           <span class="eyebrow">Painel do gestor</span>
           <h1>Visão executiva da operação</h1>
           <p>
-            Receita, matrículas, gargalos, risco de evasão, automações e conversão em uma tela acionável.
+            Receita, matrículas, gargalos, risco de evasão, automações e conversão em uma tela
+            acionável.
           </p>
         </div>
 
@@ -634,15 +657,9 @@ function actionLabel(action: string) {
             <span>{{ generatedAtLabel }}</span>
             <strong>{{ periodLabel }}</strong>
           </div>
-          <button type="button" @click="goTo('/post-sales')">
-            Ver operação
-          </button>
-          <button type="button" @click="goTo('/kanban')">
-            Ver pipeline
-          </button>
-          <button type="button" @click="goTo('/settings')">
-            Ajustar escola
-          </button>
+          <button type="button" @click="goTo('/post-sales')">Ver operação</button>
+          <button type="button" @click="goTo('/kanban')">Ver pipeline</button>
+          <button type="button" @click="goTo('/settings')">Ajustar escola</button>
         </section>
 
         <section class="kpi-grid" aria-label="Indicadores executivos">
@@ -686,7 +703,9 @@ function actionLabel(action: string) {
                   <strong>{{ stage.count }}</strong>
                 </span>
                 <span class="funnel-stage__track">
-                  <i :style="{ width: `${funnelWidth(stage.count)}%`, background: stage.color }"></i>
+                  <i
+                    :style="{ width: `${funnelWidth(stage.count)}%`, background: stage.color }"
+                  ></i>
                 </span>
               </button>
             </div>
@@ -705,9 +724,18 @@ function actionLabel(action: string) {
               <strong>{{ formatCurrency(expectedRevenue) }}</strong>
               <span>Previsto no período</span>
               <div class="finance-meter__track">
-                <i :style="{ width: expectedRevenue ? `${Math.round((paidRevenue / expectedRevenue) * 100)}%` : '0%' }"></i>
+                <i
+                  :style="{
+                    width: expectedRevenue
+                      ? `${Math.round((paidRevenue / expectedRevenue) * 100)}%`
+                      : '0%',
+                  }"
+                ></i>
               </div>
-              <small>{{ formatCurrency(paidRevenue) }} pago · {{ formatCurrency(pendingRevenue) }} pendente</small>
+              <small
+                >{{ formatCurrency(paidRevenue) }} pago ·
+                {{ formatCurrency(pendingRevenue) }} pendente</small
+              >
             </div>
           </article>
 
@@ -743,7 +771,9 @@ function actionLabel(action: string) {
                 <h2>Conversão por curso</h2>
                 <p>Leads, matrículas em jornada e receita prevista por oferta.</p>
               </div>
-              <button type="button" class="panel-link" @click="goTo('/settings')">Editar cursos</button>
+              <button type="button" class="panel-link" @click="goTo('/settings')">
+                Editar cursos
+              </button>
             </div>
 
             <div class="course-table">
@@ -756,18 +786,29 @@ function actionLabel(action: string) {
               >
                 <span class="course-row__name">
                   <strong>{{ course.name }}</strong>
-                  <small>{{ course.conversion }}% conversão · {{ formatCurrency(course.revenue) }}</small>
+                  <small
+                    >{{ course.conversion }}% conversão ·
+                    {{ formatCurrency(course.revenue) }}</small
+                  >
                 </span>
                 <span class="course-row__bars">
-                  <i class="course-row__lead" :style="{ width: `${courseBarWidth(course.leads)}%` }"></i>
-                  <i class="course-row__student" :style="{ width: `${courseBarWidth(course.students)}%` }"></i>
+                  <i
+                    class="course-row__lead"
+                    :style="{ width: `${courseBarWidth(course.leads)}%` }"
+                  ></i>
+                  <i
+                    class="course-row__student"
+                    :style="{ width: `${courseBarWidth(course.students)}%` }"
+                  ></i>
                 </span>
                 <span class="course-row__numbers">
                   <strong>{{ course.students }}</strong>
                   <small>{{ course.leads }} leads</small>
                 </span>
               </button>
-              <p v-if="!courseRows.length" class="empty-note">Cadastre cursos ativos para visualizar performance por oferta.</p>
+              <p v-if="!courseRows.length" class="empty-note">
+                Cadastre cursos ativos para visualizar performance por oferta.
+              </p>
             </div>
           </article>
 
@@ -786,9 +827,12 @@ function actionLabel(action: string) {
                 :key="item.id"
                 type="button"
                 class="queue-item"
-                @click="goToStudent(item.studentId)"
+                @click="goToQueueItem(item)"
               >
-                <span class="queue-item__priority" :class="`priority-${priorityWeight(item.priority)}`">
+                <span
+                  class="queue-item__priority"
+                  :class="`priority-${priorityWeight(item.priority)}`"
+                >
                   {{ item.priority }}
                 </span>
                 <strong>{{ item.title }}</strong>
@@ -821,7 +865,9 @@ function actionLabel(action: string) {
                 <small>{{ student.course }} · {{ student.nextAction }}</small>
                 <em>{{ student.riskScore }}</em>
               </button>
-              <p v-if="!riskStudents.length" class="empty-note">Nenhum aluno em risco alto ou crítico.</p>
+              <p v-if="!riskStudents.length" class="empty-note">
+                Nenhum aluno em risco alto ou crítico.
+              </p>
             </div>
           </article>
 
@@ -835,12 +881,21 @@ function actionLabel(action: string) {
             </div>
 
             <div class="automation-list">
-              <div v-for="automation in automationRows" :key="automation.day" class="automation-row">
+              <div
+                v-for="automation in automationRows"
+                :key="automation.day"
+                class="automation-row"
+              >
                 <span>Dia {{ automation.day }}</span>
                 <strong>{{ automation.title }}</strong>
-                <small>{{ automation.sentCount }} enviados · {{ automation.pendingCount }} pendentes · {{ automation.scheduledCount }} agendados</small>
+                <small
+                  >{{ automation.sentCount }} enviados · {{ automation.pendingCount }} pendentes ·
+                  {{ automation.scheduledCount }} agendados</small
+                >
               </div>
-              <p v-if="!automationRows.length" class="empty-note">Nenhuma régua ativa encontrada.</p>
+              <p v-if="!automationRows.length" class="empty-note">
+                Nenhuma régua ativa encontrada.
+              </p>
             </div>
           </article>
 
@@ -863,9 +918,14 @@ function actionLabel(action: string) {
               >
                 <span>{{ serviceLabel(log) }}</span>
                 <strong>{{ actionLabel(log.action) }}</strong>
-                <small>{{ log.studentName ?? 'Operação da escola' }} · {{ formatDate(log.createdAt) }}</small>
+                <small
+                  >{{ log.studentName ?? 'Operação da escola' }} ·
+                  {{ formatDate(log.createdAt) }}</small
+                >
               </button>
-              <p v-if="!recentLogs.length" class="empty-note">Execute simulações para popular o histórico.</p>
+              <p v-if="!recentLogs.length" class="empty-note">
+                Execute simulações para popular o histórico.
+              </p>
             </div>
           </article>
 
@@ -875,7 +935,9 @@ function actionLabel(action: string) {
                 <h2>Novos leads</h2>
                 <p>Volume diário recebido pelo simulador nos últimos registros.</p>
               </div>
-              <button type="button" class="panel-link" @click="goTo('/kanban')">Abrir pipeline</button>
+              <button type="button" class="panel-link" @click="goTo('/kanban')">
+                Abrir pipeline
+              </button>
             </div>
 
             <div class="daily-bars">
@@ -1134,12 +1196,24 @@ function actionLabel(action: string) {
   box-shadow: var(--shadow-sm);
 }
 
-.kpi-card--revenue { --kpi-color: #22c55e; }
-.kpi-card--brand { --kpi-color: var(--brand); }
-.kpi-card--warning { --kpi-color: var(--warning); }
-.kpi-card--danger { --kpi-color: var(--danger); }
-.kpi-card--info { --kpi-color: var(--info); }
-.kpi-card--success { --kpi-color: var(--accent-strong); }
+.kpi-card--revenue {
+  --kpi-color: #22c55e;
+}
+.kpi-card--brand {
+  --kpi-color: var(--brand);
+}
+.kpi-card--warning {
+  --kpi-color: var(--warning);
+}
+.kpi-card--danger {
+  --kpi-color: var(--danger);
+}
+.kpi-card--info {
+  --kpi-color: var(--info);
+}
+.kpi-card--success {
+  --kpi-color: var(--accent-strong);
+}
 
 .kpi-card__icon {
   width: 36px;
@@ -1367,10 +1441,18 @@ function actionLabel(action: string) {
   color: var(--bottleneck-color);
 }
 
-.bottleneck-item--warning { --bottleneck-color: var(--warning); }
-.bottleneck-item--purple { --bottleneck-color: #a78bfa; }
-.bottleneck-item--info { --bottleneck-color: var(--info); }
-.bottleneck-item--brand { --bottleneck-color: var(--brand); }
+.bottleneck-item--warning {
+  --bottleneck-color: var(--warning);
+}
+.bottleneck-item--purple {
+  --bottleneck-color: #a78bfa;
+}
+.bottleneck-item--info {
+  --bottleneck-color: var(--info);
+}
+.bottleneck-item--brand {
+  --bottleneck-color: var(--brand);
+}
 
 .bottleneck-item span {
   display: block;
@@ -1494,10 +1576,18 @@ function actionLabel(action: string) {
   font-weight: 900;
 }
 
-.priority-0 { --priority-color: var(--danger); }
-.priority-1 { --priority-color: var(--warning); }
-.priority-2 { --priority-color: var(--brand); }
-.priority-3 { --priority-color: var(--muted); }
+.priority-0 {
+  --priority-color: var(--danger);
+}
+.priority-1 {
+  --priority-color: var(--warning);
+}
+.priority-2 {
+  --priority-color: var(--brand);
+}
+.priority-3 {
+  --priority-color: var(--muted);
+}
 
 .queue-item strong {
   margin-top: 7px;

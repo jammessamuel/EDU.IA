@@ -8,12 +8,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { SchoolConfigModule } from '../school-config/school-config.module';
 import { PostSaleController } from './post-sale.controller';
 import { PostSaleService } from './post-sale.service';
+import { TaskAutomationService } from './task-automation.service';
 
 @Module({
   imports: [PrismaModule, SchoolConfigModule],
   controllers: [PostSaleController],
   providers: [
     PostSaleService,
+    TaskAutomationService,
     IntegrationLogService,
     FakeWhatsAppService,
     FakePaymentService,
