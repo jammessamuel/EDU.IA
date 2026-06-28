@@ -187,10 +187,15 @@ async function openAttachment(attachment: NonNullable<ChatMessage['attachments']
   padding: 0 12px;
   border: 0;
   border-radius: 10px;
-  background: var(--primary);
+  background: #047857;
   color: #fff;
   font-weight: 800;
   cursor: pointer;
+  box-shadow: 0 8px 18px rgba(4, 120, 87, 0.22);
+}
+
+.pdf-card__action:hover {
+  background: #065f46;
 }
 
 .pdf-card__action:disabled {
