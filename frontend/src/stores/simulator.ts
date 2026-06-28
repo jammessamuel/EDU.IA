@@ -9,7 +9,9 @@ function makeWelcome(text?: string): ChatMessage {
   return {
     id: 'welcome',
     from: 'ai',
-    text: text || 'Oi! Tudo bem? Posso te ajudar com cursos, valores, documentos ou já começar sua matrícula por aqui.',
+    text:
+      text ||
+      'Oi! Tudo bem? Posso te ajudar com cursos, valores, documentos ou já começar sua matrícula por aqui.',
     timestamp: new Date(),
   }
 }
@@ -81,6 +83,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         id: crypto.randomUUID(),
         from: 'ai',
         text: response.reply,
+        attachments: response.attachments,
         timestamp: new Date(),
       })
 
@@ -102,7 +105,8 @@ export const useSimulatorStore = defineStore('simulator', () => {
         typeof err === 'object' &&
         err !== null &&
         'response' in err &&
-        typeof (err as { response?: { data?: { message?: unknown } } }).response?.data?.message === 'string'
+        typeof (err as { response?: { data?: { message?: unknown } } }).response?.data?.message ===
+          'string'
           ? String((err as { response: { data: { message: string } } }).response.data.message)
           : 'Não foi possível enviar a mensagem. Tente novamente.'
       error.value = message

@@ -63,10 +63,26 @@ export interface ChatMessage {
   from: MessageSender
   text: string
   timestamp: Date
+  attachments?: ChatAttachment[]
+}
+
+export type ChatAttachmentAction = 'open' | 'download'
+
+export interface ChatAttachment {
+  id: string
+  type: 'pdf'
+  title: string
+  description?: string
+  filename?: string
+  url?: string
+  pdfKind?: 'catalogo-cursos' | 'tabela-descontos' | 'fluxo-matricula'
+  action: ChatAttachmentAction
+  mimeType: 'application/pdf'
 }
 
 export interface SendMessageResponse {
   reply: string
+  attachments?: ChatAttachment[]
   lead: Lead | null
   mode?: 'lead' | 'enrollment'
   enrollmentDraft?: Record<string, unknown> | null

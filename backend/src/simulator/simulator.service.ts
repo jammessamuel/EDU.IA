@@ -1,11 +1,18 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import OpenAI from 'openai';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerticalService, VerticalField } from '../vertical/vertical.service';
 import { EnrollmentChatService } from '../enrollment/enrollment-chat.service';
 import { EnrollmentService } from '../enrollment/enrollment.service';
-import { RuntimeSchoolConfig, SchoolConfigService } from '../school-config/school-config.service';
+import {
+  RuntimeSchoolConfig,
+  SchoolConfigService,
+} from '../school-config/school-config.service';
 import { isValidCpf, isValidEmail, onlyDigits } from '../common/lib/validation';
 import {
   EDUCATION_ENROLLMENT_FIELDS,
@@ -18,6 +25,23 @@ import { camposFaltando } from '../enrollment/enrollment-agent';
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export interface SimulatorAttachment {
+  id: string;
+  type: 'pdf';
+  title: string;
+  description?: string;
+  filename?: string;
+  url?: string;
+  pdfKind?: 'catalogo-cursos' | 'tabela-descontos' | 'fluxo-matricula';
+  action: 'open' | 'download';
+  mimeType: 'application/pdf';
+}
+
+interface SimulatorAnswer {
+  reply: string;
+  attachments?: SimulatorAttachment[];
 }
 
 type SimulatorLanguage = 'pt' | 'en' | 'es';
@@ -55,7 +79,10 @@ export class SimulatorService {
 
   // ── Prompt dinâmico por vertical ─────────────────────────────────────────────
 
-  private async buildPrompt(schoolId: string, runtimeConfig: RuntimeSchoolConfig): Promise<string> {
+  private async buildPrompt(
+    schoolId: string,
+    runtimeConfig: RuntimeSchoolConfig,
+  ): Promise<string> {
     const school = await this.prisma.school.findUnique({
       where: { id: schoolId },
       include: { vertical: true },
@@ -73,19 +100,26 @@ export class SimulatorService {
     const fieldDescriptions = fields
       .sort((a, b) => a.order - b.order)
       .map((f, i) => {
-        const opts = f.options?.length ? ` (opções: ${f.options.join(', ')})` : '';
+        const opts = f.options?.length
+          ? ` (opções: ${f.options.join(', ')})`
+          : '';
         return `${i + 1}. ${f.label}${opts}`;
       })
       .join('\n');
 
-    const template = school?.vertical?.promptTemplate ?? `Você é {{chatbotName}}, atendente virtual da {{workspaceName}}.
+    const template =
+      school?.vertical?.promptTemplate ??
+      `Você é {{chatbotName}}, atendente virtual da {{workspaceName}}.
 Colete as seguintes informações, UMA POR VEZ:
 {{fieldDescriptions}}
 Quando coletar todos os campos, continue o atendimento e ofereça fazer a matrícula por aqui.`;
 
     const rendered = template
-      .replace(/\{\{chatbotName\}\}/g,       school?.chatbotName ?? 'Atendente Virtual')
-      .replace(/\{\{workspaceName\}\}/g,     school?.name        ?? 'nossa empresa')
+      .replace(
+        /\{\{chatbotName\}\}/g,
+        school?.chatbotName ?? 'Atendente Virtual',
+      )
+      .replace(/\{\{workspaceName\}\}/g, school?.name ?? 'nossa empresa')
       .replace(/\{\{fieldDescriptions\}\}/g, fieldDescriptions);
 
     return `${rendered}
@@ -147,10 +181,22 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     if (this.shouldUseEnrollmentFlow(text, history, enrollmentDraft)) {
       let result: Awaited<ReturnType<EnrollmentChatService['chat']>>;
       try {
-        result = await this.enrollmentChat.chat(text, history, enrollmentDraft, schoolId, userId);
+        result = await this.enrollmentChat.chat(
+          text,
+          history,
+          enrollmentDraft,
+          schoolId,
+          userId,
+        );
       } catch (err) {
         if (!this.isOpenAiUnavailable(err)) throw err;
-        return this.localEnrollmentFallback(text, history, enrollmentDraft, schoolId, runtimeConfig);
+        return this.localEnrollmentFallback(
+          text,
+          history,
+          enrollmentDraft,
+          schoolId,
+          runtimeConfig,
+        );
       }
       return {
         reply: result.reply,
@@ -164,10 +210,17 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
 
     history.push({ role: 'user', content: text });
 
-    const directReply = this.answerFromConfig(text, runtimeConfig);
+    const directReply = this.answerFromConfig(text, runtimeConfig, history);
     if (directReply) {
-      history.push({ role: 'assistant', content: directReply });
-      return { reply: directReply, lead: null, mode: 'lead', enrollmentDraft: null, enrollment: null };
+      history.push({ role: 'assistant', content: directReply.reply });
+      return {
+        reply: directReply.reply,
+        attachments: directReply.attachments,
+        lead: null,
+        mode: 'lead',
+        enrollmentDraft: null,
+        enrollment: null,
+      };
     }
 
     const systemPrompt = await this.buildPrompt(schoolId, runtimeConfig);
@@ -182,101 +235,192 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
       max_tokens: 300,
     });
 
-    const reply = this.sanitizeAssistantReply(response.choices[0].message.content ?? '', runtimeConfig);
+    const reply = this.sanitizeAssistantReply(
+      response.choices[0].message.content ?? '',
+      runtimeConfig,
+    );
     history.push({ role: 'assistant', content: reply });
 
     const rawLead = await this.tryExtractAndSaveLead(history, schoolId);
     const lead = rawLead ? this.serializeLead(rawLead) : null;
-    return { reply, lead, mode: 'lead', enrollmentDraft: null, enrollment: null };
+    return {
+      reply,
+      attachments: this.materialAttachmentsForText(
+        text,
+        history,
+        runtimeConfig,
+      ),
+      lead,
+      mode: 'lead',
+      enrollmentDraft: null,
+      enrollment: null,
+    };
   }
 
-  private answerFromConfig(text: string, runtimeConfig: RuntimeSchoolConfig): string | null {
+  private answerFromConfig(
+    text: string,
+    runtimeConfig: RuntimeSchoolConfig,
+    history: ChatMessage[] = [],
+  ): SimulatorAnswer | null {
     const normalized = this.normalizeText(text);
     const language = this.detectLanguage(text);
     const specificCourse = this.findMentionedCourse(normalized, runtimeConfig);
 
+    if (this.isMaterialRequest(normalized)) {
+      return this.materialAnswer(text, history, runtimeConfig, language);
+    }
+
     if (this.isGreetingOnly(normalized)) {
-      return this.localized(
-        language,
-        'Oi! Tudo bem? Eu posso te ajudar com cursos, valores, documentos, horário/localização ou já começar sua matrícula por aqui. O que você quer ver primeiro?',
-        'Hi! I can help with programs, prices, documents, opening hours/location, or start your enrollment here. What would you like to see first?',
-        '¡Hola! Puedo ayudarte con cursos, valores, documentos, horarios/ubicación o empezar tu matrícula por aquí. ¿Qué quieres ver primero?',
+      return this.textAnswer(
+        this.localized(
+          language,
+          'Oi! Tudo bem? Eu posso te ajudar com cursos, valores, documentos, horário/localização ou já começar sua matrícula por aqui. O que você quer ver primeiro?',
+          'Hi! I can help with programs, prices, documents, opening hours/location, or start your enrollment here. What would you like to see first?',
+          '¡Hola! Puedo ayudarte con cursos, valores, documentos, horarios/ubicación o empezar tu matrícula por aquí. ¿Qué quieres ver primero?',
+        ),
       );
     }
 
     if (this.isBusinessHoursQuestion(normalized)) {
-      const hours = this.schoolConfig.formatBusinessHours(runtimeConfig.profile.businessHours);
-      return this.localized(
-        language,
-        `Claro. Nosso horário é: ${hours}.\n\nQuer que eu te ajude com cursos, valores ou já com a matrícula?`,
-        `Sure. Our opening hours are: ${hours}.\n\nWould you like help with programs, prices, or enrollment?`,
-        `Claro. Nuestro horario es: ${hours}.\n\n¿Quieres ayuda con cursos, valores o con la matrícula?`,
+      const hours = this.schoolConfig.formatBusinessHours(
+        runtimeConfig.profile.businessHours,
+      );
+      return this.textAnswer(
+        this.localized(
+          language,
+          `Claro. Nosso horário é: ${hours}.\n\nQuer que eu te ajude com cursos, valores ou já com a matrícula?`,
+          `Sure. Our opening hours are: ${hours}.\n\nWould you like help with programs, prices, or enrollment?`,
+          `Claro. Nuestro horario es: ${hours}.\n\n¿Quieres ayuda con cursos, valores o con la matrícula?`,
+        ),
       );
     }
 
     if (this.isLocationQuestion(normalized)) {
-      const address = [runtimeConfig.profile.address, runtimeConfig.profile.city, runtimeConfig.profile.state]
+      const address = [
+        runtimeConfig.profile.address,
+        runtimeConfig.profile.city,
+        runtimeConfig.profile.state,
+      ]
         .filter(Boolean)
         .join(', ');
       if (language === 'en') {
-        return [
-          `We are located at ${address}.`,
-          runtimeConfig.profile.referencePoints ? `Reference point: ${runtimeConfig.profile.referencePoints}` : '',
-          runtimeConfig.profile.transportInfo ? `How to get there: ${runtimeConfig.profile.transportInfo}` : '',
-          runtimeConfig.profile.mapLink ? `Map: ${runtimeConfig.profile.mapLink}` : '',
-          'Would you like to see programs/prices or start your enrollment here?',
-        ].filter(Boolean).join('\n');
+        return this.textAnswer(
+          [
+            `We are located at ${address}.`,
+            runtimeConfig.profile.referencePoints
+              ? `Reference point: ${runtimeConfig.profile.referencePoints}`
+              : '',
+            runtimeConfig.profile.transportInfo
+              ? `How to get there: ${runtimeConfig.profile.transportInfo}`
+              : '',
+            runtimeConfig.profile.mapLink
+              ? `Map: ${runtimeConfig.profile.mapLink}`
+              : '',
+            'Would you like to see programs/prices or start your enrollment here?',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
       }
       if (language === 'es') {
-        return [
-          `Estamos en ${address}.`,
-          runtimeConfig.profile.referencePoints ? `Referencia: ${runtimeConfig.profile.referencePoints}` : '',
-          runtimeConfig.profile.transportInfo ? `Cómo llegar: ${runtimeConfig.profile.transportInfo}` : '',
-          runtimeConfig.profile.mapLink ? `Mapa: ${runtimeConfig.profile.mapLink}` : '',
-          '¿Quieres ver cursos/valores o empezar tu matrícula por aquí?',
-        ].filter(Boolean).join('\n');
+        return this.textAnswer(
+          [
+            `Estamos en ${address}.`,
+            runtimeConfig.profile.referencePoints
+              ? `Referencia: ${runtimeConfig.profile.referencePoints}`
+              : '',
+            runtimeConfig.profile.transportInfo
+              ? `Cómo llegar: ${runtimeConfig.profile.transportInfo}`
+              : '',
+            runtimeConfig.profile.mapLink
+              ? `Mapa: ${runtimeConfig.profile.mapLink}`
+              : '',
+            '¿Quieres ver cursos/valores o empezar tu matrícula por aquí?',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
       }
-      return [
-        `Ficamos em ${address}.`,
-        runtimeConfig.profile.referencePoints ? `Referência: ${runtimeConfig.profile.referencePoints}` : '',
-        runtimeConfig.profile.transportInfo ? `Como chegar: ${runtimeConfig.profile.transportInfo}` : '',
-        runtimeConfig.profile.mapLink ? `Mapa: ${runtimeConfig.profile.mapLink}` : '',
-        'Quer ver cursos/valores ou já começar sua matrícula por aqui?',
-      ].filter(Boolean).join('\n');
+      return this.textAnswer(
+        [
+          `Ficamos em ${address}.`,
+          runtimeConfig.profile.referencePoints
+            ? `Referência: ${runtimeConfig.profile.referencePoints}`
+            : '',
+          runtimeConfig.profile.transportInfo
+            ? `Como chegar: ${runtimeConfig.profile.transportInfo}`
+            : '',
+          runtimeConfig.profile.mapLink
+            ? `Mapa: ${runtimeConfig.profile.mapLink}`
+            : '',
+          'Quer ver cursos/valores ou já começar sua matrícula por aqui?',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
     }
 
     if (this.isDocumentQuestion(normalized)) {
       const audience = this.detectDocumentAudience(normalized);
-      const documents = runtimeConfig.documents.filter((document) => document.audience === audience);
-      const label = audience === 'estrangeiro'
-        ? 'aluno estrangeiro'
-        : audience === 'menor_idade'
-          ? 'aluno menor de idade'
-          : 'aluno brasileiro';
+      const documents = runtimeConfig.documents.filter(
+        (document) => document.audience === audience,
+      );
+      const label =
+        audience === 'estrangeiro'
+          ? 'aluno estrangeiro'
+          : audience === 'menor_idade'
+            ? 'aluno menor de idade'
+            : 'aluno brasileiro';
       const lines = documents.map((document) => {
-        const required = document.required ? this.localized(language, 'obrigatório', 'required', 'obligatorio') : this.localized(language, 'opcional', 'optional', 'opcional');
+        const required = document.required
+          ? this.localized(language, 'obrigatório', 'required', 'obligatorio')
+          : this.localized(language, 'opcional', 'optional', 'opcional');
         return `- ${document.documentType} (${required}): ${document.instructions}`;
       });
 
       if (language === 'en') {
-        const englishLabel = audience === 'estrangeiro' ? 'international student' : audience === 'menor_idade' ? 'underage student' : 'Brazilian student';
-        return `For an ${englishLabel}, the configured list is:\n${lines.join('\n')}\n\nYou can send everything in one PDF or file by file. Want to start the enrollment?`;
+        const englishLabel =
+          audience === 'estrangeiro'
+            ? 'international student'
+            : audience === 'menor_idade'
+              ? 'underage student'
+              : 'Brazilian student';
+        return this.textAnswer(
+          `For an ${englishLabel}, the configured list is:\n${lines.join('\n')}\n\nYou can send everything in one PDF or file by file. Want to start the enrollment?`,
+        );
       }
       if (language === 'es') {
-        const spanishLabel = audience === 'estrangeiro' ? 'estudiante extranjero' : audience === 'menor_idade' ? 'estudiante menor de edad' : 'estudiante brasileño';
-        return `Para ${spanishLabel}, la lista configurada es:\n${lines.join('\n')}\n\nPuedes enviar todo en un PDF único o archivo por archivo. ¿Quieres empezar la matrícula?`;
+        const spanishLabel =
+          audience === 'estrangeiro'
+            ? 'estudiante extranjero'
+            : audience === 'menor_idade'
+              ? 'estudiante menor de edad'
+              : 'estudiante brasileño';
+        return this.textAnswer(
+          `Para ${spanishLabel}, la lista configurada es:\n${lines.join('\n')}\n\nPuedes enviar todo en un PDF único o archivo por archivo. ¿Quieres empezar la matrícula?`,
+        );
       }
-      return `Para ${label}, a lista configurada é:\n${lines.join('\n')}\n\nPode mandar tudo em um PDF único ou arquivo por arquivo. Quer começar a matrícula?`;
+      return this.textAnswer(
+        `Para ${label}, a lista configurada é:\n${lines.join('\n')}\n\nPode mandar tudo em um PDF único ou arquivo por arquivo. Quer começar a matrícula?`,
+      );
     }
 
     if (this.isCommercialQuestion(normalized)) {
       const commercial = runtimeConfig.commercial;
-      const selectedCourses = specificCourse ? [specificCourse] : runtimeConfig.courses;
+      const selectedCourses = specificCourse
+        ? [specificCourse]
+        : runtimeConfig.courses;
       const courseValues = selectedCourses
         .map((course) => {
-          const enrollment = course.enrollmentFee ? `matrícula ${this.formatCurrency(course.enrollmentFee)}` : '';
-          const monthly = course.monthlyFee ? `mensalidade ${this.formatCurrency(course.monthlyFee)}` : '';
-          const discount = course.cashDiscountPercent ? `à vista até ${course.cashDiscountPercent}%` : '';
+          const enrollment = course.enrollmentFee
+            ? `matrícula ${this.formatCurrency(course.enrollmentFee)}`
+            : '';
+          const monthly = course.monthlyFee
+            ? `mensalidade ${this.formatCurrency(course.monthlyFee)}`
+            : '';
+          const discount = course.cashDiscountPercent
+            ? `à vista até ${course.cashDiscountPercent}%`
+            : '';
           return `- ${course.name}: ${[enrollment, monthly, discount].filter(Boolean).join(' | ')}`;
         })
         .join('\n');
@@ -285,28 +429,163 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
             desconto: commercial.cashDiscountPercent ?? 0,
           })
         : 'No momento não há campanha ativa cadastrada.';
-      return this.localized(
-        language,
-        `${promo}\n\nValores configurados:\n${courseValues}\n\nSe quiser, eu já posso continuar a matrícula por aqui. Qual curso você quer seguir?`,
-        `${promo}\n\nConfigured prices:\n${courseValues}\n\nIf you want, I can continue the enrollment here. Which program would you like to choose?`,
-        `${promo}\n\nValores configurados:\n${courseValues}\n\nSi quieres, puedo continuar la matrícula por aquí. ¿Qué curso quieres elegir?`,
+      return this.textAnswer(
+        this.localized(
+          language,
+          `${promo}\n\nValores configurados:\n${courseValues}\n\nSe quiser, eu já posso continuar a matrícula por aqui. Qual curso você quer seguir?`,
+          `${promo}\n\nConfigured prices:\n${courseValues}\n\nIf you want, I can continue the enrollment here. Which program would you like to choose?`,
+          `${promo}\n\nValores configurados:\n${courseValues}\n\nSi quieres, puedo continuar la matrícula por aquí. ¿Qué curso quieres elegir?`,
+        ),
       );
     }
 
     if (this.isCourseQuestion(normalized) || specificCourse) {
       if (specificCourse && !this.isGeneralCourseListQuestion(normalized)) {
-        return this.courseDetailsReply(specificCourse, language);
+        return this.textAnswer(
+          this.courseDetailsReply(specificCourse, language),
+        );
       }
-      const courses = runtimeConfig.courses.map((course) => this.formatCourseLine(course, language));
-      return this.localized(
-        language,
-        `Temos estes cursos ativos agora:\n${courses.join('\n')}\n\nQuer que eu detalhe algum deles, envie o PDF ou já comece sua matrícula?`,
-        `These programs are active now:\n${courses.join('\n')}\n\nWould you like details about one of them, the PDF, or to start enrollment?`,
-        `Tenemos estos cursos activos ahora:\n${courses.join('\n')}\n\n¿Quieres detalles de alguno, el PDF o empezar tu matrícula?`,
+      const courses = runtimeConfig.courses.map((course) =>
+        this.formatCourseLine(course, language),
+      );
+      return this.textAnswer(
+        this.localized(
+          language,
+          `Temos estes cursos ativos agora:\n${courses.join('\n')}\n\nQuer que eu detalhe algum deles, envie o PDF ou já comece sua matrícula?`,
+          `These programs are active now:\n${courses.join('\n')}\n\nWould you like details about one of them, the PDF, or to start enrollment?`,
+          `Tenemos estos cursos activos ahora:\n${courses.join('\n')}\n\n¿Quieres detalles de alguno, el PDF o empezar tu matrícula?`,
+        ),
       );
     }
 
     return null;
+  }
+
+  private textAnswer(reply: string): SimulatorAnswer {
+    return { reply };
+  }
+
+  private materialAnswer(
+    text: string,
+    history: ChatMessage[],
+    runtimeConfig: RuntimeSchoolConfig,
+    language: SimulatorLanguage,
+  ): SimulatorAnswer {
+    const attachments =
+      this.materialAttachmentsForText(text, history, runtimeConfig) ?? [];
+    const hasSpecificCourse = attachments.some((attachment) =>
+      attachment.id.startsWith('course-'),
+    );
+    const reply = this.localized(
+      language,
+      hasSpecificCourse
+        ? 'Claro. Deixei o PDF do curso aqui embaixo para você abrir agora. Também posso te explicar valores, desconto à vista ou já começar sua matrícula por aqui.'
+        : 'Claro. Separei os PDFs principais para você abrir agora: catálogo de cursos, tabela de descontos e fluxo de matrícula. Depois disso, posso tirar dúvidas ou já começar sua matrícula por aqui.',
+      hasSpecificCourse
+        ? 'Sure. I attached the program PDF below so you can open it now. I can also explain prices, cash discount, or start your enrollment here.'
+        : 'Sure. I attached the main PDFs below: program catalog, discount table, and enrollment flow. After that, I can answer questions or start your enrollment here.',
+      hasSpecificCourse
+        ? 'Claro. Dejé el PDF del curso aquí abajo para que puedas abrirlo ahora. También puedo explicar valores, descuento al contado o empezar tu matrícula por aquí.'
+        : 'Claro. Separé los PDFs principales: catálogo de cursos, tabla de descuentos y flujo de matrícula. Después puedo resolver dudas o empezar tu matrícula por aquí.',
+    );
+
+    return { reply, attachments };
+  }
+
+  private materialAttachmentsForText(
+    text: string,
+    history: ChatMessage[],
+    runtimeConfig: RuntimeSchoolConfig,
+  ): SimulatorAttachment[] | undefined {
+    if (!this.isMaterialRequest(this.normalizeText(text))) return undefined;
+
+    const currentCourse = this.findMentionedCourse(
+      this.normalizeText(text),
+      runtimeConfig,
+    );
+    const recentContext = this.normalizeText(
+      [...history.slice(-8).map((message) => message.content), text].join('\n'),
+    );
+    const contextualCourse =
+      currentCourse ?? this.findMentionedCourse(recentContext, runtimeConfig);
+    const courseAttachment = contextualCourse
+      ? this.coursePdfAttachment(contextualCourse)
+      : null;
+
+    if (courseAttachment) {
+      return [
+        courseAttachment,
+        this.commercialPdfAttachment(
+          'tabela-descontos',
+          'Tabela de descontos',
+          'Condições comerciais e desconto à vista.',
+          'tabela-de-descontos.pdf',
+        ),
+      ];
+    }
+
+    return [
+      this.commercialPdfAttachment(
+        'catalogo-cursos',
+        'Catálogo de cursos',
+        'Cursos ativos, duração, modalidade, turnos e valores.',
+        'catalogo-de-cursos.pdf',
+      ),
+      this.commercialPdfAttachment(
+        'tabela-descontos',
+        'Tabela de descontos',
+        'Campanha ativa, desconto à vista e condições comerciais.',
+        'tabela-de-descontos.pdf',
+      ),
+      this.commercialPdfAttachment(
+        'fluxo-matricula',
+        'Fluxo de matrícula',
+        'Passo a passo, documentos e próximos passos do aluno.',
+        'fluxo-de-matricula.pdf',
+      ),
+    ];
+  }
+
+  private coursePdfAttachment(
+    course: RuntimeSchoolConfig['courses'][number],
+  ): SimulatorAttachment | null {
+    const key = this.normalizeText(course.name);
+    const files: Record<string, string> = {
+      administracao: '/materiais/curso-administracao.pdf',
+      direito: '/materiais/curso-direito.pdf',
+      enfermagem: '/materiais/curso-enfermagem.pdf',
+    };
+    const url = files[key];
+    if (!url) return null;
+
+    return {
+      id: `course-${key}`,
+      type: 'pdf',
+      title: `PDF do curso de ${course.name}`,
+      description: course.description || 'Material comercial do curso.',
+      filename: `${key || 'curso'}.pdf`,
+      url,
+      action: 'open',
+      mimeType: 'application/pdf',
+    };
+  }
+
+  private commercialPdfAttachment(
+    pdfKind: NonNullable<SimulatorAttachment['pdfKind']>,
+    title: string,
+    description: string,
+    filename: string,
+  ): SimulatorAttachment {
+    return {
+      id: `commercial-${pdfKind}`,
+      type: 'pdf',
+      title,
+      description,
+      filename,
+      pdfKind,
+      action: 'download',
+      mimeType: 'application/pdf',
+    };
   }
 
   private async localEnrollmentFallback(
@@ -317,16 +596,24 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     runtimeConfig: RuntimeSchoolConfig,
   ) {
     const fields = this.fieldsForConfig(runtimeConfig);
-    const extracted = this.extractFallbackEnrollmentFields(text, history, runtimeConfig, fields);
+    const extracted = this.extractFallbackEnrollmentFields(
+      text,
+      history,
+      runtimeConfig,
+      fields,
+    );
     const current = normalizeEnrollmentData(fields, { ...draft, ...extracted });
     const missing = camposFaltando(fields, current);
-    const errors = validateEnrollment(fields, current, { requireMissing: false });
-    const directReply = this.answerFromConfig(text, runtimeConfig);
+    const errors = validateEnrollment(fields, current, {
+      requireMissing: false,
+    });
+    const directReply = this.answerFromConfig(text, runtimeConfig, history);
     const hasNewData = Object.keys(extracted).length > 0;
 
     if (directReply && !hasNewData && !this.isConfirmation(text)) {
       return {
-        reply: `${directReply}\n\nContinuando sua matrícula: ${this.nextEnrollmentQuestion(missing[0], current)}`,
+        reply: `${directReply.reply}\n\nContinuando sua matrícula: ${this.nextEnrollmentQuestion(missing[0], current)}`,
+        attachments: directReply.attachments,
         lead: null,
         mode: 'enrollment',
         enrollmentDraft: current,
@@ -370,7 +657,9 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     }
 
     const saved = Object.keys(extracted).length
-      ? `Anotei: ${Object.keys(extracted).map((key) => this.fieldLabel(fields, key)).join(', ')}.\n\n`
+      ? `Anotei: ${Object.keys(extracted)
+          .map((key) => this.fieldLabel(fields, key))
+          .join(', ')}.\n\n`
       : '';
 
     return {
@@ -383,16 +672,30 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     };
   }
 
-  private fieldsForConfig(runtimeConfig: RuntimeSchoolConfig): EnrollmentField[] {
-    const courseOptions = runtimeConfig.courses.map((course) => course.name).filter(Boolean);
-    const shiftOptions = [...new Set(runtimeConfig.courses.flatMap((course) => course.shifts))].filter(Boolean);
-    const modalityOptions = [...new Set(runtimeConfig.courses.map((course) => course.modality).filter(Boolean))];
+  private fieldsForConfig(
+    runtimeConfig: RuntimeSchoolConfig,
+  ): EnrollmentField[] {
+    const courseOptions = runtimeConfig.courses
+      .map((course) => course.name)
+      .filter(Boolean);
+    const shiftOptions = [
+      ...new Set(runtimeConfig.courses.flatMap((course) => course.shifts)),
+    ].filter(Boolean);
+    const modalityOptions = [
+      ...new Set(
+        runtimeConfig.courses.map((course) => course.modality).filter(Boolean),
+      ),
+    ];
 
     return EDUCATION_ENROLLMENT_FIELDS.map((field) => {
-      if (field.name === 'course' && courseOptions.length) return { ...field, options: courseOptions };
-      if (field.name === 'shift' && shiftOptions.length) return { ...field, options: shiftOptions };
-      if (field.name === 'modalidade' && modalityOptions.length) return { ...field, options: modalityOptions };
-      if (field.name === 'unit') return { ...field, required: false, options: ['Sede principal'] };
+      if (field.name === 'course' && courseOptions.length)
+        return { ...field, options: courseOptions };
+      if (field.name === 'shift' && shiftOptions.length)
+        return { ...field, options: shiftOptions };
+      if (field.name === 'modalidade' && modalityOptions.length)
+        return { ...field, options: modalityOptions };
+      if (field.name === 'unit')
+        return { ...field, required: false, options: ['Sede principal'] };
       return field;
     });
   }
@@ -406,13 +709,20 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     const found: Record<string, unknown> = {};
     const normalized = this.normalizeText(text);
     const digits = onlyDigits(text);
-    const lastAssistant = [...history].reverse().find((message) => message.role === 'assistant')?.content ?? '';
+    const lastAssistant =
+      [...history].reverse().find((message) => message.role === 'assistant')
+        ?.content ?? '';
     const lastAssistantNormalized = this.normalizeText(lastAssistant);
 
     Object.assign(found, this.extractLabelValueFields(text));
 
     const language = this.detectLanguage(text);
-    found.preferredLanguage = this.localized(language, 'Português', 'English', 'Español');
+    found.preferredLanguage = this.localized(
+      language,
+      'Português',
+      'English',
+      'Español',
+    );
 
     const nationality = this.detectNationalityFields(normalized);
     Object.assign(found, nationality);
@@ -435,7 +745,9 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
       found.documentNumber = cpfCandidate;
     }
 
-    const passportCandidate = text.match(/\b(?:passaporte|passport|pasaporte)\s*(?:é|e|:|#|number|nº|no\.?)?\s*([A-Z0-9][A-Z0-9 -]{4,18})\b/i)?.[1];
+    const passportCandidate = text.match(
+      /\b(?:passaporte|passport|pasaporte)\s*(?:é|e|:|#|number|nº|no\.?)?\s*([A-Z0-9][A-Z0-9 -]{4,18})\b/i,
+    )?.[1];
     if (passportCandidate) {
       found.documentType = 'Passaporte';
       found.documentNumber = passportCandidate;
@@ -449,7 +761,9 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     if (/\bnie\b/i.test(text)) found.documentType = 'NIE';
     if (/\bdni\b/i.test(text)) found.documentType = 'DNI';
 
-    const dateCandidate = text.match(/\b(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\b/)?.[1];
+    const dateCandidate = text.match(
+      /\b(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\b/,
+    )?.[1];
     if (dateCandidate) found.birthDate = dateCandidate;
 
     const cepCandidate = text.match(/\b\d{5}-?\d{3}\b/)?.[0];
@@ -457,22 +771,39 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
 
     const phoneCandidate = text.match(/(?:\+?\d[\d\s().-]{9,}\d)/)?.[0];
     const phoneDigits = phoneCandidate ? onlyDigits(phoneCandidate) : '';
-    if (phoneCandidate && phoneDigits.length >= 10 && phoneDigits.length <= 15 && !isValidCpf(phoneDigits)) {
+    if (
+      phoneCandidate &&
+      phoneDigits.length >= 10 &&
+      phoneDigits.length <= 15 &&
+      !isValidCpf(phoneDigits)
+    ) {
       found.phone = phoneCandidate.trim();
-    } else if (!found.phone && digits.length >= 10 && digits.length <= 15 && !isValidCpf(digits)) {
+    } else if (
+      !found.phone &&
+      digits.length >= 10 &&
+      digits.length <= 15 &&
+      !isValidCpf(digits)
+    ) {
       found.phone = text.trim();
     }
 
     const explicitName =
-      text.match(/\b(?:meu nome é|me chamo|my name is|mi nombre es|me llamo)\s+([A-ZÀ-ÿ][A-ZÀ-ÿ' -]{4,80})/i)?.[1] ??
-      null;
+      text.match(
+        /\b(?:meu nome é|me chamo|my name is|mi nombre es|me llamo)\s+([A-ZÀ-ÿ][A-ZÀ-ÿ' -]{4,80})/i,
+      )?.[1] ?? null;
     if (explicitName) {
       found.studentName = explicitName.replace(/[,.].*$/, '').trim();
-    } else if (lastAssistantNormalized.includes('nome completo') && this.looksLikePersonName(text)) {
+    } else if (
+      lastAssistantNormalized.includes('nome completo') &&
+      this.looksLikePersonName(text)
+    ) {
       found.studentName = text.trim();
     }
 
-    if (lastAssistantNormalized.includes('pais') || lastAssistantNormalized.includes('país')) {
+    if (
+      lastAssistantNormalized.includes('pais') ||
+      lastAssistantNormalized.includes('país')
+    ) {
       if (/\b(brasil|brazil)\b/i.test(text)) {
         found.countryOfResidence = 'Brasil';
         found.nacionalidade = found.nacionalidade ?? 'Brazilian';
@@ -488,9 +819,12 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
       }
     }
 
-    if (!found.paymentMethod && /\bpix\b/i.test(text)) found.paymentMethod = 'PIX';
-    if (!found.paymentMethod && /\bboleto\b/i.test(text)) found.paymentMethod = 'Boleto';
-    if (!found.paymentMethod && /\bcart[aã]o|credit card\b/i.test(text)) found.paymentMethod = 'Cartão de crédito';
+    if (!found.paymentMethod && /\bpix\b/i.test(text))
+      found.paymentMethod = 'PIX';
+    if (!found.paymentMethod && /\bboleto\b/i.test(text))
+      found.paymentMethod = 'Boleto';
+    if (!found.paymentMethod && /\bcart[aã]o|credit card\b/i.test(text))
+      found.paymentMethod = 'Cartão de crédito';
 
     return normalizeEnrollmentData(fields, found);
   }
@@ -498,25 +832,59 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
   private extractLabelValueFields(text: string): Record<string, unknown> {
     const values: Record<string, unknown> = {};
     for (const segment of text.split(/[;\n]+/)) {
-      const match = segment.match(/^\s*([A-Za-zÀ-ÿ ]{2,40})\s*[:=-]\s*(.{2,120})\s*$/);
+      const match = segment.match(
+        /^\s*([A-Za-zÀ-ÿ ]{2,40})\s*[:=-]\s*(.{2,120})\s*$/,
+      );
       if (!match) continue;
       values[match[1].trim()] = match[2].trim();
     }
     return values;
   }
 
-  private detectNationalityFields(normalizedText: string): Record<string, string> {
-    if (/\b(american|u\.?s\.? citizen|usa|united states|from the us|from the u\.s\.|from america|americano|estadunidense|estados unidos)\b/.test(normalizedText)) {
-      return { nacionalidade: 'American', countryOfResidence: 'United States', preferredLanguage: 'English' };
+  private detectNationalityFields(
+    normalizedText: string,
+  ): Record<string, string> {
+    if (
+      /\b(american|u\.?s\.? citizen|usa|united states|from the us|from the u\.s\.|from america|americano|estadunidense|estados unidos)\b/.test(
+        normalizedText,
+      )
+    ) {
+      return {
+        nacionalidade: 'American',
+        countryOfResidence: 'United States',
+        preferredLanguage: 'English',
+      };
     }
     if (/\b(canadian|canada|from canada|canadense)\b/.test(normalizedText)) {
-      return { nacionalidade: 'Canadian', countryOfResidence: 'Canada', preferredLanguage: 'English' };
+      return {
+        nacionalidade: 'Canadian',
+        countryOfResidence: 'Canada',
+        preferredLanguage: 'English',
+      };
     }
-    if (/\b(from spain|spaniard|soy de espana|vivo en espana|naci en espana|espanhol|spanish)\b/.test(normalizedText)) {
-      return { nacionalidade: 'Spanish', countryOfResidence: 'Spain', preferredLanguage: 'Español' };
+    if (
+      /\b(from spain|spaniard|soy de espana|vivo en espana|naci en espana|espanhol|spanish)\b/.test(
+        normalizedText,
+      )
+    ) {
+      return {
+        nacionalidade: 'Spanish',
+        countryOfResidence: 'Spain',
+        preferredLanguage: 'Español',
+      };
     }
-    if (/\b(brasileiro|brasileira|sou do brasil|moro no brasil|brazilian|from brazil)\b/.test(normalizedText)) {
-      return { nacionalidade: 'Brazilian', countryOfResidence: 'Brasil', preferredLanguage: normalizedText.includes('brazil') ? 'English' : 'Português' };
+    if (
+      /\b(brasileiro|brasileira|sou do brasil|moro no brasil|brazilian|from brazil)\b/.test(
+        normalizedText,
+      )
+    ) {
+      return {
+        nacionalidade: 'Brazilian',
+        countryOfResidence: 'Brasil',
+        preferredLanguage: normalizedText.includes('brazil')
+          ? 'English'
+          : 'Português',
+      };
     }
     return {};
   }
@@ -526,39 +894,95 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     if (compact === 'manha') return 'manhã';
     if (compact === 'tarde') return 'tarde';
     if (compact === 'noite') return 'noite';
-    if (/\bturno\s*(da|de)?\s*manha\b|\b(de|pela|a)\s*manha\b|\bmatutino\b/.test(normalizedText)) return 'manhã';
-    if (/\bturno\s*(da|de)?\s*tarde\b|\b(de|pela|a)\s*tarde\b|\bvespertino\b/.test(normalizedText)) return 'tarde';
-    if (/\bturno\s*(da|de)?\s*noite\b|\b(de|pela|a)\s*noite\b|\bnoturno\b/.test(normalizedText)) return 'noite';
+    if (
+      /\bturno\s*(da|de)?\s*manha\b|\b(de|pela|a)\s*manha\b|\bmatutino\b/.test(
+        normalizedText,
+      )
+    )
+      return 'manhã';
+    if (
+      /\bturno\s*(da|de)?\s*tarde\b|\b(de|pela|a)\s*tarde\b|\bvespertino\b/.test(
+        normalizedText,
+      )
+    )
+      return 'tarde';
+    if (
+      /\bturno\s*(da|de)?\s*noite\b|\b(de|pela|a)\s*noite\b|\bnoturno\b/.test(
+        normalizedText,
+      )
+    )
+      return 'noite';
     return null;
   }
 
-  private nextEnrollmentQuestion(nextLabel: string | undefined, draft: Record<string, unknown>): string {
+  private nextEnrollmentQuestion(
+    nextLabel: string | undefined,
+    draft: Record<string, unknown>,
+  ): string {
     const language = String(draft.preferredLanguage ?? 'Português');
     const english = language === 'English';
     const spanish = language === 'Español';
 
     if (!nextLabel) {
-      return this.localized(english ? 'en' : spanish ? 'es' : 'pt', 'Já tenho os dados principais. Quer revisar e confirmar?', 'I have the main data. Would you like to review and confirm?', 'Ya tengo los datos principales. ¿Quieres revisar y confirmar?');
+      return this.localized(
+        english ? 'en' : spanish ? 'es' : 'pt',
+        'Já tenho os dados principais. Quer revisar e confirmar?',
+        'I have the main data. Would you like to review and confirm?',
+        'Ya tengo los datos principales. ¿Quieres revisar y confirmar?',
+      );
     }
 
     const normalizedLabel = this.normalizeText(nextLabel);
     if (normalizedLabel.includes('nome completo')) {
-      return this.localized(english ? 'en' : spanish ? 'es' : 'pt', 'Para começar sua matrícula, qual é seu nome completo?', 'To start your enrollment, what is your full name?', 'Para empezar tu matrícula, ¿cuál es tu nombre completo?');
+      return this.localized(
+        english ? 'en' : spanish ? 'es' : 'pt',
+        'Para começar sua matrícula, qual é seu nome completo?',
+        'To start your enrollment, what is your full name?',
+        'Para empezar tu matrícula, ¿cuál es tu nombre completo?',
+      );
     }
     if (normalizedLabel.includes('pais')) {
-      return this.localized(english ? 'en' : spanish ? 'es' : 'pt', 'Você mora em qual país hoje?', 'Which country do you currently live in?', '¿En qué país vives actualmente?');
+      return this.localized(
+        english ? 'en' : spanish ? 'es' : 'pt',
+        'Você mora em qual país hoje?',
+        'Which country do you currently live in?',
+        '¿En qué país vives actualmente?',
+      );
     }
-    if (normalizedLabel.includes('tipo de documento') || normalizedLabel.includes('numero do documento')) {
-      return this.localized(english ? 'en' : spanish ? 'es' : 'pt', 'Você vai usar CPF, passaporte ou outro documento? Pode me mandar o tipo e o número.', 'Will you use a Brazilian CPF, passport, or another document? Send me the type and number.', '¿Vas a usar CPF brasileño, pasaporte u otro documento? Envíame el tipo y número.');
+    if (
+      normalizedLabel.includes('tipo de documento') ||
+      normalizedLabel.includes('numero do documento')
+    ) {
+      return this.localized(
+        english ? 'en' : spanish ? 'es' : 'pt',
+        'Você vai usar CPF, passaporte ou outro documento? Pode me mandar o tipo e o número.',
+        'Will you use a Brazilian CPF, passport, or another document? Send me the type and number.',
+        '¿Vas a usar CPF brasileño, pasaporte u otro documento? Envíame el tipo y número.',
+      );
     }
     if (normalizedLabel.includes('data de nascimento')) {
-      return this.localized(english ? 'en' : spanish ? 'es' : 'pt', 'Qual é sua data de nascimento? Pode mandar no formato DD/MM/AAAA.', 'What is your date of birth? You can send it as DD/MM/YYYY.', '¿Cuál es tu fecha de nacimiento? Puedes enviarla como DD/MM/AAAA.');
+      return this.localized(
+        english ? 'en' : spanish ? 'es' : 'pt',
+        'Qual é sua data de nascimento? Pode mandar no formato DD/MM/AAAA.',
+        'What is your date of birth? You can send it as DD/MM/YYYY.',
+        '¿Cuál es tu fecha de nacimiento? Puedes enviarla como DD/MM/AAAA.',
+      );
     }
     if (normalizedLabel.includes('e-mail')) {
-      return this.localized(english ? 'en' : spanish ? 'es' : 'pt', 'Qual e-mail você quer deixar no cadastro?', 'Which email should I use for your enrollment?', '¿Qué correo electrónico quieres usar en el cadastro?');
+      return this.localized(
+        english ? 'en' : spanish ? 'es' : 'pt',
+        'Qual e-mail você quer deixar no cadastro?',
+        'Which email should I use for your enrollment?',
+        '¿Qué correo electrónico quieres usar en el cadastro?',
+      );
     }
     if (normalizedLabel.includes('celular')) {
-      return this.localized(english ? 'en' : spanish ? 'es' : 'pt', 'Qual é seu celular com DDD ou código do país?', 'What is your mobile number with area/country code?', '¿Cuál es tu celular con código de área o país?');
+      return this.localized(
+        english ? 'en' : spanish ? 'es' : 'pt',
+        'Qual é seu celular com DDD ou código do país?',
+        'What is your mobile number with area/country code?',
+        '¿Cuál es tu celular con código de área o país?',
+      );
     }
     return this.localized(
       english ? 'en' : spanish ? 'es' : 'pt',
@@ -577,7 +1001,9 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
       `E-mail: ${data.email}`,
       `Celular: ${data.phone}`,
       `Pagamento: ${data.paymentMethod}`,
-    ].filter((line) => !line.endsWith('undefined')).join('\n');
+    ]
+      .filter((line) => !line.endsWith('undefined'))
+      .join('\n');
   }
 
   private fieldLabel(fields: EnrollmentField[], fieldName: string): string {
@@ -587,26 +1013,45 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
   private looksLikePersonName(text: string): boolean {
     const trimmed = text.trim();
     if (/[?@0-9:/\\]/.test(trimmed)) return false;
-    return /^[A-Za-zÀ-ÿ' -]{6,80}$/.test(trimmed) && trimmed.split(/\s+/).length >= 2;
+    return (
+      /^[A-Za-zÀ-ÿ' -]{6,80}$/.test(trimmed) && trimmed.split(/\s+/).length >= 2
+    );
   }
 
   private isConfirmation(text: string): boolean {
-    return /\b(confirmo|confirmar|esta certo|está certo|tudo certo|pode finalizar|pode efetivar|yes|confirm|confirmed|correct|si|sí|confirmo|correcto)\b/i.test(text);
+    return /\b(confirmo|confirmar|esta certo|está certo|tudo certo|pode finalizar|pode efetivar|yes|confirm|confirmed|correct|si|sí|confirmo|correcto)\b/i.test(
+      text,
+    );
   }
 
   private isOpenAiUnavailable(err: unknown): boolean {
     const message = err instanceof Error ? err.message : JSON.stringify(err);
-    const status = typeof (err as any)?.getStatus === 'function' ? (err as any).getStatus() : (err as any)?.status;
-    return status === 503 || /OPENAI_API_KEY|invalid_api_key|Incorrect API key|chave válida/i.test(message);
+    const status =
+      typeof (err as any)?.getStatus === 'function'
+        ? (err as any).getStatus()
+        : (err as any)?.status;
+    return (
+      status === 503 ||
+      /OPENAI_API_KEY|invalid_api_key|Incorrect API key|chave válida/i.test(
+        message,
+      )
+    );
   }
 
-  private sanitizeAssistantReply(reply: string, runtimeConfig: RuntimeSchoolConfig): string {
+  private sanitizeAssistantReply(
+    reply: string,
+    runtimeConfig: RuntimeSchoolConfig,
+  ): string {
     const unsafeHandoff =
       /\b(consultor|consultora|equipe|time|atendente humano|nossa equipe|nuestro equipo|our team)\b.{0,120}\b(entrar[aá]? em contato|entrara en contacto|vai falar|vai te chamar|retornar|contact you|reach out|will contact)\b/ims;
-    const oldUnitPrompt = /\b(Centro,\s*Norte\s*(?:e|ou)\s*Sul|Centro,\s*Norte\s*(?:y|o)\s*Sur)\b/i;
+    const oldUnitPrompt =
+      /\b(Centro,\s*Norte\s*(?:e|ou)\s*Sul|Centro,\s*Norte\s*(?:y|o)\s*Sur)\b/i;
     let cleaned = reply
       .split(/\n{2,}/)
-      .filter((paragraph) => !unsafeHandoff.test(paragraph) && !oldUnitPrompt.test(paragraph))
+      .filter(
+        (paragraph) =>
+          !unsafeHandoff.test(paragraph) && !oldUnitPrompt.test(paragraph),
+      )
       .join('\n\n')
       .replace(/\b(Até logo|Hasta luego|Goodbye)[!.]?/gi, '')
       .trim();
@@ -620,11 +1065,42 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     return `${cleaned}\n\n${next}`;
   }
 
-  private courseDetailsReply(course: RuntimeSchoolConfig['courses'][number], language: SimulatorLanguage): string {
-    const shifts = course.shifts.length ? course.shifts.join(', ') : this.localized(language, 'a confirmar', 'to be confirmed', 'a confirmar');
-    const enrollment = course.enrollmentFee ? this.formatCurrency(course.enrollmentFee) : this.localized(language, 'a confirmar', 'to be confirmed', 'a confirmar');
-    const monthly = course.monthlyFee ? this.formatCurrency(course.monthlyFee) : this.localized(language, 'a confirmar', 'to be confirmed', 'a confirmar');
-    const discount = course.cashDiscountPercent ? `${course.cashDiscountPercent}%` : this.localized(language, 'conforme campanha vigente', 'according to the active campaign', 'según la campaña vigente');
+  private courseDetailsReply(
+    course: RuntimeSchoolConfig['courses'][number],
+    language: SimulatorLanguage,
+  ): string {
+    const shifts = course.shifts.length
+      ? course.shifts.join(', ')
+      : this.localized(
+          language,
+          'a confirmar',
+          'to be confirmed',
+          'a confirmar',
+        );
+    const enrollment = course.enrollmentFee
+      ? this.formatCurrency(course.enrollmentFee)
+      : this.localized(
+          language,
+          'a confirmar',
+          'to be confirmed',
+          'a confirmar',
+        );
+    const monthly = course.monthlyFee
+      ? this.formatCurrency(course.monthlyFee)
+      : this.localized(
+          language,
+          'a confirmar',
+          'to be confirmed',
+          'a confirmar',
+        );
+    const discount = course.cashDiscountPercent
+      ? `${course.cashDiscountPercent}%`
+      : this.localized(
+          language,
+          'conforme campanha vigente',
+          'according to the active campaign',
+          'según la campaña vigente',
+        );
 
     if (language === 'en') {
       return `Great choice. *${course.name}* has ${course.duration || 'a configured duration'} in ${course.modality || 'the configured modality'}.\n${course.description}\n\nPrices: enrollment ${enrollment}, monthly fee ${monthly}, cash discount up to ${discount}. Available shifts: ${shifts}.\n\nWould you like the PDF, prices/discounts, or should I start your enrollment here?`;
@@ -635,86 +1111,173 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     return `Boa escolha. *${course.name}* tem ${course.duration || 'duração configurada'} na modalidade ${course.modality || 'configurada'}.\n${course.description}\n\nValores: matrícula ${enrollment}, mensalidade ${monthly}, desconto à vista até ${discount}. Turnos: ${shifts}.\n\nQuer receber o PDF, ver desconto/valores ou começar sua matrícula por aqui?`;
   }
 
-  private formatCourseLine(course: RuntimeSchoolConfig['courses'][number], language: SimulatorLanguage): string {
+  private formatCourseLine(
+    course: RuntimeSchoolConfig['courses'][number],
+    language: SimulatorLanguage,
+  ): string {
     const shifts = course.shifts.length
-      ? this.localized(language, ` Turnos: ${course.shifts.join(', ')}.`, ` Shifts: ${course.shifts.join(', ')}.`, ` Turnos: ${course.shifts.join(', ')}.`)
+      ? this.localized(
+          language,
+          ` Turnos: ${course.shifts.join(', ')}.`,
+          ` Shifts: ${course.shifts.join(', ')}.`,
+          ` Turnos: ${course.shifts.join(', ')}.`,
+        )
       : '';
     const monthly = course.monthlyFee
-      ? this.localized(language, ` Mensalidade: ${this.formatCurrency(course.monthlyFee)}.`, ` Monthly fee: ${this.formatCurrency(course.monthlyFee)}.`, ` Mensualidad: ${this.formatCurrency(course.monthlyFee)}.`)
+      ? this.localized(
+          language,
+          ` Mensalidade: ${this.formatCurrency(course.monthlyFee)}.`,
+          ` Monthly fee: ${this.formatCurrency(course.monthlyFee)}.`,
+          ` Mensualidad: ${this.formatCurrency(course.monthlyFee)}.`,
+        )
       : '';
     const duration = course.duration
-      ? this.localized(language, ` Duração: ${course.duration}.`, ` Duration: ${course.duration}.`, ` Duración: ${course.duration}.`)
+      ? this.localized(
+          language,
+          ` Duração: ${course.duration}.`,
+          ` Duration: ${course.duration}.`,
+          ` Duración: ${course.duration}.`,
+        )
       : '';
     const modality = course.modality
-      ? this.localized(language, ` Modalidade: ${course.modality}.`, ` Modality: ${course.modality}.`, ` Modalidad: ${course.modality}.`)
+      ? this.localized(
+          language,
+          ` Modalidade: ${course.modality}.`,
+          ` Modality: ${course.modality}.`,
+          ` Modalidad: ${course.modality}.`,
+        )
       : '';
     return `- *${course.name}*: ${course.description}${duration}${modality}${shifts}${monthly}`;
   }
 
-  private findMentionedCourse(normalizedText: string, runtimeConfig: RuntimeSchoolConfig) {
+  private findMentionedCourse(
+    normalizedText: string,
+    runtimeConfig: RuntimeSchoolConfig,
+  ) {
     const aliases: Record<string, string[]> = {
       direito: ['direito', 'derecho', 'law'],
       enfermagem: ['enfermagem', 'enfermeria', 'nursing'],
-      administracao: ['administracao', 'administracion', 'administration', 'business'],
+      administracao: [
+        'administracao',
+        'administracion',
+        'administration',
+        'business',
+      ],
       pedagogia: ['pedagogia', 'pedagogy', 'education'],
     };
 
-    return runtimeConfig.courses.find((course) => {
-      const key = this.normalizeText(course.name);
-      const courseAliases = aliases[key] ?? [key];
-      return courseAliases.some((alias) => new RegExp(`\\b${alias}\\b`).test(normalizedText));
-    }) ?? null;
+    return (
+      runtimeConfig.courses.find((course) => {
+        const key = this.normalizeText(course.name);
+        const courseAliases = aliases[key] ?? [key];
+        return courseAliases.some((alias) =>
+          new RegExp(`\\b${alias}\\b`).test(normalizedText),
+        );
+      }) ?? null
+    );
   }
 
   private detectLanguage(text: string): SimulatorLanguage {
-    if (/\b(hello|hi|i want|i need|program|course|enroll|enrollment|tuition|price|american|canadian|passport|where are you|opening hours)\b/i.test(text)) {
+    if (
+      /\b(hello|hi|i want|i need|program|course|enroll|enrollment|tuition|price|american|canadian|passport|where are you|opening hours)\b/i.test(
+        text,
+      )
+    ) {
       return 'en';
     }
-    if (/[¿¡]/.test(text) || /\b(hola|quiero|necesito|inscripci[oó]n|descuento|ubicaci[oó]n|pasaporte|espa[ñn]ol|buenos d[ií]as|buenas tardes|buenas noches)\b/i.test(text)) {
+    if (
+      /[¿¡]/.test(text) ||
+      /\b(hola|quiero|necesito|inscripci[oó]n|descuento|ubicaci[oó]n|pasaporte|espa[ñn]ol|buenos d[ií]as|buenas tardes|buenas noches)\b/i.test(
+        text,
+      )
+    ) {
       return 'es';
     }
     return 'pt';
   }
 
-  private localized(language: SimulatorLanguage, pt: string, en: string, es: string): string {
+  private localized(
+    language: SimulatorLanguage,
+    pt: string,
+    en: string,
+    es: string,
+  ): string {
     if (language === 'en') return en;
     if (language === 'es') return es;
     return pt;
   }
 
   private isGreetingOnly(normalizedText: string): boolean {
-    return /^(oi|ola|olá|bom dia|boa tarde|boa noite|hello|hi|hey|hola|buenos dias|buenas tardes|buenas noches)[!. ]*$/.test(normalizedText.trim());
+    return /^(oi|ola|olá|bom dia|boa tarde|boa noite|hello|hi|hey|hola|buenos dias|buenas tardes|buenas noches)[!. ]*$/.test(
+      normalizedText.trim(),
+    );
   }
 
   private isBusinessHoursQuestion(normalizedText: string): boolean {
-    return /\b(horario|hora|funcionamento|aberto|atendimento|secretaria|financeiro|opening hours|open|office hours|business hours|horarios|atencion|secretaria|financiero)\b/.test(normalizedText);
+    return /\b(horario|hora|funcionamento|aberto|atendimento|secretaria|financeiro|opening hours|open|office hours|business hours|horarios|atencion|secretaria|financiero)\b/.test(
+      normalizedText,
+    );
   }
 
   private isLocationQuestion(normalizedText: string): boolean {
-    return /\b(localizacao|localiza|endereco|onde fica|como chegar|conducao|transporte|onibus|metro|mapa|location|address|where are you|how to get|transport|bus|subway|map|ubicacion|direccion|donde queda|como llegar|transporte|autobus|bus|metro|mapa)\b/.test(normalizedText);
+    return /\b(localizacao|localiza|endereco|onde fica|como chegar|conducao|transporte|onibus|metro|mapa|location|address|where are you|how to get|transport|bus|subway|map|ubicacion|direccion|donde queda|como llegar|transporte|autobus|bus|metro|mapa)\b/.test(
+      normalizedText,
+    );
   }
 
   private isDocumentQuestion(normalizedText: string): boolean {
-    return /\b(documento|documentacao|passaporte|cpf|rg|rne|rnm|dni|nie|menor|pdf unico|arquivo|documents|documentation|passport|underage|single pdf|one pdf|file|documentos|documentacion|pasaporte|menor de edad|pdf unico|archivo)\b/.test(normalizedText);
+    return /\b(documento|documentacao|passaporte|cpf|rg|rne|rnm|dni|nie|menor|pdf unico|arquivo|documents|documentation|passport|underage|single pdf|one pdf|file|documentos|documentacion|pasaporte|menor de edad|pdf unico|archivo)\b/.test(
+      normalizedText,
+    );
+  }
+
+  private isMaterialRequest(normalizedText: string): boolean {
+    const asksForMaterial =
+      /\b(pdf|catalogo|folder|folheto|brochure|material|arquivo do curso|course pdf|program pdf)\b/.test(
+        normalizedText,
+      );
+    if (!asksForMaterial) return false;
+
+    const isStudentDocumentUpload =
+      /\b(pdf unico|um unico pdf|um pdf unico|single pdf|one pdf|meus documentos|meu documento|minha documentacao|upload|anexar|enviar meus|mandar meus|rg|cpf|passaporte|passport|documentos pessoais)\b/.test(
+        normalizedText,
+      );
+    return !isStudentDocumentUpload;
   }
 
   private isCommercialQuestion(normalizedText: string): boolean {
-    return /\b(desconto|promocao|promocional|avista|a vista|valor|preco|mensalidade|pagamento|bolsa|discount|promotion|price|tuition|fee|payment|cash|descuento|promocion|valor|precio|mensualidad|pago|contado)\b/.test(normalizedText);
+    return /\b(desconto|promocao|promocional|avista|a vista|valor|preco|mensalidade|pagamento|bolsa|discount|promotion|price|tuition|fee|payment|cash|descuento|promocion|valor|precio|mensualidad|pago|contado)\b/.test(
+      normalizedText,
+    );
   }
 
   private isCourseQuestion(normalizedText: string): boolean {
-    return /\b(curso|cursos|graduacao|faculdade|program|programs|course|courses|degree|college|curso|cursos|carrera|universidad)\b/.test(normalizedText);
+    return /\b(curso|cursos|graduacao|faculdade|program|programs|course|courses|degree|college|curso|cursos|carrera|universidad)\b/.test(
+      normalizedText,
+    );
   }
 
   private isGeneralCourseListQuestion(normalizedText: string): boolean {
-    return /\b(quais|todos|lista|disponiveis|opcoes|what|which|available|list|cuales|todos|lista|disponibles|opciones)\b/.test(normalizedText);
+    return /\b(quais|todos|lista|disponiveis|opcoes|what|which|available|list|cuales|todos|lista|disponibles|opciones)\b/.test(
+      normalizedText,
+    );
   }
 
-  private detectDocumentAudience(normalizedText: string): 'brasileiro' | 'estrangeiro' | 'menor_idade' {
-    if (/\b(menor|responsavel|responsavel legal|underage|menor de edad)\b/.test(normalizedText)) {
+  private detectDocumentAudience(
+    normalizedText: string,
+  ): 'brasileiro' | 'estrangeiro' | 'menor_idade' {
+    if (
+      /\b(menor|responsavel|responsavel legal|underage|menor de edad)\b/.test(
+        normalizedText,
+      )
+    ) {
       return 'menor_idade';
     }
-    if (/\b(estrangeiro|internacional|passaporte|passport|pasaporte|americano|canadense|canadian|american|spanish|espanhol|dni|nie|rne|rnm)\b/.test(normalizedText)) {
+    if (
+      /\b(estrangeiro|internacional|passaporte|passport|pasaporte|americano|canadense|canadian|american|spanish|espanhol|dni|nie|rne|rnm)\b/.test(
+        normalizedText,
+      )
+    ) {
       return 'estrangeiro';
     }
     return 'brasileiro';
@@ -742,21 +1305,40 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     if (Object.keys(enrollmentDraft ?? {}).length > 0) return true;
 
     const normalized = this.normalizeText(text);
-    if (this.isInformationalQuestion(normalized) && !this.hasExplicitEnrollmentStart(normalized)) {
+    if (
+      this.isInformationalQuestion(normalized) &&
+      !this.hasExplicitEnrollmentStart(normalized)
+    ) {
       return false;
     }
 
-    const enrollmentIntent = /\b(matr[ií]cula|matricular|matricule|inscri[cç][aã]o|inscrever|inscrev)/i;
+    const enrollmentIntent =
+      /\b(matr[ií]cula|matricular|matricule|inscri[cç][aã]o|inscrever|inscrev)/i;
     const internationalEnrollmentIntent =
       /\b(enroll|enrollment|admission|application|apply|inscripci[oó]n|inscribirme|matricularme)\b/i;
-    if (this.hasExplicitEnrollmentStart(normalized) || internationalEnrollmentIntent.test(text)) return true;
-    if (/^(matr[ií]cula|inscri[cç][aã]o|enrollment|admission|inscripci[oó]n)$/i.test(text.trim())) return true;
+    if (
+      this.hasExplicitEnrollmentStart(normalized) ||
+      internationalEnrollmentIntent.test(text)
+    )
+      return true;
+    if (
+      /^(matr[ií]cula|inscri[cç][aã]o|enrollment|admission|inscripci[oó]n)$/i.test(
+        text.trim(),
+      )
+    )
+      return true;
 
-    const affirmative = /\b(sim|pode|vamos|bora|quero|claro|ok|fechado|yes|sure|let'?s|quiero|sí|si)\b/i;
-    const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
+    const affirmative =
+      /\b(sim|pode|vamos|bora|quero|claro|ok|fechado|yes|sure|let'?s|quiero|sí|si)\b/i;
+    const lastAssistant =
+      [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
     const assistantInvitedEnrollment =
       /\b(começar|comecar|fazer|iniciar|seguir|continuar|finalizar|start|begin|continue|empezar|iniciar|continuar)\s+(a\s+)?(sua\s+|your\s+|tu\s+)?(matr[ií]cula|enrollment|inscripci[oó]n)\b|\b(matr[ií]cula|enrollment|inscripci[oó]n)\s+(por aqui|here|por aqui)\b/i;
-    if (affirmative.test(text) && assistantInvitedEnrollment.test(lastAssistant)) return true;
+    if (
+      affirmative.test(text) &&
+      assistantInvitedEnrollment.test(lastAssistant)
+    )
+      return true;
 
     // Mantém o usuário no mesmo fluxo depois que ELE iniciou matrícula.
     // Não usa mensagens da IA, porque a saudação cita "matrícula" como opção
@@ -766,7 +1348,10 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
       .filter((m) => m.role === 'user')
       .map((m) => m.content)
       .join('\n');
-    return enrollmentIntent.test(recentUserText) || internationalEnrollmentIntent.test(recentUserText);
+    return (
+      enrollmentIntent.test(recentUserText) ||
+      internationalEnrollmentIntent.test(recentUserText)
+    );
   }
 
   private isInformationalQuestion(normalizedText: string): boolean {
@@ -781,17 +1366,28 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
 
   private hasExplicitEnrollmentStart(normalizedText: string): boolean {
     return (
-      /\b(quero|queria|gostaria|preciso|vamos|bora|pode|posso|aceito|comece|comeca|inicia|iniciar|fazer|fechar|finalizar)\b.{0,50}\b(matricula|inscricao)\b/.test(normalizedText) ||
-      /\b(matricular|me matricular|matricule|inscrever|me inscrever|inscrev)\b/.test(normalizedText) ||
-      /\b(i want|i need|let'?s|start|begin|apply)\b.{0,50}\b(enroll|enrollment|admission|application)\b/.test(normalizedText) ||
-      /\b(quiero|necesito|vamos|puedo|empezar|iniciar|hacer)\b.{0,50}\b(matricula|inscripcion)\b/.test(normalizedText) ||
+      /\b(quero|queria|gostaria|preciso|vamos|bora|pode|posso|aceito|comece|comeca|inicia|iniciar|fazer|fechar|finalizar)\b.{0,50}\b(matricula|inscricao)\b/.test(
+        normalizedText,
+      ) ||
+      /\b(matricular|me matricular|matricule|inscrever|me inscrever|inscrev)\b/.test(
+        normalizedText,
+      ) ||
+      /\b(i want|i need|let'?s|start|begin|apply)\b.{0,50}\b(enroll|enrollment|admission|application)\b/.test(
+        normalizedText,
+      ) ||
+      /\b(quiero|necesito|vamos|puedo|empezar|iniciar|hacer)\b.{0,50}\b(matricula|inscripcion)\b/.test(
+        normalizedText,
+      ) ||
       /\b(matricularme|inscribirme)\b/.test(normalizedText)
     );
   }
 
   // ── Extração de lead dinâmica ─────────────────────────────────────────────────
 
-  private async tryExtractAndSaveLead(history: ChatMessage[], schoolId: string) {
+  private async tryExtractAndSaveLead(
+    history: ChatMessage[],
+    schoolId: string,
+  ) {
     if (history.length < 6) return null;
 
     const school = await this.prisma.school.findUnique({
@@ -799,8 +1395,9 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
       include: { vertical: true },
     });
 
-    const extractionPrompt = school?.vertical?.extractionPrompt
-      ?? `Analise a conversa e extraia os dados em JSON.
+    const extractionPrompt =
+      school?.vertical?.extractionPrompt ??
+      `Analise a conversa e extraia os dados em JSON.
 Retorne null se o lead não estiver qualificado (faltando nome ou campos principais).
 Se qualificado, retorne: {"name":"...","qualified":true,...outrosCampos}
 Retorne APENAS o JSON, sem explicação.`;
@@ -812,7 +1409,10 @@ Retorne APENAS o JSON, sem explicação.`;
         {
           role: 'user',
           content: history
-            .map((m) => `${m.role === 'user' ? 'Cliente' : 'Atendente'}: ${m.content}`)
+            .map(
+              (m) =>
+                `${m.role === 'user' ? 'Cliente' : 'Atendente'}: ${m.content}`,
+            )
             .join('\n'),
         },
       ],
@@ -839,7 +1439,7 @@ Retorne APENAS o JSON, sem explicação.`;
           schoolId,
           name,
           qualified: true,
-          data:         JSON.stringify(dynamicFields),
+          data: JSON.stringify(dynamicFields),
           conversation: JSON.stringify(history.slice(-30)), // até 30 msgs
         },
       });
@@ -862,7 +1462,9 @@ Retorne APENAS o JSON, sem explicação.`;
     const stages = await this.verticalService.getStagesForWorkspace(schoolId);
     const validKeys = stages.map((s) => s.key);
     if (!validKeys.includes(status)) {
-      throw new BadRequestException(`Status inválido. Válidos: ${validKeys.join(', ')}`);
+      throw new BadRequestException(
+        `Status inválido. Válidos: ${validKeys.join(', ')}`,
+      );
     }
     const lead = await this.prisma.lead.update({
       where: { id, schoolId },
@@ -894,21 +1496,29 @@ Retorne APENAS o JSON, sem explicação.`;
             const val = String(v);
             byField[k][val] = (byField[k][val] ?? 0) + 1;
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
     }
 
     const active = leads.filter((l) => l.status !== lostKey).length;
     const convertedKey = stages[stages.length - 2]?.key ?? '';
     const converted = byStatus[convertedKey] ?? 0;
-    const conversionRate = active > 0 ? Math.round((converted / active) * 100) : 0;
+    const conversionRate =
+      active > 0 ? Math.round((converted / active) * 100) : 0;
 
     const now = new Date();
     const byDay = Array.from({ length: 14 }, (_, i) => {
       const d = new Date(now);
       d.setDate(d.getDate() - (13 - i));
       const key = d.toISOString().slice(0, 10);
-      return { date: key, count: leads.filter((l) => l.createdAt.toISOString().slice(0, 10) === key).length };
+      return {
+        date: key,
+        count: leads.filter(
+          (l) => l.createdAt.toISOString().slice(0, 10) === key,
+        ).length,
+      };
     });
 
     return { total: active, byStatus, byField, conversionRate, byDay };
@@ -934,15 +1544,17 @@ Retorne APENAS o JSON, sem explicação.`;
     const stages = await this.verticalService.getStagesForWorkspace(schoolId);
 
     return {
-      name:        school?.name        ?? '',
+      name: school?.name ?? '',
       chatbotName: school?.chatbotName ?? 'IA Atendente',
-      vertical: school?.vertical ? {
-        id:    school.vertical.id,
-        slug:  school.vertical.slug,
-        name:  school.vertical.name,
-        icon:  school.vertical.icon,
-        color: school.vertical.color,
-      } : null,
+      vertical: school?.vertical
+        ? {
+            id: school.vertical.id,
+            slug: school.vertical.slug,
+            name: school.vertical.name,
+            icon: school.vertical.icon,
+            color: school.vertical.color,
+          }
+        : null,
       fields,
       stages,
     };
@@ -950,13 +1562,20 @@ Retorne APENAS o JSON, sem explicação.`;
 
   async updateSchoolSettings(
     schoolId: string,
-    data: { name?: string; chatbotName?: string; customFields?: any[]; customStages?: any[] },
+    data: {
+      name?: string;
+      chatbotName?: string;
+      customFields?: any[];
+      customStages?: any[];
+    },
   ) {
     const update: any = {};
-    if (data.name)         update.name         = data.name;
-    if (data.chatbotName)  update.chatbotName  = data.chatbotName;
-    if (data.customFields) update.customFields = JSON.stringify(data.customFields);
-    if (data.customStages) update.customStages = JSON.stringify(data.customStages);
+    if (data.name) update.name = data.name;
+    if (data.chatbotName) update.chatbotName = data.chatbotName;
+    if (data.customFields)
+      update.customFields = JSON.stringify(data.customFields);
+    if (data.customStages)
+      update.customStages = JSON.stringify(data.customStages);
 
     await this.prisma.school.update({ where: { id: schoolId }, data: update });
     return this.getSchoolSettings(schoolId);
@@ -967,18 +1586,26 @@ Retorne APENAS o JSON, sem explicação.`;
   private serializeLead(lead: any) {
     let data: Record<string, string> = {};
     let conversation: { role: string; content: string }[] = [];
-    try { data = JSON.parse(lead.data || '{}'); } catch { /* noop */ }
-    try { conversation = JSON.parse(lead.conversation || '[]'); } catch { /* noop */ }
+    try {
+      data = JSON.parse(lead.data || '{}');
+    } catch {
+      /* noop */
+    }
+    try {
+      conversation = JSON.parse(lead.conversation || '[]');
+    } catch {
+      /* noop */
+    }
     return {
-      id:           lead.id,
-      name:         lead.name,
-      phone:        lead.phone,
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
       data,
       conversation,
-      qualified:    lead.qualified,
-      status:       lead.status,
-      createdAt:    lead.createdAt,
-      updatedAt:    lead.updatedAt,
+      qualified: lead.qualified,
+      status: lead.status,
+      createdAt: lead.createdAt,
+      updatedAt: lead.updatedAt,
     };
   }
 }
