@@ -72,37 +72,43 @@ const actionOptions: Array<{ action: PostSaleAction; label: string }> = [
   { action: 'RISK_RESOLVED', label: 'Risco tratado' },
 ]
 
-const fakeActionGroups: Array<{ title: string; helper: string; actions: FakeServiceActionItem[] }> = [
-  {
-    title: 'Pagamento fake',
-    helper: 'Gateway local',
-    actions: [
-      { key: 'pay-paid', service: 'payment', action: 'MARK_PAID', label: 'Pago' },
-      { key: 'pay-fail', service: 'payment', action: 'FAIL', label: 'Falhou' },
-      { key: 'pay-refund', service: 'payment', action: 'REFUND', label: 'Estornado' },
-    ],
-  },
-  {
-    title: 'Contrato fake',
-    helper: 'Assinatura local',
-    actions: [
-      { key: 'contract-send', service: 'contract', action: 'SEND', label: 'Enviar' },
-      { key: 'contract-view', service: 'contract', action: 'VIEW', label: 'Visualizar' },
-      { key: 'contract-sign', service: 'contract', action: 'SIGN', label: 'Assinar' },
-    ],
-  },
-  {
-    title: 'Documentos fake',
-    helper: 'Checklist local',
-    actions: [
-      { key: 'doc-receive', service: 'document', action: 'RECEIVE', label: 'Receber' },
-      { key: 'doc-approve', service: 'document', action: 'APPROVE', label: 'Aprovar' },
-      { key: 'doc-reject', service: 'document', action: 'REJECT', label: 'Recusar' },
-    ],
-  },
-]
+const fakeActionGroups: Array<{ title: string; helper: string; actions: FakeServiceActionItem[] }> =
+  [
+    {
+      title: 'Pagamento fake',
+      helper: 'Gateway local',
+      actions: [
+        { key: 'pay-paid', service: 'payment', action: 'MARK_PAID', label: 'Pago' },
+        { key: 'pay-fail', service: 'payment', action: 'FAIL', label: 'Falhou' },
+        { key: 'pay-refund', service: 'payment', action: 'REFUND', label: 'Estornado' },
+      ],
+    },
+    {
+      title: 'Contrato fake',
+      helper: 'Assinatura local',
+      actions: [
+        { key: 'contract-send', service: 'contract', action: 'SEND', label: 'Enviar' },
+        { key: 'contract-view', service: 'contract', action: 'VIEW', label: 'Visualizar' },
+        { key: 'contract-sign', service: 'contract', action: 'SIGN', label: 'Assinar' },
+      ],
+    },
+    {
+      title: 'Documentos fake',
+      helper: 'Checklist local',
+      actions: [
+        { key: 'doc-receive', service: 'document', action: 'RECEIVE', label: 'Receber' },
+        { key: 'doc-approve', service: 'document', action: 'APPROVE', label: 'Aprovar' },
+        { key: 'doc-reject', service: 'document', action: 'REJECT', label: 'Recusar' },
+      ],
+    },
+  ]
 
-const commercialMaterials: Array<{ kind: CommercialPdfKind; title: string; helper: string; filename: string }> = [
+const commercialMaterials: Array<{
+  kind: CommercialPdfKind
+  title: string
+  helper: string
+  filename: string
+}> = [
   {
     kind: 'catalogo-cursos',
     title: 'Catálogo',
@@ -276,7 +282,8 @@ async function runFakeService(item: FakeServiceActionItem) {
           : await postSalesApi.simulateDocument(studentId, item.action)
 
     const log = response.result.log as { visibleMessage?: string } | undefined
-    messagePreview.value = log?.visibleMessage ?? 'Simulação registrada no histórico de integrações.'
+    messagePreview.value =
+      log?.visibleMessage ?? 'Simulação registrada no histórico de integrações.'
     applyOverview(response.overview)
   } catch {
     error.value = 'Não foi possível executar a simulação agora.'
@@ -361,6 +368,7 @@ function serviceLabel(log: PostSaleIntegrationLog) {
     PAGAMENTO: 'Pagamento fake',
     CONTRATO: 'Contrato fake',
     DOCUMENTOS: 'Documentos fake',
+    ALERTAS: 'Alertas fake',
   }
   return labels[log.service]
 }
@@ -373,6 +381,7 @@ function actionLabel(action: string) {
     REFUND: 'Pagamento estornado',
     PENDING: 'Pagamento pendente',
     SEND: 'Contrato enviado',
+    DISPATCH_ALERT: 'Alerta disparado',
     VIEW: 'Contrato visualizado',
     SIGN: 'Contrato assinado',
     EXPIRE: 'Contrato expirado',
@@ -392,7 +401,10 @@ function actionLabel(action: string) {
       <header class="post-header">
         <div>
           <h1>Pós-venda do aluno</h1>
-          <p>Matrícula, documentação, contrato, pagamento, primeiro acesso e permanência em uma jornada única.</p>
+          <p>
+            Matrícula, documentação, contrato, pagamento, primeiro acesso e permanência em uma
+            jornada única.
+          </p>
         </div>
         <div class="post-actions">
           <button type="button" class="secondary-action" @click="router.push('/enrollments')">
@@ -442,7 +454,12 @@ function actionLabel(action: string) {
         </section>
 
         <section class="summary-grid" aria-label="Resumo do pós-venda">
-          <article v-for="card in summaryCards" :key="card.label" class="summary-card" :class="`summary-card--${card.tone}`">
+          <article
+            v-for="card in summaryCards"
+            :key="card.label"
+            class="summary-card"
+            :class="`summary-card--${card.tone}`"
+          >
             <div class="summary-card__icon">
               <NIcon :component="card.icon" size="20" />
             </div>
@@ -467,7 +484,9 @@ function actionLabel(action: string) {
                 <div v-for="stage in overview.funnel" :key="stage.key" class="funnel-row">
                   <span class="funnel-row__label">{{ stage.label }}</span>
                   <div class="funnel-row__track">
-                    <span :style="{ width: `${funnelWidth(stage.count)}%`, background: stage.color }"></span>
+                    <span
+                      :style="{ width: `${funnelWidth(stage.count)}%`, background: stage.color }"
+                    ></span>
                   </div>
                   <strong>{{ stage.count }}</strong>
                 </div>
@@ -505,35 +524,53 @@ function actionLabel(action: string) {
                     :class="{ 'student-row--active': selectedStudent?.id === student.id }"
                     @click="selectStudent(student)"
                   >
-                    <span class="student-row__avatar">{{ student.studentName.charAt(0).toUpperCase() }}</span>
+                    <span class="student-row__avatar">{{
+                      student.studentName.charAt(0).toUpperCase()
+                    }}</span>
                     <span class="student-row__main">
                       <strong>
                         {{ student.studentName }}
                         <em v-if="student.isDemo">Exemplo</em>
                       </strong>
-                      <small>{{ student.course }} · {{ student.daysSinceEnrollment }} dias de jornada</small>
+                      <small
+                        >{{ student.course }} · {{ student.daysSinceEnrollment }} dias de
+                        jornada</small
+                      >
                     </span>
                     <span class="student-row__progress" aria-label="Progresso do aluno">
                       <i :style="{ width: `${student.progress}%` }"></i>
                     </span>
-                    <span class="student-row__status" :class="`status-${student.status.toLowerCase()}`">
+                    <span
+                      class="student-row__status"
+                      :class="`status-${student.status.toLowerCase()}`"
+                    >
                       {{ student.statusLabel }}
                     </span>
                   </button>
 
-                  <p v-if="!filteredStudents.length" class="empty-note">Nenhum aluno encontrado neste filtro.</p>
+                  <p v-if="!filteredStudents.length" class="empty-note">
+                    Nenhum aluno encontrado neste filtro.
+                  </p>
                 </div>
               </NScrollbar>
             </section>
           </div>
 
           <aside class="side-column">
-            <section v-if="selectedStudent" class="student-detail" aria-label="Detalhe do aluno selecionado">
+            <section
+              v-if="selectedStudent"
+              class="student-detail"
+              aria-label="Detalhe do aluno selecionado"
+            >
               <div class="student-detail__head">
                 <span>{{ selectedStudent.statusLabel }}</span>
                 <h2>{{ selectedStudent.studentName }}</h2>
                 <p>{{ selectedStudent.course }}</p>
-                <button type="button" class="profile-link" @click="router.push(`/post-sales/students/${selectedStudent.id}`)">
+                <button
+                  type="button"
+                  class="profile-link"
+                  @click="router.push(`/post-sales/students/${selectedStudent.id}`)"
+                >
                   Abrir ficha completa
                 </button>
               </div>
@@ -574,11 +611,17 @@ function actionLabel(action: string) {
                 <div>
                   <span>Próxima ação</span>
                   <strong>{{ selectedStudent.nextAction }}</strong>
-                  <small>{{ selectedStudent.ownerTeam }} · vence {{ formatDate(selectedStudent.upcomingDueAt) }}</small>
+                  <small
+                    >{{ selectedStudent.ownerTeam }} · vence
+                    {{ formatDate(selectedStudent.upcomingDueAt) }}</small
+                  >
                 </div>
               </div>
 
-              <div class="ruler-box" :class="`ruler-box--${selectedStudent.ruler.status.toLowerCase()}`">
+              <div
+                class="ruler-box"
+                :class="`ruler-box--${selectedStudent.ruler.status.toLowerCase()}`"
+              >
                 <div class="ruler-box__head">
                   <div>
                     <span>Régua automática</span>
@@ -596,10 +639,16 @@ function actionLabel(action: string) {
                     Último envio {{ formatDate(selectedStudent.ruler.lastSentAt) }}
                   </small>
                 </div>
-                <p v-if="selectedStudent.ruler.nextMessage">{{ selectedStudent.ruler.nextMessage }}</p>
+                <p v-if="selectedStudent.ruler.nextMessage">
+                  {{ selectedStudent.ruler.nextMessage }}
+                </p>
                 <div class="ruler-days" aria-label="Marcos já disparados">
-                  <span v-if="!selectedStudent.ruler.sentDays.length">Nenhum dia disparado ainda</span>
-                  <span v-for="day in selectedStudent.ruler.sentDays" :key="day">Dia {{ day }}</span>
+                  <span v-if="!selectedStudent.ruler.sentDays.length"
+                    >Nenhum dia disparado ainda</span
+                  >
+                  <span v-for="day in selectedStudent.ruler.sentDays" :key="day"
+                    >Dia {{ day }}</span
+                  >
                 </div>
                 <button
                   type="button"
@@ -608,7 +657,11 @@ function actionLabel(action: string) {
                   @click="simulateRuler()"
                 >
                   <NIcon :component="PaperPlaneOutline" size="16" />
-                  {{ actionBusy === rulerActionKey() ? 'Disparando...' : 'Disparar próximo marco fake' }}
+                  {{
+                    actionBusy === rulerActionKey()
+                      ? 'Disparando...'
+                      : 'Disparar próximo marco fake'
+                  }}
                 </button>
               </div>
 
@@ -632,10 +685,16 @@ function actionLabel(action: string) {
                   @click="generateMessagePreview"
                 >
                   <NIcon :component="PaperPlaneOutline" size="16" />
-                  {{ actionBusy === 'SIMULATE_MESSAGE' ? 'Gerando...' : 'Gerar prévia de WhatsApp' }}
+                  {{
+                    actionBusy === 'SIMULATE_MESSAGE' ? 'Gerando...' : 'Gerar prévia de WhatsApp'
+                  }}
                 </button>
                 <div class="fake-service-actions">
-                  <div v-for="group in fakeActionGroups" :key="group.title" class="fake-service-group">
+                  <div
+                    v-for="group in fakeActionGroups"
+                    :key="group.title"
+                    class="fake-service-group"
+                  >
                     <div>
                       <strong>{{ group.title }}</strong>
                       <small>{{ group.helper }}</small>
@@ -660,9 +719,17 @@ function actionLabel(action: string) {
 
               <div class="checklist">
                 <h3>Checklist de onboarding</h3>
-                <div v-for="step in selectedStudent.checklist" :key="step.key" class="check-row" :class="`check-row--${step.status}`">
+                <div
+                  v-for="step in selectedStudent.checklist"
+                  :key="step.key"
+                  class="check-row"
+                  :class="`check-row--${step.status}`"
+                >
                   <span>
-                    <NIcon :component="step.status === 'done' ? CheckmarkCircleOutline : CalendarOutline" size="16" />
+                    <NIcon
+                      :component="step.status === 'done' ? CheckmarkCircleOutline : CalendarOutline"
+                      size="16"
+                    />
                   </span>
                   <div>
                     <strong>{{ step.label }}</strong>
@@ -679,7 +746,10 @@ function actionLabel(action: string) {
                   </span>
                   <div>
                     <strong>{{ event.title }}</strong>
-                    <small>{{ formatDate(event.createdAt) }} · {{ event.source === 'manual' ? 'equipe' : 'sistema' }}</small>
+                    <small
+                      >{{ formatDate(event.createdAt) }} ·
+                      {{ event.source === 'manual' ? 'equipe' : 'sistema' }}</small
+                    >
                     <p>{{ event.description }}</p>
                   </div>
                 </div>
@@ -691,7 +761,9 @@ function actionLabel(action: string) {
                 <NIcon :component="TrendingUpOutline" size="24" />
               </div>
               <h2>Nenhum aluno neste filtro</h2>
-              <p>Quando houver pendência ou risco nesta etapa, a IA mostrará o próximo contato aqui.</p>
+              <p>
+                Quando houver pendência ou risco nesta etapa, a IA mostrará o próximo contato aqui.
+              </p>
             </section>
 
             <section class="tasks-panel">
@@ -705,7 +777,11 @@ function actionLabel(action: string) {
               <div v-if="selectedStudent" class="task-form">
                 <label>
                   <span>Nova tarefa interna</span>
-                  <input v-model="taskTitle" type="text" placeholder="Ex.: ligar para confirmar documentos" />
+                  <input
+                    v-model="taskTitle"
+                    type="text"
+                    placeholder="Ex.: ligar para confirmar documentos"
+                  />
                 </label>
                 <div class="task-form__row">
                   <label>
@@ -736,7 +812,11 @@ function actionLabel(action: string) {
                     </select>
                   </label>
                 </div>
-                <button type="button" :disabled="!taskTitle.trim() || !!actionBusy" @click="createTask">
+                <button
+                  type="button"
+                  :disabled="!taskTitle.trim() || !!actionBusy"
+                  @click="createTask"
+                >
                   <NIcon :component="AddCircleOutline" size="15" />
                   {{ actionBusy === 'CREATE_TASK' ? 'Criando...' : 'Criar tarefa' }}
                 </button>
@@ -746,7 +826,10 @@ function actionLabel(action: string) {
                 <div v-for="task in overview.tasks" :key="task.id" class="task-row">
                   <span :class="{ urgent: task.priority !== 'Normal' }">{{ task.priority }}</span>
                   <strong>{{ task.title }}</strong>
-                  <small>{{ task.studentName }} · {{ task.ownerTeam }} · {{ taskAutomationLabel(task) }}</small>
+                  <small
+                    >{{ task.studentName }} · {{ task.ownerTeam }} ·
+                    {{ taskAutomationLabel(task) }}</small
+                  >
                 </div>
               </div>
             </section>
@@ -757,12 +840,19 @@ function actionLabel(action: string) {
           <div class="panel-head">
             <div>
               <h2>Automações preparadas</h2>
-              <p>Fluxos prontos para WhatsApp, contrato digital, financeiro e AVA conforme as integrações forem conectadas.</p>
+              <p>
+                Fluxos prontos para WhatsApp, contrato digital, financeiro e AVA conforme as
+                integrações forem conectadas.
+              </p>
             </div>
           </div>
 
           <div class="automation-grid">
-            <article v-for="automation in overview.automations" :key="automation.title" class="automation-card">
+            <article
+              v-for="automation in overview.automations"
+              :key="automation.title"
+              class="automation-card"
+            >
               <div class="automation-card__top">
                 <span>Dia {{ automation.day }}</span>
                 <strong>{{ automation.status }}</strong>
@@ -792,7 +882,10 @@ function actionLabel(action: string) {
           <div class="panel-head">
             <div>
               <h2>Logs dos serviços fake</h2>
-              <p>Histórico local de WhatsApp, pagamento, contrato e documentos para demonstrar integrações sem API real.</p>
+              <p>
+                Histórico local de WhatsApp, pagamento, contrato e documentos para demonstrar
+                integrações sem API real.
+              </p>
             </div>
             <span>{{ overview.integrationLogs.length }} eventos</span>
           </div>
@@ -825,7 +918,11 @@ function actionLabel(action: string) {
           </div>
 
           <div class="template-list">
-            <article v-for="template in overview.messageTemplates" :key="template.title" class="template-row">
+            <article
+              v-for="template in overview.messageTemplates"
+              :key="template.title"
+              class="template-row"
+            >
               <NIcon :component="ChatbubbleEllipsesOutline" size="18" />
               <div>
                 <strong>{{ template.title }}</strong>
@@ -1015,9 +1112,15 @@ function actionLabel(action: string) {
   background: var(--brand);
 }
 
-.summary-card--warning::after { background: var(--warning); }
-.summary-card--info::after { background: var(--info); }
-.summary-card--danger::after { background: var(--danger); }
+.summary-card--warning::after {
+  background: var(--warning);
+}
+.summary-card--info::after {
+  background: var(--info);
+}
+.summary-card--danger::after {
+  background: var(--danger);
+}
 
 .summary-card__icon {
   width: 38px;
@@ -1632,7 +1735,11 @@ function actionLabel(action: string) {
 
 .ruler-box--concluida {
   border-color: color-mix(in srgb, var(--accent-strong) 32%, var(--border));
-  background: linear-gradient(135deg, var(--surface), color-mix(in srgb, var(--accent-strong) 10%, transparent));
+  background: linear-gradient(
+    135deg,
+    var(--surface),
+    color-mix(in srgb, var(--accent-strong) 10%, transparent)
+  );
 }
 
 .ruler-box__head,

@@ -1,8 +1,13 @@
-export type FakeIntegrationService = 'WHATSAPP' | 'PAGAMENTO' | 'CONTRATO' | 'DOCUMENTOS';
+export type FakeIntegrationService =
+  | 'WHATSAPP'
+  | 'PAGAMENTO'
+  | 'CONTRATO'
+  | 'DOCUMENTOS'
+  | 'ALERTAS';
 
 export interface FakeIntegrationContext {
   schoolId: string;
-  studentKey: string;
+  studentKey: string | null;
   enrollmentId: string | null;
   studentName: string;
 }

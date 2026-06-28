@@ -108,6 +108,57 @@ interface ManualPostSaleTaskInput {
   reminderDaysBefore?: number | null;
 }
 
+type PostSaleAlertLevel = 'VENCIDA' | 'CRITICO' | '24H' | '48H';
+
+interface SerializedPostSaleTask {
+  id: string;
+  studentId: string | null;
+  leadId?: string | null;
+  title: string;
+  studentName: string;
+  ownerTeam: string;
+  assignee: string;
+  role: string;
+  priority: string;
+  column: string;
+  origin: string;
+  createdBy: string;
+  relatedEntity: Record<string, unknown>;
+  description: string | null;
+  reminderDaysBefore: number | null;
+  reminderAt: string | null;
+  autoResolve: boolean;
+  dueAt: Date | null;
+  firstMovedAt: Date | null;
+  resolvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  automation: string;
+  status: string;
+  source: 'automatic' | 'manual';
+}
+
+interface PostSaleTaskAlert {
+  id: string;
+  taskId: string;
+  studentId: string | null;
+  studentName: string;
+  title: string;
+  assignee: string;
+  role: string;
+  priority: string;
+  origin: string;
+  level: PostSaleAlertLevel;
+  status: string;
+  channel: string;
+  message: string;
+  dueAt: Date;
+  reminderAt: string | null;
+  minutesUntilDue: number;
+  sound: string;
+  dispatchable: boolean;
+}
+
 @Injectable()
 export class PostSaleService {
   constructor(
@@ -177,6 +228,7 @@ export class PostSaleService {
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
       take: 60,
     });
+    const tasks = this.tasks(storedTasks);
 
     return {
       generatedAt: new Date(),
@@ -184,7 +236,9 @@ export class PostSaleService {
       summary: this.summary(lifecycle),
       funnel: this.funnel(lifecycle),
       students: lifecycle,
-      tasks: this.tasks(storedTasks),
+      tasks,
+      alerts: this.taskAlerts(tasks),
+      alertDispatches: this.alertDispatches(integrationLogs),
       automations: this.automations(runtimeConfig, lifecycle),
       messageTemplates: this.messageTemplates(runtimeConfig),
       integrationLogs,
@@ -452,6 +506,76 @@ export class PostSaleService {
     }
 
     return this.overview(schoolId);
+  }
+
+  async dispatchTaskAlert(
+    schoolId: string,
+    taskId: string,
+  ): Promise<{ alert: PostSaleTaskAlert; log: unknown; overview: unknown }> {
+    const task = await this.prisma.postSaleTask.findFirst({
+      where: { id: taskId, schoolId },
+    });
+    if (!task) throw new BadRequestException('Tarefa não encontrada.');
+
+    const alert = this.taskAlert(this.serializeTask(task));
+    if (!alert) {
+      throw new BadRequestException(
+        'Esta tarefa ainda não tem alerta ativo para disparo.',
+      );
+    }
+
+    const log = await this.integrationLogs.record({
+      context: {
+        schoolId,
+        studentKey: task.studentKey,
+        enrollmentId: task.enrollmentId,
+        studentName: task.studentName,
+      },
+      service: 'ALERTAS',
+      action: 'DISPATCH_ALERT',
+      status: 'ENVIADO',
+      requestPayload: {
+        taskId: task.id,
+        level: alert.level,
+        assignee: task.assignee,
+        role: task.role,
+        channel: alert.channel,
+        message: alert.message,
+      },
+      responsePayload: {
+        fake: true,
+        dispatchedAt: new Date().toISOString(),
+        sound: alert.sound,
+        notification: 'browser_local',
+      },
+      visibleMessage: `Alerta fake disparado para ${task.assignee || task.ownerTeam}: ${task.title}.`,
+    });
+
+    if (task.studentKey) {
+      await this.prisma.postSaleEvent.create({
+        data: {
+          schoolId,
+          studentKey: task.studentKey,
+          enrollmentId: task.enrollmentId,
+          studentName: task.studentName,
+          type: 'ALERTA_DISPARADO',
+          title: 'Alerta disparado',
+          description: alert.message,
+          metadata: JSON.stringify({
+            taskId: task.id,
+            logId: (log as { id?: string }).id,
+            level: alert.level,
+            channel: alert.channel,
+          }),
+        },
+      });
+    }
+
+    return {
+      alert,
+      log,
+      overview: await this.overview(schoolId),
+    };
   }
 
   async simulateMessage(
@@ -1784,45 +1908,181 @@ export class PostSaleService {
   }
 
   private tasks(storedTasks: any[] = []) {
-    return storedTasks.map((task) => {
-      const metadata = this.safeJson(task.relatedEntity);
-      return {
-        id: task.id,
-        studentId: task.studentKey,
-        leadId: task.leadId,
-        title: task.title,
-        studentName: task.studentName,
-        ownerTeam: task.ownerTeam,
-        assignee: task.assignee,
-        role: task.role,
-        priority: task.priority,
-        column: task.column,
-        origin: task.origin,
-        createdBy: task.createdBy,
-        relatedEntity: metadata,
-        description:
-          typeof metadata.description === 'string'
-            ? this.cleanVisibleText(metadata.description)
-            : null,
-        reminderDaysBefore:
-          typeof metadata.reminderDaysBefore === 'number'
-            ? metadata.reminderDaysBefore
-            : null,
-        reminderAt:
-          typeof metadata.reminderAt === 'string' ? metadata.reminderAt : null,
-        autoResolve: task.autoResolve,
-        dueAt: task.dueAt,
-        firstMovedAt: task.firstMovedAt,
-        resolvedAt: task.resolvedAt,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-        automation: this.cleanVisibleText(
-          task.automation ?? 'Criada pela equipe',
-        ),
-        status: task.status,
-        source: task.createdBy === 'automacao' ? 'automatic' : 'manual',
-      };
-    });
+    return storedTasks.map((task) => this.serializeTask(task));
+  }
+
+  private serializeTask(task: any): SerializedPostSaleTask {
+    const metadata = this.safeJson(task.relatedEntity);
+    return {
+      id: task.id,
+      studentId: task.studentKey,
+      leadId: task.leadId,
+      title: task.title,
+      studentName: task.studentName,
+      ownerTeam: task.ownerTeam,
+      assignee: task.assignee,
+      role: task.role,
+      priority: task.priority,
+      column: task.column,
+      origin: task.origin,
+      createdBy: task.createdBy,
+      relatedEntity: metadata,
+      description:
+        typeof metadata.description === 'string'
+          ? this.cleanVisibleText(metadata.description)
+          : null,
+      reminderDaysBefore:
+        typeof metadata.reminderDaysBefore === 'number'
+          ? metadata.reminderDaysBefore
+          : null,
+      reminderAt:
+        typeof metadata.reminderAt === 'string' ? metadata.reminderAt : null,
+      autoResolve: task.autoResolve,
+      dueAt: task.dueAt,
+      firstMovedAt: task.firstMovedAt,
+      resolvedAt: task.resolvedAt,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      automation: this.cleanVisibleText(
+        task.automation ?? 'Criada pela equipe',
+      ),
+      status: task.status,
+      source: task.createdBy === 'automacao' ? 'automatic' : 'manual',
+    };
+  }
+
+  private taskAlerts(tasks: SerializedPostSaleTask[]) {
+    return tasks
+      .map((task) => this.taskAlert(task))
+      .filter((alert): alert is PostSaleTaskAlert => Boolean(alert))
+      .sort(
+        (a, b) =>
+          this.alertWeight(a.level) - this.alertWeight(b.level) ||
+          a.dueAt.getTime() - b.dueAt.getTime(),
+      );
+  }
+
+  private taskAlert(task: SerializedPostSaleTask): PostSaleTaskAlert | null {
+    if (task.status === 'CONCLUIDA') return null;
+    if (!task.dueAt) return null;
+
+    const dueAt = new Date(task.dueAt);
+    if (Number.isNaN(dueAt.getTime())) return null;
+
+    const minutesUntilDue = Math.round((dueAt.getTime() - Date.now()) / 60_000);
+    const reminderPreference = this.taskReminderPreference(task);
+    let level: PostSaleAlertLevel | null = null;
+
+    if (minutesUntilDue < 0) level = 'VENCIDA';
+    else if (this.isHighPriority(task.priority) && minutesUntilDue <= 360)
+      level = 'CRITICO';
+    else if (reminderPreference === 0) level = null;
+    else if (reminderPreference === 1 && minutesUntilDue <= 1_440)
+      level = '24H';
+    else if (reminderPreference === 2 && minutesUntilDue <= 2_880)
+      level = '48H';
+    else if (reminderPreference === null && minutesUntilDue <= 1_440)
+      level = '24H';
+    else if (reminderPreference === null && minutesUntilDue <= 2_880)
+      level = '48H';
+
+    if (!level) return null;
+
+    return {
+      id: `alert-${task.id}`,
+      taskId: task.id,
+      studentId: task.studentId,
+      studentName: task.studentName,
+      title: task.title,
+      assignee: task.assignee || task.ownerTeam,
+      role: task.role,
+      priority: task.priority,
+      origin: task.origin,
+      level,
+      status: this.alertStatus(level),
+      channel: 'Central + notificação local + WhatsApp fake',
+      message: this.alertMessage(task, level, minutesUntilDue),
+      dueAt,
+      reminderAt: task.reminderAt,
+      minutesUntilDue,
+      sound: level === 'VENCIDA' || level === '24H' ? 'urgente' : 'atenção',
+      dispatchable: true,
+    };
+  }
+
+  private taskReminderPreference(task: SerializedPostSaleTask) {
+    if (typeof task.reminderDaysBefore === 'number')
+      return task.reminderDaysBefore;
+    if (
+      task.relatedEntity.rule === 'manual' &&
+      task.relatedEntity.reminderDaysBefore == null
+    )
+      return 0;
+    return null;
+  }
+
+  private alertMessage(
+    task: SerializedPostSaleTask,
+    level: PostSaleAlertLevel,
+    minutesUntilDue: number,
+  ) {
+    const dueLabel =
+      minutesUntilDue < 0
+        ? `venceu há ${this.humanizeMinutes(Math.abs(minutesUntilDue))}`
+        : `vence em ${this.humanizeMinutes(minutesUntilDue)}`;
+    const severity =
+      level === 'VENCIDA'
+        ? 'prazo vencido'
+        : level === '24H'
+          ? 'prazo crítico'
+          : 'prazo próximo';
+    return `${severity}: ${task.title} para ${task.studentName} ${dueLabel}. Responsável: ${task.assignee || task.ownerTeam}.`;
+  }
+
+  private humanizeMinutes(minutes: number) {
+    if (minutes < 60) return `${Math.max(1, minutes)} min`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.round(hours / 24);
+    return `${days} dia${days === 1 ? '' : 's'}`;
+  }
+
+  private alertStatus(level: PostSaleAlertLevel) {
+    const labels: Record<PostSaleAlertLevel, string> = {
+      VENCIDA: 'Vencida',
+      CRITICO: 'Crítica',
+      '24H': 'Disparar hoje',
+      '48H': 'Acompanhar em até 2 dias',
+    };
+    return labels[level];
+  }
+
+  private isHighPriority(priority?: string | null) {
+    const normalized = this.normalizeKey(priority ?? '');
+    return (
+      normalized.includes('urgente') ||
+      normalized.includes('critico') ||
+      normalized.includes('alta')
+    );
+  }
+
+  private alertWeight(level: PostSaleAlertLevel) {
+    const weights: Record<PostSaleAlertLevel, number> = {
+      VENCIDA: 0,
+      CRITICO: 1,
+      '24H': 2,
+      '48H': 3,
+    };
+    return weights[level];
+  }
+
+  private alertDispatches(logs: unknown[]) {
+    return logs.filter(
+      (log) =>
+        typeof log === 'object' &&
+        log !== null &&
+        (log as { service?: string }).service === 'ALERTAS',
+    );
   }
 
   private automations(

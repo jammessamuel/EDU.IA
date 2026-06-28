@@ -313,6 +313,29 @@ export interface PostSaleTask {
   updatedAt?: string
 }
 
+export type PostSaleAlertLevel = 'VENCIDA' | 'CRITICO' | '24H' | '48H'
+
+export interface PostSaleAlert {
+  id: string
+  taskId: string
+  studentId: string | null
+  studentName: string
+  title: string
+  assignee: string
+  role: string
+  priority: string
+  origin: string
+  level: PostSaleAlertLevel
+  status: string
+  channel: string
+  message: string
+  dueAt: string
+  reminderAt: string | null
+  minutesUntilDue: number
+  sound: string
+  dispatchable: boolean
+}
+
 export interface PostSaleAutomation {
   day: number
   title: string
@@ -336,7 +359,7 @@ export interface PostSaleIntegrationLog {
   studentKey: string | null
   enrollmentId: string | null
   studentName: string | null
-  service: 'WHATSAPP' | 'PAGAMENTO' | 'CONTRATO' | 'DOCUMENTOS'
+  service: 'WHATSAPP' | 'PAGAMENTO' | 'CONTRATO' | 'DOCUMENTOS' | 'ALERTAS'
   action: string
   status: string
   requestPayload: Record<string, unknown>
@@ -352,6 +375,8 @@ export interface PostSaleOverview {
   funnel: PostSaleFunnelStage[]
   students: PostSaleStudent[]
   tasks: PostSaleTask[]
+  alerts: PostSaleAlert[]
+  alertDispatches: PostSaleIntegrationLog[]
   automations: PostSaleAutomation[]
   messageTemplates: PostSaleMessageTemplate[]
   integrationLogs: PostSaleIntegrationLog[]
@@ -375,6 +400,12 @@ export interface PostSaleRulerResponse {
     message: string
     log: PostSaleIntegrationLog
   }
+  overview: PostSaleOverview
+}
+
+export interface PostSaleAlertDispatchResponse {
+  alert: PostSaleAlert
+  log: PostSaleIntegrationLog
   overview: PostSaleOverview
 }
 

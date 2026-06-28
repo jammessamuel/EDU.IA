@@ -77,13 +77,20 @@ const statusCards = computed(() => {
       value: current.student.documentStatus,
       helper: documentHelper,
       icon: DocumentTextOutline,
-      tone: current.documents.summary.rejected ? 'danger' : current.student.status === 'DOCUMENTACAO_PENDENTE' ? 'warning' : 'brand',
+      tone: current.documents.summary.rejected
+        ? 'danger'
+        : current.student.status === 'DOCUMENTACAO_PENDENTE'
+          ? 'warning'
+          : 'brand',
       target: '#documentos',
     },
     {
       label: 'Pagamento',
       value: current.payment.status,
-      helper: current.payment.amount !== null ? formatCurrency(current.payment.amount) : 'Sem valor definido',
+      helper:
+        current.payment.amount !== null
+          ? formatCurrency(current.payment.amount)
+          : 'Sem valor definido',
       icon: CardOutline,
       tone: current.student.status === 'PAGAMENTO_PENDENTE' ? 'danger' : 'info',
       target: '#pagamento',
@@ -91,7 +98,9 @@ const statusCards = computed(() => {
     {
       label: 'Contrato',
       value: current.contract.status,
-      helper: current.contract.lastLog ? formatDate(current.contract.lastLog.createdAt) : 'Sem simulação recente',
+      helper: current.contract.lastLog
+        ? formatDate(current.contract.lastLog.createdAt)
+        : 'Sem simulação recente',
       icon: ShieldCheckmarkOutline,
       tone: current.student.status === 'CONTRATO_PENDENTE' ? 'warning' : 'brand',
       target: '#contrato',
@@ -99,7 +108,8 @@ const statusCards = computed(() => {
     {
       label: 'Régua',
       value: rulerStatusLabel(current.ruler.status),
-      helper: current.ruler.nextDay === null ? 'Todos os marcos' : `Próximo dia ${current.ruler.nextDay}`,
+      helper:
+        current.ruler.nextDay === null ? 'Todos os marcos' : `Próximo dia ${current.ruler.nextDay}`,
       icon: PaperPlaneOutline,
       tone: current.ruler.status === 'PENDENTE' ? 'warning' : 'brand',
       target: '#mensagens',
@@ -147,14 +157,18 @@ const validationChecks = computed(() => {
       label: 'E-mail',
       value: validationDraft.value.email || 'Não informado',
       ok: isValidEmail(validationDraft.value.email),
-      message: isValidEmail(validationDraft.value.email) ? 'E-mail válido.' : 'Formato de e-mail inválido.',
+      message: isValidEmail(validationDraft.value.email)
+        ? 'E-mail válido.'
+        : 'Formato de e-mail inválido.',
     },
     {
       key: 'phone',
       label: 'Telefone',
       value: validationDraft.value.phone || 'Não informado',
       ok: isValidPhone(validationDraft.value.phone),
-      message: isValidPhone(validationDraft.value.phone) ? 'Telefone válido.' : 'Use DDD + número, com 10 a 15 dígitos.',
+      message: isValidPhone(validationDraft.value.phone)
+        ? 'Telefone válido.'
+        : 'Use DDD + número, com 10 a 15 dígitos.',
     },
   ]
 })
@@ -351,7 +365,9 @@ function docActionKey(action: string, documentType?: string) {
 }
 
 function fakeFileName(documentType: string) {
-  const slug = normalizeText(documentType).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const slug = normalizeText(documentType)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
   return `${slug || 'documento'}-fake.pdf`
 }
 
@@ -374,6 +390,7 @@ function serviceLabel(log: PostSaleIntegrationLog) {
     PAGAMENTO: 'Pagamento fake',
     CONTRATO: 'Contrato fake',
     DOCUMENTOS: 'Documentos fake',
+    ALERTAS: 'Alertas fake',
   }
   return labels[log.service]
 }
@@ -449,7 +466,13 @@ function isValidPhone(value: string) {
         <NAlert v-if="error" type="error" closable class="profile-alert" @close="error = null">
           {{ error }}
         </NAlert>
-        <NAlert v-if="feedback" type="success" closable class="profile-alert" @close="feedback = null">
+        <NAlert
+          v-if="feedback"
+          type="success"
+          closable
+          class="profile-alert"
+          @close="feedback = null"
+        >
           {{ feedback }}
         </NAlert>
 
@@ -463,7 +486,11 @@ function isValidPhone(value: string) {
             </div>
           </div>
 
-          <div class="student-hero__risk" :class="`risk-${profile.risk.level.toLowerCase()}`" id="risco">
+          <div
+            class="student-hero__risk"
+            :class="`risk-${profile.risk.level.toLowerCase()}`"
+            id="risco"
+          >
             <span>Score antievasão</span>
             <strong>{{ profile.risk.score }}</strong>
             <small>{{ riskLabel(profile.risk.level) }}</small>
@@ -478,7 +505,13 @@ function isValidPhone(value: string) {
         </section>
 
         <section class="status-grid" aria-label="Resumo da ficha">
-          <a v-for="card in statusCards" :key="card.label" :href="card.target" class="status-card" :class="`tone-${card.tone}`">
+          <a
+            v-for="card in statusCards"
+            :key="card.label"
+            :href="card.target"
+            class="status-card"
+            :class="`tone-${card.tone}`"
+          >
             <span class="status-card__icon">
               <NIcon :component="card.icon" size="18" />
             </span>
@@ -516,7 +549,10 @@ function isValidPhone(value: string) {
                 <div class="validation-panel__head">
                   <div>
                     <h3>Validação em tempo real</h3>
-                    <p>Teste CPF, passaporte/documento estrangeiro, e-mail e telefone sem salvar nada.</p>
+                    <p>
+                      Teste CPF, passaporte/documento estrangeiro, e-mail e telefone sem salvar
+                      nada.
+                    </p>
                   </div>
                 </div>
                 <div class="validation-form">
@@ -534,19 +570,35 @@ function isValidPhone(value: string) {
                   </label>
                   <label>
                     <span>Número do documento</span>
-                    <input v-model="validationDraft.documentNumber" type="text" placeholder="CPF, passaporte ou documento estrangeiro" />
+                    <input
+                      v-model="validationDraft.documentNumber"
+                      type="text"
+                      placeholder="CPF, passaporte ou documento estrangeiro"
+                    />
                   </label>
                   <label>
                     <span>E-mail</span>
-                    <input v-model="validationDraft.email" type="email" placeholder="aluno@email.com" />
+                    <input
+                      v-model="validationDraft.email"
+                      type="email"
+                      placeholder="aluno@email.com"
+                    />
                   </label>
                   <label>
                     <span>Telefone</span>
-                    <input v-model="validationDraft.phone" type="tel" placeholder="+55 11 99999-9999" />
+                    <input
+                      v-model="validationDraft.phone"
+                      type="tel"
+                      placeholder="+55 11 99999-9999"
+                    />
                   </label>
                 </div>
                 <div class="validation-results">
-                  <article v-for="check in validationChecks" :key="check.key" :class="validationTone(check.ok)">
+                  <article
+                    v-for="check in validationChecks"
+                    :key="check.key"
+                    :class="validationTone(check.ok)"
+                  >
                     <strong>{{ check.label }}</strong>
                     <span>{{ check.ok ? 'Válido' : 'Atenção' }}</span>
                     <p>{{ check.message }}</p>
@@ -558,7 +610,9 @@ function isValidPhone(value: string) {
                 <div>
                   <span>Curso</span>
                   <strong>{{ profile.course?.name || student.course }}</strong>
-                  <small>{{ profile.course?.description || 'Curso registrado na jornada do aluno.' }}</small>
+                  <small>{{
+                    profile.course?.description || 'Curso registrado na jornada do aluno.'
+                  }}</small>
                 </div>
                 <div>
                   <span>Duração</span>
@@ -588,37 +642,77 @@ function isValidPhone(value: string) {
               </div>
 
               <div class="document-grid">
-                <article v-for="item in profile.documents.requirements" :key="`${item.audience}-${item.documentType}`" class="document-row" :class="documentStatusClass(item)">
+                <article
+                  v-for="item in profile.documents.requirements"
+                  :key="`${item.audience}-${item.documentType}`"
+                  class="document-row"
+                  :class="documentStatusClass(item)"
+                >
                   <div class="document-row__main">
                     <div class="document-row__top">
                       <div>
                         <strong>{{ item.documentType }}</strong>
-                        <small>{{ audienceLabel(item.audience) }} · {{ item.required ? 'Obrigatório' : 'Opcional' }}</small>
+                        <small
+                          >{{ audienceLabel(item.audience) }} ·
+                          {{ item.required ? 'Obrigatório' : 'Opcional' }}</small
+                        >
                       </div>
                       <span>{{ documentStatusLabel(item.status) }}</span>
                     </div>
                     <p>{{ item.instructions || 'Sem instrução adicional.' }}</p>
-                    <small v-if="item.fileName" class="document-file">Arquivo: {{ item.fileName }}</small>
-                    <small v-if="item.reason" class="document-reason">Motivo: {{ item.reason }}</small>
+                    <small v-if="item.fileName" class="document-file"
+                      >Arquivo: {{ item.fileName }}</small
+                    >
+                    <small v-if="item.reason" class="document-reason"
+                      >Motivo: {{ item.reason }}</small
+                    >
                     <div class="document-actions">
-                      <button type="button" :disabled="!!actionBusy" @click="uploadFakeDocument(item)">
-                        {{ actionBusy === docActionKey('RECEIVE', item.documentType) ? '...' : 'Upload fake' }}
+                      <button
+                        type="button"
+                        :disabled="!!actionBusy"
+                        @click="uploadFakeDocument(item)"
+                      >
+                        {{
+                          actionBusy === docActionKey('RECEIVE', item.documentType)
+                            ? '...'
+                            : 'Upload fake'
+                        }}
                       </button>
                       <button type="button" :disabled="!!actionBusy" @click="approveDocument(item)">
-                        {{ actionBusy === docActionKey('APPROVE', item.documentType) ? '...' : 'Aprovar' }}
+                        {{
+                          actionBusy === docActionKey('APPROVE', item.documentType)
+                            ? '...'
+                            : 'Aprovar'
+                        }}
                       </button>
-                      <button type="button" :disabled="!!actionBusy" @click="startReject(item)">Recusar</button>
+                      <button type="button" :disabled="!!actionBusy" @click="startReject(item)">
+                        Recusar
+                      </button>
                     </div>
                     <div v-if="rejectDocumentType === item.documentType" class="reject-form">
                       <label>
                         <span>Motivo da recusa</span>
-                        <textarea v-model="rejectReason" rows="2" placeholder="Ex.: imagem ilegível, documento vencido ou arquivo incompleto"></textarea>
+                        <textarea
+                          v-model="rejectReason"
+                          rows="2"
+                          placeholder="Ex.: imagem ilegível, documento vencido ou arquivo incompleto"
+                        ></textarea>
                       </label>
                       <div>
-                        <button type="button" :disabled="!!actionBusy || !rejectReason.trim()" @click="confirmReject(item)">
-                          {{ actionBusy === docActionKey('REJECT', item.documentType) ? 'Registrando...' : 'Confirmar recusa' }}
+                        <button
+                          type="button"
+                          :disabled="!!actionBusy || !rejectReason.trim()"
+                          @click="confirmReject(item)"
+                        >
+                          {{
+                            actionBusy === docActionKey('REJECT', item.documentType)
+                              ? 'Registrando...'
+                              : 'Confirmar recusa'
+                          }}
                         </button>
-                        <button type="button" :disabled="!!actionBusy" @click="cancelReject">Cancelar</button>
+                        <button type="button" :disabled="!!actionBusy" @click="cancelReject">
+                          Cancelar
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -626,8 +720,16 @@ function isValidPhone(value: string) {
               </div>
 
               <div class="checklist-strip">
-                <div v-for="step in profile.documents.checklist" :key="step.key" class="check-item" :class="`check-${step.status}`">
-                  <NIcon :component="step.status === 'done' ? CheckmarkCircleOutline : TimeOutline" size="15" />
+                <div
+                  v-for="step in profile.documents.checklist"
+                  :key="step.key"
+                  class="check-item"
+                  :class="`check-${step.status}`"
+                >
+                  <NIcon
+                    :component="step.status === 'done' ? CheckmarkCircleOutline : TimeOutline"
+                    size="15"
+                  />
                   <div>
                     <strong>{{ step.label }}</strong>
                     <small>{{ step.helper }}</small>
@@ -647,14 +749,29 @@ function isValidPhone(value: string) {
                 <div class="ops-status">
                   <span>Status atual</span>
                   <strong>{{ profile.payment.status }}</strong>
-                  <small>{{ formatCurrency(profile.payment.amount) }} · {{ profile.payment.method || 'método não definido' }}</small>
+                  <small
+                    >{{ formatCurrency(profile.payment.amount) }} ·
+                    {{ profile.payment.method || 'método não definido' }}</small
+                  >
                 </div>
                 <div class="ops-buttons">
-                  <button type="button" :disabled="!!actionBusy" @click="simulatePayment('MARK_PAID')">Pago</button>
-                  <button type="button" :disabled="!!actionBusy" @click="simulatePayment('FAIL')">Falhou</button>
-                  <button type="button" :disabled="!!actionBusy" @click="simulatePayment('REFUND')">Estornado</button>
+                  <button
+                    type="button"
+                    :disabled="!!actionBusy"
+                    @click="simulatePayment('MARK_PAID')"
+                  >
+                    Pago
+                  </button>
+                  <button type="button" :disabled="!!actionBusy" @click="simulatePayment('FAIL')">
+                    Falhou
+                  </button>
+                  <button type="button" :disabled="!!actionBusy" @click="simulatePayment('REFUND')">
+                    Estornado
+                  </button>
                 </div>
-                <p v-if="profile.payment.lastLog" class="last-log">{{ profile.payment.lastLog.visibleMessage }}</p>
+                <p v-if="profile.payment.lastLog" class="last-log">
+                  {{ profile.payment.lastLog.visibleMessage }}
+                </p>
               </article>
 
               <article class="profile-panel ops-panel" id="contrato">
@@ -667,14 +784,26 @@ function isValidPhone(value: string) {
                 <div class="ops-status">
                   <span>Status atual</span>
                   <strong>{{ profile.contract.status }}</strong>
-                  <small>{{ profile.contract.lastLog ? formatDate(profile.contract.lastLog.createdAt) : 'sem evento recente' }}</small>
+                  <small>{{
+                    profile.contract.lastLog
+                      ? formatDate(profile.contract.lastLog.createdAt)
+                      : 'sem evento recente'
+                  }}</small>
                 </div>
                 <div class="ops-buttons">
-                  <button type="button" :disabled="!!actionBusy" @click="simulateContract('SEND')">Enviar</button>
-                  <button type="button" :disabled="!!actionBusy" @click="simulateContract('VIEW')">Visualizar</button>
-                  <button type="button" :disabled="!!actionBusy" @click="simulateContract('SIGN')">Assinar</button>
+                  <button type="button" :disabled="!!actionBusy" @click="simulateContract('SEND')">
+                    Enviar
+                  </button>
+                  <button type="button" :disabled="!!actionBusy" @click="simulateContract('VIEW')">
+                    Visualizar
+                  </button>
+                  <button type="button" :disabled="!!actionBusy" @click="simulateContract('SIGN')">
+                    Assinar
+                  </button>
                 </div>
-                <p v-if="profile.contract.lastLog" class="last-log">{{ profile.contract.lastLog.visibleMessage }}</p>
+                <p v-if="profile.contract.lastLog" class="last-log">
+                  {{ profile.contract.lastLog.visibleMessage }}
+                </p>
               </article>
             </section>
 
@@ -688,7 +817,11 @@ function isValidPhone(value: string) {
                   <button type="button" :disabled="!!actionBusy" @click="sendWhatsApp">
                     {{ actionBusy === 'whatsapp' ? 'Gerando...' : 'WhatsApp fake' }}
                   </button>
-                  <button type="button" :disabled="!!actionBusy || profile.ruler.status === 'CONCLUIDA'" @click="sendRuler">
+                  <button
+                    type="button"
+                    :disabled="!!actionBusy || profile.ruler.status === 'CONCLUIDA'"
+                    @click="sendRuler"
+                  >
                     {{ actionBusy === 'ruler' ? 'Disparando...' : 'Disparar régua' }}
                   </button>
                 </div>
@@ -721,7 +854,10 @@ function isValidPhone(value: string) {
                     <NIcon :component="timelineIcon(event)" size="15" />
                   </span>
                   <div>
-                    <small>{{ formatDate(event.createdAt) }} · {{ event.source === 'manual' ? 'equipe' : 'sistema' }}</small>
+                    <small
+                      >{{ formatDate(event.createdAt) }} ·
+                      {{ event.source === 'manual' ? 'equipe' : 'sistema' }}</small
+                    >
                     <strong>{{ event.title }}</strong>
                     <p>{{ event.description }}</p>
                   </div>
@@ -760,7 +896,12 @@ function isValidPhone(value: string) {
                 </div>
               </div>
               <div class="action-list">
-                <article v-for="task in profile.nextActions" :key="task.id" class="action-row" :class="`task-${taskTone(task)}`">
+                <article
+                  v-for="task in profile.nextActions"
+                  :key="task.id"
+                  class="action-row"
+                  :class="`task-${taskTone(task)}`"
+                >
                   <span>{{ task.priority }}</span>
                   <strong>{{ task.title }}</strong>
                   <small>{{ task.ownerTeam }} · {{ formatDate(task.dueAt) }}</small>
@@ -791,7 +932,9 @@ function isValidPhone(value: string) {
                 <a href="#documentos">Ir para documentos</a>
                 <a href="#pagamento">Ir para pagamento</a>
                 <a href="#contrato">Ir para contrato</a>
-                <button type="button" :disabled="!!actionBusy" @click="simulateDocument('APPROVE')">Aprovar documentos</button>
+                <button type="button" :disabled="!!actionBusy" @click="simulateDocument('APPROVE')">
+                  Aprovar documentos
+                </button>
                 <a href="#documentos">Recusar documento</a>
               </div>
             </section>

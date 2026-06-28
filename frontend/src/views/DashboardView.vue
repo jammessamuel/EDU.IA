@@ -584,6 +584,7 @@ function serviceLabel(log: PostSaleIntegrationLog) {
     PAGAMENTO: 'Pagamento fake',
     CONTRATO: 'Contrato fake',
     DOCUMENTOS: 'Documentos fake',
+    ALERTAS: 'Alertas fake',
   }
   return labels[log.service]
 }
@@ -598,6 +599,7 @@ function actionLabel(action: string) {
     SEND: 'Contrato enviado',
     VIEW: 'Contrato visualizado',
     SIGN: 'Contrato assinado',
+    DISPATCH_ALERT: 'Alerta disparado',
     EXPIRE: 'Contrato expirado',
     RECEIVE: 'Documento recebido',
     APPROVE: 'Documento aprovado',

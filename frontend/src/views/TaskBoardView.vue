@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NSpin } from 'naive-ui'
 import {
@@ -14,15 +14,25 @@ import {
   DocumentTextOutline,
   FlashOutline,
   FunnelOutline,
+  MegaphoneOutline,
+  NotificationsOutline,
   OpenOutline,
   PersonCircleOutline,
+  RadioOutline,
   SearchOutline,
   SendOutline,
   TimeOutline,
+  VolumeHighOutline,
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
-import type { PostSaleOverview, PostSaleStudent, PostSaleTask } from '@/types'
+import type {
+  PostSaleAlert,
+  PostSaleIntegrationLog,
+  PostSaleOverview,
+  PostSaleStudent,
+  PostSaleTask,
+} from '@/types'
 
 type BoardColumn =
   | 'a_fazer'
@@ -47,6 +57,17 @@ const updatingTaskId = ref<string | null>(null)
 const createTaskOpen = ref(false)
 const creatingTask = ref(false)
 const createTaskError = ref<string | null>(null)
+const alertsPanelOpen = ref(false)
+const dispatchingAlertId = ref<string | null>(null)
+const alertFeedback = ref<string | null>(null)
+const soundEnabled = ref(localStorage.getItem('eduia_alert_sound') === 'on')
+const notificationEnabled = ref(
+  typeof window !== 'undefined' &&
+    'Notification' in window &&
+    Notification.permission === 'granted',
+)
+const silencedAlertIds = ref<Set<string>>(new Set())
+const seenAlertIds = ref<Set<string>>(new Set())
 const search = ref('')
 const roleFilter = ref('todos')
 const priorityFilter = ref('todas')
@@ -82,6 +103,8 @@ const employeeSuggestions = [
 ]
 
 const createForm = ref<CreateTaskForm>(defaultCreateTaskForm())
+let alertAudioContext: AudioContext | null = null
+let alertFeedbackTimer: number | null = null
 
 const columns: BoardColumnMeta[] = [
   { key: 'a_fazer', title: 'A fazer', helper: 'Entrada da automação e triagem da equipe.' },
@@ -101,6 +124,16 @@ const columns: BoardColumnMeta[] = [
 
 const tasks = computed(() => overview.value?.tasks ?? [])
 const students = computed(() => overview.value?.students ?? [])
+const alerts = computed(() => overview.value?.alerts ?? [])
+const activeAlerts = computed(() =>
+  alerts.value.filter((alert) => !silencedAlertIds.value.has(alert.id)),
+)
+const alertDispatches = computed(() =>
+  (overview.value?.alertDispatches?.length
+    ? overview.value.alertDispatches
+    : (overview.value?.integrationLogs ?? []).filter((log) => log.service === 'ALERTAS')
+  ).slice(0, 8),
+)
 const studentById = computed(() => new Map(students.value.map((student) => [student.id, student])))
 
 const selectedTask = computed(
@@ -207,6 +240,7 @@ const boardStats = computed(() => {
     total: tasks.value.length,
     open: open.length,
     overdue,
+    alerts: activeAlerts.value.length,
     alarm24,
     alarm48,
     high: open.filter((task) => priorityWeight(task.priority) <= 2).length,
@@ -214,6 +248,23 @@ const boardStats = computed(() => {
       .length,
   }
 })
+
+const alertStats = computed(() => ({
+  total: activeAlerts.value.length,
+  late: activeAlerts.value.filter((alert) => alert.level === 'VENCIDA').length,
+  critical: activeAlerts.value.filter((alert) => alert.level === 'CRITICO').length,
+  next24: activeAlerts.value.filter((alert) => alert.level === '24H').length,
+  next48: activeAlerts.value.filter((alert) => alert.level === '48H').length,
+}))
+
+const topAlert = computed(
+  () =>
+    [...activeAlerts.value].sort(
+      (a, b) =>
+        alertWeight(a.level) - alertWeight(b.level) ||
+        new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(),
+    )[0] ?? null,
+)
 
 const activeFilterCount = computed(
   () =>
@@ -234,6 +285,134 @@ async function loadBoard() {
   } finally {
     loading.value = false
   }
+}
+
+function openAlertCenter() {
+  selectedTaskId.value = null
+  alertsPanelOpen.value = true
+}
+
+function closeAlertCenter() {
+  alertsPanelOpen.value = false
+}
+
+function setAlertFeedback(message: string) {
+  alertFeedback.value = message
+  if (alertFeedbackTimer) window.clearTimeout(alertFeedbackTimer)
+  alertFeedbackTimer = window.setTimeout(() => {
+    alertFeedback.value = null
+  }, 4200)
+}
+
+async function enableAlertSound() {
+  soundEnabled.value = true
+  localStorage.setItem('eduia_alert_sound', 'on')
+  await playAlertSound('CRITICO')
+  setAlertFeedback('Som de alerta ativado neste navegador.')
+}
+
+function disableAlertSound() {
+  soundEnabled.value = false
+  localStorage.setItem('eduia_alert_sound', 'off')
+  setAlertFeedback('Som de alerta desativado.')
+}
+
+async function enableBrowserNotifications() {
+  if (!('Notification' in window)) {
+    setAlertFeedback('Este navegador não suporta notificação local.')
+    return
+  }
+
+  const permission = await Notification.requestPermission()
+  notificationEnabled.value = permission === 'granted'
+  setAlertFeedback(
+    permission === 'granted'
+      ? 'Notificação do navegador ativada.'
+      : 'Notificação não foi liberada no navegador.',
+  )
+}
+
+async function testAlertSignal() {
+  await playAlertSound('CRITICO')
+  if (
+    notificationEnabled.value &&
+    'Notification' in window &&
+    Notification.permission === 'granted'
+  ) {
+    new Notification('EDU.IA - alerta de teste', {
+      body: 'Som e notificação estão prontos para os prazos críticos.',
+      tag: 'eduia-alert-test',
+    })
+  }
+  setAlertFeedback('Teste de alerta executado.')
+}
+
+async function dispatchAlert(alert: PostSaleAlert) {
+  if (dispatchingAlertId.value) return
+  dispatchingAlertId.value = alert.id
+  try {
+    const response = await postSalesApi.dispatchAlert(alert.taskId)
+    overview.value = response.overview
+    if (soundEnabled.value) void playAlertSound(alert.level)
+    setAlertFeedback('Disparo fake registrado na central e no histórico.')
+  } catch {
+    error.value = 'Não foi possível disparar o alerta fake.'
+  } finally {
+    dispatchingAlertId.value = null
+  }
+}
+
+function openAlertTask(alert: PostSaleAlert) {
+  const task = tasks.value.find((item) => item.id === alert.taskId)
+  if (task) {
+    selectedTaskId.value = task.id
+    alertsPanelOpen.value = false
+  }
+}
+
+function silenceAlert(alert: PostSaleAlert) {
+  const next = new Set(silencedAlertIds.value)
+  next.add(alert.id)
+  silencedAlertIds.value = next
+  setAlertFeedback('Alerta silenciado nesta sessão.')
+}
+
+async function playAlertSound(level: PostSaleAlert['level']) {
+  if (typeof window === 'undefined') return
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AudioContextClass) return
+
+  alertAudioContext ??= new AudioContextClass()
+  if (alertAudioContext.state === 'suspended') await alertAudioContext.resume()
+
+  const frequencies = level === 'VENCIDA' || level === 'CRITICO' ? [880, 660, 880] : [620, 520]
+  const now = alertAudioContext.currentTime
+  frequencies.forEach((frequency, index) => {
+    const oscillator = alertAudioContext?.createOscillator()
+    const gain = alertAudioContext?.createGain()
+    if (!oscillator || !gain || !alertAudioContext) return
+    oscillator.type = level === 'VENCIDA' ? 'square' : 'sine'
+    oscillator.frequency.value = frequency
+    gain.gain.setValueAtTime(0.0001, now + index * 0.16)
+    gain.gain.exponentialRampToValueAtTime(0.12, now + index * 0.16 + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.16 + 0.13)
+    oscillator.connect(gain)
+    gain.connect(alertAudioContext.destination)
+    oscillator.start(now + index * 0.16)
+    oscillator.stop(now + index * 0.16 + 0.14)
+  })
+}
+
+function notifyAlert(alert: PostSaleAlert) {
+  if (!notificationEnabled.value || !('Notification' in window)) return
+  if (Notification.permission !== 'granted') return
+
+  new Notification(`EDU.IA - ${alertLevelLabel(alert.level)}`, {
+    body: alert.message,
+    tag: alert.id,
+  })
 }
 
 async function moveTask(task: PostSaleTask, column: BoardColumn) {
@@ -529,6 +708,52 @@ function alarmLabel(task: PostSaleTask) {
   return 'Sem alarme'
 }
 
+function alertLevelLabel(level: PostSaleAlert['level']) {
+  const labels: Record<PostSaleAlert['level'], string> = {
+    VENCIDA: 'Vencida',
+    CRITICO: 'Crítica',
+    '24H': 'Alarme 24h',
+    '48H': 'Alarme 48h',
+  }
+  return labels[level]
+}
+
+function alertWeight(level: PostSaleAlert['level']) {
+  const weights: Record<PostSaleAlert['level'], number> = {
+    VENCIDA: 0,
+    CRITICO: 1,
+    '24H': 2,
+    '48H': 3,
+  }
+  return weights[level]
+}
+
+function alertTone(level: PostSaleAlert['level']) {
+  if (level === 'VENCIDA') return 'late'
+  if (level === 'CRITICO') return 'critical'
+  if (level === '24H') return 'today'
+  return 'soon'
+}
+
+function alertTimeLabel(alert: PostSaleAlert) {
+  if (alert.minutesUntilDue < 0)
+    return `Venceu há ${humanizeMinutes(Math.abs(alert.minutesUntilDue))}`
+  return `Vence em ${humanizeMinutes(alert.minutesUntilDue)}`
+}
+
+function humanizeMinutes(minutes: number) {
+  if (minutes < 60) return `${Math.max(1, minutes)} min`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.round(hours / 24)
+  return `${days} dia${days === 1 ? '' : 's'}`
+}
+
+function dispatchMessage(log: PostSaleIntegrationLog) {
+  const message = log.requestPayload?.message
+  return typeof message === 'string' && message.trim() ? message : log.visibleMessage
+}
+
 function isOverdue(task: PostSaleTask) {
   return task.status !== 'CONCLUIDA' && dueTime(task) < Date.now()
 }
@@ -580,7 +805,28 @@ function toDatetimeLocalValue(date: Date) {
   )}:${pad(date.getMinutes())}`
 }
 
+watch(
+  activeAlerts,
+  (nextAlerts) => {
+    const urgent = nextAlerts.find((alert) => ['VENCIDA', 'CRITICO', '24H'].includes(alert.level))
+    if (!urgent || seenAlertIds.value.has(urgent.id)) return
+
+    const nextSeen = new Set(seenAlertIds.value)
+    nextSeen.add(urgent.id)
+    seenAlertIds.value = nextSeen
+
+    if (soundEnabled.value) void playAlertSound(urgent.level)
+    notifyAlert(urgent)
+  },
+  { flush: 'post' },
+)
+
 onMounted(loadBoard)
+
+onBeforeUnmount(() => {
+  if (alertFeedbackTimer) window.clearTimeout(alertFeedbackTimer)
+  if (alertAudioContext) void alertAudioContext.close()
+})
 </script>
 
 <template>
@@ -597,6 +843,11 @@ onMounted(loadBoard)
         </div>
 
         <div class="board-actions">
+          <button type="button" class="ghost-action alert-center-action" @click="openAlertCenter">
+            <NIcon :component="NotificationsOutline" size="16" />
+            Central de alertas
+            <span v-if="activeAlerts.length" class="action-badge">{{ activeAlerts.length }}</span>
+          </button>
           <button type="button" class="primary-action" @click="openCreateTask">
             <NIcon :component="AddCircleOutline" size="16" />
             Nova tarefa
@@ -628,6 +879,10 @@ onMounted(loadBoard)
           <span>Vencidas</span>
           <strong>{{ boardStats.overdue }}</strong>
         </div>
+        <button type="button" class="ops-alert-tile" @click="openAlertCenter">
+          <span>Alertas ativos</span>
+          <strong>{{ boardStats.alerts }}</strong>
+        </button>
         <div>
           <span>Alarme 24h</span>
           <strong>{{ boardStats.alarm24 }}</strong>
@@ -639,6 +894,37 @@ onMounted(loadBoard)
         <div>
           <span>Automações</span>
           <strong>{{ boardStats.auto }}</strong>
+        </div>
+      </section>
+
+      <section
+        v-if="topAlert"
+        class="alert-command-center"
+        :class="`alert-command-center--${alertTone(topAlert.level)}`"
+        aria-live="polite"
+      >
+        <div class="alert-command-center__main">
+          <span class="alert-siren">
+            <NIcon :component="RadioOutline" size="20" />
+          </span>
+          <div>
+            <span class="alert-eyebrow">{{ alertLevelLabel(topAlert.level) }}</span>
+            <h2>{{ topAlert.title }}</h2>
+            <p>{{ topAlert.message }}</p>
+          </div>
+        </div>
+        <div class="alert-command-center__actions">
+          <span>{{ alertTimeLabel(topAlert) }}</span>
+          <button type="button" class="ghost-action" @click="openAlertCenter">Abrir central</button>
+          <button
+            type="button"
+            class="primary-action"
+            :disabled="dispatchingAlertId === topAlert.id"
+            @click="dispatchAlert(topAlert)"
+          >
+            <NIcon :component="MegaphoneOutline" size="16" />
+            {{ dispatchingAlertId === topAlert.id ? 'Disparando...' : 'Disparar agora' }}
+          </button>
         </div>
       </section>
 
@@ -780,6 +1066,132 @@ onMounted(loadBoard)
         </article>
       </section>
     </main>
+
+    <div v-if="alertsPanelOpen" class="drawer-backdrop" @click="closeAlertCenter"></div>
+    <aside v-if="alertsPanelOpen" class="alerts-drawer" aria-label="Central de alertas">
+      <header class="drawer-head">
+        <div>
+          <span class="drawer-label">Monitoramento</span>
+          <h2>Central de alertas</h2>
+          <p>Som, notificação local e disparos fake das tarefas críticas.</p>
+        </div>
+        <button
+          type="button"
+          class="icon-button"
+          aria-label="Fechar alertas"
+          @click="closeAlertCenter"
+        >
+          <NIcon :component="CloseOutline" size="18" />
+        </button>
+      </header>
+
+      <section class="drawer-section">
+        <div class="alert-summary-grid">
+          <span>
+            <small>Total</small>
+            <strong>{{ alertStats.total }}</strong>
+          </span>
+          <span>
+            <small>Vencidas</small>
+            <strong>{{ alertStats.late }}</strong>
+          </span>
+          <span>
+            <small>Críticas</small>
+            <strong>{{ alertStats.critical }}</strong>
+          </span>
+          <span>
+            <small>24h / 48h</small>
+            <strong>{{ alertStats.next24 }} / {{ alertStats.next48 }}</strong>
+          </span>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h3>Som e notificação</h3>
+        <div class="alert-settings">
+          <button
+            v-if="!soundEnabled"
+            type="button"
+            class="primary-action"
+            @click="enableAlertSound"
+          >
+            <NIcon :component="VolumeHighOutline" size="16" />
+            Ativar som
+          </button>
+          <button v-else type="button" class="ghost-action" @click="disableAlertSound">
+            Som ativado
+          </button>
+          <button type="button" class="ghost-action" @click="enableBrowserNotifications">
+            <NIcon :component="NotificationsOutline" size="16" />
+            {{ notificationEnabled ? 'Notificação ativa' : 'Ativar notificação' }}
+          </button>
+          <button type="button" class="ghost-action" @click="testAlertSignal">Testar alarme</button>
+        </div>
+        <p v-if="alertFeedback" class="alert-feedback">{{ alertFeedback }}</p>
+      </section>
+
+      <section class="drawer-section">
+        <h3>Alertas ativos</h3>
+        <div v-if="activeAlerts.length" class="alert-list">
+          <article
+            v-for="alert in activeAlerts"
+            :key="alert.id"
+            class="alert-card"
+            :class="`alert-card--${alertTone(alert.level)}`"
+          >
+            <header>
+              <span>{{ alertLevelLabel(alert.level) }}</span>
+              <strong>{{ alertTimeLabel(alert) }}</strong>
+            </header>
+            <h4>{{ alert.title }}</h4>
+            <p>{{ alert.message }}</p>
+            <dl>
+              <div>
+                <dt>Responsável</dt>
+                <dd>{{ alert.assignee }}</dd>
+              </div>
+              <div>
+                <dt>Prazo</dt>
+                <dd>{{ formatLongDate(alert.dueAt) }}</dd>
+              </div>
+              <div>
+                <dt>Canal</dt>
+                <dd>{{ alert.channel }}</dd>
+              </div>
+            </dl>
+            <footer>
+              <button type="button" class="ghost-action" @click="openAlertTask(alert)">
+                Abrir card
+              </button>
+              <button
+                type="button"
+                class="primary-action"
+                :disabled="dispatchingAlertId === alert.id"
+                @click="dispatchAlert(alert)"
+              >
+                {{ dispatchingAlertId === alert.id ? 'Disparando...' : 'Disparar fake' }}
+              </button>
+              <button type="button" class="clear-filters" @click="silenceAlert(alert)">
+                Silenciar
+              </button>
+            </footer>
+          </article>
+        </div>
+        <p v-else class="empty-column">Nenhum alerta ativo no momento.</p>
+      </section>
+
+      <section class="drawer-section">
+        <h3>Últimos disparos</h3>
+        <div v-if="alertDispatches.length" class="dispatch-log-list">
+          <article v-for="log in alertDispatches" :key="log.id">
+            <span>{{ formatLongDate(log.createdAt) }}</span>
+            <strong>{{ log.studentName || 'Tarefa interna' }}</strong>
+            <p>{{ dispatchMessage(log) }}</p>
+          </article>
+        </div>
+        <p v-else class="empty-column">Nenhum disparo fake registrado ainda.</p>
+      </section>
+    </aside>
 
     <div v-if="selectedTask" class="drawer-backdrop" @click="closeDrawer"></div>
     <aside v-if="selectedTask" class="task-drawer" aria-label="Detalhe da tarefa">
@@ -1116,6 +1528,7 @@ onMounted(loadBoard)
 .primary-action,
 .ghost-action,
 .clear-filters,
+.ops-alert-tile,
 .move-actions button,
 .quick-actions button {
   min-height: 38px;
@@ -1137,6 +1550,23 @@ onMounted(loadBoard)
     background 0.18s ease;
 }
 
+.alert-center-action {
+  position: relative;
+}
+
+.action-badge {
+  min-width: 21px;
+  min-height: 21px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
 .primary-action,
 .done-action {
   border-color: transparent;
@@ -1151,11 +1581,12 @@ button:disabled {
 
 .ops-strip {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 10px;
 }
 
-.ops-strip div {
+.ops-strip div,
+.ops-alert-tile {
   min-height: 76px;
   padding: 14px;
   border: 1px solid var(--border);
@@ -1166,16 +1597,104 @@ button:disabled {
   justify-content: space-between;
 }
 
-.ops-strip span {
+.ops-alert-tile {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.ops-alert-tile:hover {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  background: var(--danger-soft);
+}
+
+.ops-strip span,
+.ops-alert-tile span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 850;
 }
 
-.ops-strip strong {
+.ops-strip strong,
+.ops-alert-tile strong {
   color: var(--text);
   font-size: 25px;
   line-height: 1;
+}
+
+.alert-command-center {
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--warning);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  box-shadow: var(--shadow-xs);
+}
+
+.alert-command-center--late,
+.alert-command-center--critical {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 44%, var(--surface));
+}
+
+.alert-command-center--today {
+  border-left-color: var(--danger);
+}
+
+.alert-command-center__main {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.alert-siren {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.alert-eyebrow {
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.alert-command-center h2 {
+  margin: 2px 0 4px;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.alert-command-center p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.alert-command-center__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.alert-command-center__actions > span {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .filters-bar {
@@ -1479,6 +1998,23 @@ button:disabled {
   overflow-y: auto;
 }
 
+.alerts-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 22;
+  width: min(520px, 100vw);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--surface);
+  color: var(--text);
+  border-left: 1px solid var(--border);
+  box-shadow: -24px 0 70px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .drawer-head {
   padding: 20px;
   border-bottom: 1px solid var(--border);
@@ -1530,6 +2066,165 @@ button:disabled {
   color: var(--text);
   font-size: 14px;
   font-weight: 950;
+}
+
+.alert-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.alert-summary-grid span {
+  min-height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.alert-summary-grid small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.alert-summary-grid strong {
+  color: var(--text);
+  font-size: 21px;
+  line-height: 1;
+}
+
+.alert-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alert-feedback {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.alert-list {
+  display: grid;
+  gap: 10px;
+}
+
+.alert-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--warning);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 12px;
+  display: grid;
+  gap: 9px;
+}
+
+.alert-card--late,
+.alert-card--critical {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 36%, var(--surface));
+}
+
+.alert-card--today {
+  border-left-color: var(--danger);
+}
+
+.alert-card header,
+.alert-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.alert-card header span {
+  min-height: 24px;
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.alert-card header strong {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.alert-card h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.alert-card p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.alert-card dl {
+  margin: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.alert-card dl div,
+.dispatch-log-list article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 9px;
+}
+
+.alert-card dt,
+.dispatch-log-list span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.alert-card dd {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.dispatch-log-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dispatch-log-list strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.dispatch-log-list p {
+  margin: 4px 0 0;
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .detail-grid {
@@ -1764,6 +2459,17 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .alert-command-center,
+  .alert-command-center__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .alert-command-center__actions .primary-action,
+  .alert-command-center__actions .ghost-action {
+    width: 100%;
+  }
+
   .kanban-board {
     flex: 0 0 560px;
     grid-template-columns: repeat(5, minmax(270px, 82vw));
@@ -1773,6 +2479,14 @@ button:disabled {
 
   .task-drawer {
     width: 100vw;
+  }
+
+  .alerts-drawer {
+    width: 100vw;
+  }
+
+  .alert-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .task-form {

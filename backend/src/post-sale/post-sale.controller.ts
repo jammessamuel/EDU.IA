@@ -101,6 +101,15 @@ export class PostSaleController {
     return this.service.updateTask(user.schoolId, taskId, body);
   }
 
+  @Post('tasks/:taskId/alert/dispatch')
+  @RequirePermission('leads:create:school')
+  dispatchTaskAlert(
+    @Param('taskId') taskId: string,
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.dispatchTaskAlert(user.schoolId, taskId);
+  }
+
   @Post('students/:studentKey/messages/simulate')
   @RequirePermission('leads:create:school')
   simulateMessage(

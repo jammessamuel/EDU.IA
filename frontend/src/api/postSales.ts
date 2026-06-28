@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   PostSaleAction,
+  PostSaleAlertDispatchResponse,
   PostSaleFakeActionResponse,
   PostSaleIntegrationLog,
   PostSaleOverview,
@@ -86,6 +87,12 @@ export const postSalesApi = {
   ): Promise<PostSaleOverview> {
     return apiClient
       .patch<PostSaleOverview>(`/post-sales/tasks/${taskId}`, input)
+      .then((res) => res.data)
+  },
+
+  dispatchAlert(taskId: string): Promise<PostSaleAlertDispatchResponse> {
+    return apiClient
+      .post<PostSaleAlertDispatchResponse>(`/post-sales/tasks/${taskId}/alert/dispatch`)
       .then((res) => res.data)
   },
 
