@@ -92,6 +92,22 @@ interface LifecycleStudent {
   isDemo: boolean;
 }
 
+interface ManualPostSaleTaskInput {
+  title?: string;
+  description?: string;
+  studentKey?: string | null;
+  studentName?: string;
+  ownerTeam?: string;
+  assignee?: string;
+  role?: string;
+  priority?: string;
+  dueInDays?: number;
+  dueAt?: string;
+  column?: string;
+  origin?: string;
+  reminderDaysBefore?: number | null;
+}
+
 @Injectable()
 export class PostSaleService {
   constructor(
@@ -303,49 +319,75 @@ export class PostSaleService {
 
   async createTask(
     schoolId: string,
-    studentKey: string,
-    input: {
-      title?: string;
-      ownerTeam?: string;
-      priority?: string;
-      dueInDays?: number;
-    },
+    input: ManualPostSaleTaskInput,
   ): Promise<unknown> {
-    const student = await this.findStudent(schoolId, studentKey);
     const title = input.title?.trim();
     if (!title) throw new BadRequestException('Informe o título da tarefa.');
 
-    const dueAt = this.addDays(
-      new Date(),
-      Number.isFinite(input.dueInDays) ? Number(input.dueInDays) : 1,
+    const student = input.studentKey
+      ? await this.findStudent(schoolId, input.studentKey)
+      : null;
+    const role = input.role?.trim() || this.roleForTeam(input.ownerTeam ?? '');
+    const ownerTeam =
+      input.ownerTeam?.trim() ||
+      (role ? this.teamForRole(role) : student?.ownerTeam) ||
+      'Secretaria';
+    const dueAt = this.parseTaskDueAt(input);
+    const reminderDaysBefore = this.parseReminderDaysBefore(
+      input.reminderDaysBefore,
     );
-    await this.prisma.postSaleTask.create({
+    const reminderAt =
+      reminderDaysBefore && dueAt
+        ? this.addDays(dueAt, -reminderDaysBefore)
+        : null;
+    const description = input.description?.trim() || null;
+    const column = this.taskColumn(input.column ?? 'a_fazer');
+
+    const task = await this.prisma.postSaleTask.create({
       data: {
         schoolId,
-        studentKey,
-        enrollmentId: student.enrollmentId,
-        studentName: student.studentName,
+        studentKey: student?.id ?? null,
+        enrollmentId: student?.enrollmentId ?? null,
+        studentName:
+          student?.studentName || input.studentName?.trim() || 'Tarefa interna',
         title,
-        ownerTeam: input.ownerTeam?.trim() || student.ownerTeam,
-        assignee: input.ownerTeam?.trim() || student.ownerTeam,
-        role: this.roleForTeam(input.ownerTeam?.trim() || student.ownerTeam),
+        ownerTeam,
+        assignee: input.assignee?.trim() || ownerTeam,
+        role,
         priority: input.priority?.trim() || 'Normal',
-        column: 'a_fazer',
-        origin: 'manual',
+        column,
+        origin: input.origin?.trim() || 'manual',
         createdBy: 'humano',
-        automation: 'Criada pela equipe',
-        relatedEntity: JSON.stringify({ rule: 'manual' }),
+        automation:
+          description ||
+          `Tarefa manual criada para ${input.assignee?.trim() || ownerTeam}.`,
+        relatedEntity: JSON.stringify({
+          rule: 'manual',
+          description,
+          reminderDaysBefore,
+          reminderAt: reminderAt?.toISOString() ?? null,
+        }),
         autoResolve: false,
         dueAt,
       },
     });
 
-    await this.recordEvent(schoolId, student, {
-      type: 'TASK_CREATED',
-      title: 'Tarefa criada',
-      description: title,
-      metadata: { ownerTeam: input.ownerTeam, priority: input.priority, dueAt },
-    });
+    if (student) {
+      await this.recordEvent(schoolId, student, {
+        type: 'TASK_CREATED',
+        title: 'Tarefa criada',
+        description: description || title,
+        metadata: {
+          taskId: task.id,
+          ownerTeam,
+          assignee: input.assignee,
+          priority: input.priority,
+          dueAt,
+          reminderDaysBefore,
+          reminderAt,
+        },
+      });
+    }
 
     return this.overview(schoolId);
   }
@@ -1742,32 +1784,45 @@ export class PostSaleService {
   }
 
   private tasks(storedTasks: any[] = []) {
-    return storedTasks.map((task) => ({
-      id: task.id,
-      studentId: task.studentKey,
-      leadId: task.leadId,
-      title: task.title,
-      studentName: task.studentName,
-      ownerTeam: task.ownerTeam,
-      assignee: task.assignee,
-      role: task.role,
-      priority: task.priority,
-      column: task.column,
-      origin: task.origin,
-      createdBy: task.createdBy,
-      relatedEntity: this.safeJson(task.relatedEntity),
-      autoResolve: task.autoResolve,
-      dueAt: task.dueAt,
-      firstMovedAt: task.firstMovedAt,
-      resolvedAt: task.resolvedAt,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      automation: this.cleanVisibleText(
-        task.automation ?? 'Criada pela equipe',
-      ),
-      status: task.status,
-      source: task.createdBy === 'automacao' ? 'automatic' : 'manual',
-    }));
+    return storedTasks.map((task) => {
+      const metadata = this.safeJson(task.relatedEntity);
+      return {
+        id: task.id,
+        studentId: task.studentKey,
+        leadId: task.leadId,
+        title: task.title,
+        studentName: task.studentName,
+        ownerTeam: task.ownerTeam,
+        assignee: task.assignee,
+        role: task.role,
+        priority: task.priority,
+        column: task.column,
+        origin: task.origin,
+        createdBy: task.createdBy,
+        relatedEntity: metadata,
+        description:
+          typeof metadata.description === 'string'
+            ? this.cleanVisibleText(metadata.description)
+            : null,
+        reminderDaysBefore:
+          typeof metadata.reminderDaysBefore === 'number'
+            ? metadata.reminderDaysBefore
+            : null,
+        reminderAt:
+          typeof metadata.reminderAt === 'string' ? metadata.reminderAt : null,
+        autoResolve: task.autoResolve,
+        dueAt: task.dueAt,
+        firstMovedAt: task.firstMovedAt,
+        resolvedAt: task.resolvedAt,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        automation: this.cleanVisibleText(
+          task.automation ?? 'Criada pela equipe',
+        ),
+        status: task.status,
+        source: task.createdBy === 'automacao' ? 'automatic' : 'manual',
+      };
+    });
   }
 
   private automations(
@@ -2104,6 +2159,49 @@ export class PostSaleService {
       return 'sucesso_do_aluno';
     if (normalized.includes('gestor')) return 'gestor';
     return 'secretaria';
+  }
+
+  private teamForRole(role: string) {
+    const normalized = role
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    const labels: Record<string, string> = {
+      comercial: 'Comercial',
+      financeiro: 'Financeiro',
+      secretaria: 'Secretaria',
+      sucesso_do_aluno: 'Sucesso do Aluno',
+      gestor: 'Gestor',
+    };
+    return labels[normalized] ?? 'Secretaria';
+  }
+
+  private parseTaskDueAt(input: ManualPostSaleTaskInput) {
+    if (input.dueAt) {
+      const dueAt = new Date(input.dueAt);
+      if (Number.isNaN(dueAt.getTime())) {
+        throw new BadRequestException(
+          'Informe uma data e hora de prazo válidas.',
+        );
+      }
+      return dueAt;
+    }
+
+    return this.addDays(
+      new Date(),
+      Number.isFinite(input.dueInDays) ? Number(input.dueInDays) : 1,
+    );
+  }
+
+  private parseReminderDaysBefore(value: unknown) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    if (![1, 2].includes(parsed)) {
+      throw new BadRequestException(
+        'O alarme deve ser de 1 ou 2 dias antes do prazo.',
+      );
+    }
+    return parsed;
   }
 
   private taskColumn(value: string) {

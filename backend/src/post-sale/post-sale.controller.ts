@@ -45,13 +45,43 @@ export class PostSaleController {
     @Body()
     body: {
       title?: string;
+      description?: string;
       ownerTeam?: string;
+      assignee?: string;
+      role?: string;
       priority?: string;
       dueInDays?: number;
+      dueAt?: string;
+      column?: string;
+      origin?: string;
+      reminderDaysBefore?: number | null;
     },
     @CurrentUser() user: { schoolId: string },
   ): Promise<unknown> {
-    return this.service.createTask(user.schoolId, studentKey, body);
+    return this.service.createTask(user.schoolId, { ...body, studentKey });
+  }
+
+  @Post('tasks')
+  @RequirePermission('leads:create:school')
+  createManualTask(
+    @Body()
+    body: {
+      title?: string;
+      description?: string;
+      studentKey?: string | null;
+      studentName?: string;
+      ownerTeam?: string;
+      assignee?: string;
+      role?: string;
+      priority?: string;
+      dueAt?: string;
+      column?: string;
+      origin?: string;
+      reminderDaysBefore?: number | null;
+    },
+    @CurrentUser() user: { schoolId: string },
+  ): Promise<unknown> {
+    return this.service.createTask(user.schoolId, body);
   }
 
   @Patch('tasks/:taskId')

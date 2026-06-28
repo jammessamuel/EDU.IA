@@ -3,7 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NSpin } from 'naive-ui'
 import {
+  AddCircleOutline,
   AlertCircleOutline,
+  AlarmOutline,
   ArrowForwardOutline,
   CalendarOutline,
   CardOutline,
@@ -42,11 +44,44 @@ const error = ref<string | null>(null)
 const selectedTaskId = ref<string | null>(null)
 const draggedTaskId = ref<string | null>(null)
 const updatingTaskId = ref<string | null>(null)
+const createTaskOpen = ref(false)
+const creatingTask = ref(false)
+const createTaskError = ref<string | null>(null)
 const search = ref('')
 const roleFilter = ref('todos')
 const priorityFilter = ref('todas')
 const originFilter = ref('todas')
 const courseFilter = ref('todos')
+
+interface CreateTaskForm {
+  title: string
+  description: string
+  studentKey: string
+  assignee: string
+  role: string
+  priority: string
+  dueAt: string
+  reminderDaysBefore: '' | '1' | '2'
+}
+
+const roleChoices = [
+  { value: 'comercial', label: 'Comercial' },
+  { value: 'financeiro', label: 'Financeiro' },
+  { value: 'secretaria', label: 'Secretaria' },
+  { value: 'sucesso_do_aluno', label: 'Sucesso do aluno' },
+  { value: 'gestor', label: 'Gestor' },
+]
+
+const priorityChoices = ['Urgente', 'Alta', 'Média', 'Normal']
+const employeeSuggestions = [
+  'Amanda - Comercial',
+  'Bruno - Financeiro',
+  'Camila - Secretaria',
+  'Diego - Sucesso do aluno',
+  'Gestor responsável',
+]
+
+const createForm = ref<CreateTaskForm>(defaultCreateTaskForm())
 
 const columns: BoardColumnMeta[] = [
   { key: 'a_fazer', title: 'A fazer', helper: 'Entrada da automação e triagem da equipe.' },
@@ -166,10 +201,14 @@ const boardTasks = computed(() => {
 const boardStats = computed(() => {
   const open = tasks.value.filter((task) => task.status !== 'CONCLUIDA')
   const overdue = open.filter((task) => dueTime(task) < Date.now()).length
+  const alarm24 = open.filter((task) => alarmState(task) === '24h').length
+  const alarm48 = open.filter((task) => alarmState(task) === '48h').length
   return {
     total: tasks.value.length,
     open: open.length,
     overdue,
+    alarm24,
+    alarm48,
     high: open.filter((task) => priorityWeight(task.priority) <= 2).length,
     auto: open.filter((task) => task.createdBy === 'automacao' || task.source === 'automatic')
       .length,
@@ -215,6 +254,69 @@ async function moveTask(task: PostSaleTask, column: BoardColumn) {
     error.value = 'Não foi possível mover a tarefa.'
   } finally {
     updatingTaskId.value = null
+  }
+}
+
+function openCreateTask() {
+  createForm.value = defaultCreateTaskForm()
+  createTaskError.value = null
+  createTaskOpen.value = true
+}
+
+function closeCreateTask() {
+  if (creatingTask.value) return
+  createTaskOpen.value = false
+  createTaskError.value = null
+}
+
+async function submitCreateTask() {
+  if (creatingTask.value) return
+  createTaskError.value = null
+
+  const title = createForm.value.title.trim()
+  const assignee = createForm.value.assignee.trim()
+  if (!title) {
+    createTaskError.value = 'Informe o título da tarefa.'
+    return
+  }
+  if (!assignee) {
+    createTaskError.value = 'Informe o funcionário responsável.'
+    return
+  }
+  if (!createForm.value.dueAt) {
+    createTaskError.value = 'Informe o prazo com data, hora e minutos.'
+    return
+  }
+
+  const dueAt = new Date(createForm.value.dueAt)
+  if (Number.isNaN(dueAt.getTime())) {
+    createTaskError.value = 'Informe uma data e hora de prazo válidas.'
+    return
+  }
+
+  creatingTask.value = true
+  try {
+    overview.value = await postSalesApi.createManualTask({
+      title,
+      description: createForm.value.description.trim() || undefined,
+      studentKey: createForm.value.studentKey || null,
+      assignee,
+      role: createForm.value.role,
+      priority: createForm.value.priority,
+      ownerTeam: roleLabel(createForm.value.role),
+      dueAt: dueAt.toISOString(),
+      column: 'a_fazer',
+      origin: 'manual',
+      reminderDaysBefore: createForm.value.reminderDaysBefore
+        ? Number(createForm.value.reminderDaysBefore)
+        : null,
+    })
+    createTaskOpen.value = false
+    createForm.value = defaultCreateTaskForm()
+  } catch {
+    createTaskError.value = 'Não foi possível criar a tarefa agora.'
+  } finally {
+    creatingTask.value = false
   }
 }
 
@@ -329,6 +431,10 @@ function columnLabel(column?: string) {
   return columns.find((item) => item.key === toColumn(column))?.title ?? 'A fazer'
 }
 
+function roleLabel(role?: string | null) {
+  return roleChoices.find((item) => item.value === role)?.label ?? labelFor(role || 'secretaria')
+}
+
 function optionList(values: Array<string | null | undefined>, emptyValue: string) {
   const unique = [...new Set(values.filter(Boolean).map((value) => String(value)))]
   return [
@@ -390,6 +496,39 @@ function dueTime(task: PostSaleTask) {
   return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time
 }
 
+function alarmState(task: PostSaleTask) {
+  if (task.status === 'CONCLUIDA') return 'none'
+  const timeLeft = dueTime(task) - Date.now()
+  if (!Number.isFinite(timeLeft) || timeLeft === Number.MAX_SAFE_INTEGER) return 'none'
+  if (timeLeft < 0) return 'late'
+
+  const reminderPreference = taskReminderPreference(task)
+  if (reminderPreference === 0) return 'none'
+  if (reminderPreference === 1) return timeLeft <= 86_400_000 ? '24h' : 'none'
+  if (reminderPreference === 2) return timeLeft <= 172_800_000 ? '48h' : 'none'
+
+  if (timeLeft <= 86_400_000) return '24h'
+  if (timeLeft <= 172_800_000) return '48h'
+  return 'none'
+}
+
+function taskReminderPreference(task: PostSaleTask) {
+  if (typeof task.reminderDaysBefore === 'number') return task.reminderDaysBefore
+  const relatedEntity =
+    task.relatedEntity && typeof task.relatedEntity === 'object' ? task.relatedEntity : null
+  if (relatedEntity?.rule === 'manual' && relatedEntity.reminderDaysBefore == null) return 0
+  return null
+}
+
+function alarmLabel(task: PostSaleTask) {
+  const state = alarmState(task)
+  if (state === 'late') return 'Vencida'
+  if (state === '24h') return 'Alarme 24h'
+  if (state === '48h') return 'Alarme 48h'
+  if (task.reminderAt) return `Lembrete ${formatDate(task.reminderAt)}`
+  return 'Sem alarme'
+}
+
 function isOverdue(task: PostSaleTask) {
   return task.status !== 'CONCLUIDA' && dueTime(task) < Date.now()
 }
@@ -418,6 +557,29 @@ function formatLongDate(value?: string | null) {
   }).format(date)
 }
 
+function defaultCreateTaskForm(): CreateTaskForm {
+  const due = new Date()
+  due.setDate(due.getDate() + 1)
+  due.setHours(17, 30, 0, 0)
+  return {
+    title: '',
+    description: '',
+    studentKey: '',
+    assignee: '',
+    role: 'secretaria',
+    priority: 'Média',
+    dueAt: toDatetimeLocalValue(due),
+    reminderDaysBefore: '1',
+  }
+}
+
+function toDatetimeLocalValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`
+}
+
 onMounted(loadBoard)
 </script>
 
@@ -435,6 +597,10 @@ onMounted(loadBoard)
         </div>
 
         <div class="board-actions">
+          <button type="button" class="primary-action" @click="openCreateTask">
+            <NIcon :component="AddCircleOutline" size="16" />
+            Nova tarefa
+          </button>
           <button type="button" class="ghost-action" @click="router.push('/dashboard')">
             Painel gestor
           </button>
@@ -461,6 +627,14 @@ onMounted(loadBoard)
         <div>
           <span>Vencidas</span>
           <strong>{{ boardStats.overdue }}</strong>
+        </div>
+        <div>
+          <span>Alarme 24h</span>
+          <strong>{{ boardStats.alarm24 }}</strong>
+        </div>
+        <div>
+          <span>Alarme 48h</span>
+          <strong>{{ boardStats.alarm48 }}</strong>
         </div>
         <div>
           <span>Automações</span>
@@ -583,6 +757,14 @@ onMounted(loadBoard)
                   <NIcon :component="TimeOutline" size="13" />
                   {{ formatDate(task.dueAt) }}
                 </span>
+                <span
+                  v-if="alarmState(task) !== 'none'"
+                  class="alarm-chip"
+                  :class="`alarm-chip--${alarmState(task)}`"
+                >
+                  <NIcon :component="AlarmOutline" size="13" />
+                  {{ alarmLabel(task) }}
+                </span>
                 <span class="check-progress">
                   {{ taskChecklist(task, taskStudent(task)).done }}/{{
                     taskChecklist(task, taskStudent(task)).total
@@ -630,7 +812,20 @@ onMounted(loadBoard)
             <small>Prazo</small>
             <strong>{{ formatLongDate(selectedTask.dueAt) }}</strong>
           </span>
+          <span>
+            <small>Alarme</small>
+            <strong>{{ alarmLabel(selectedTask) }}</strong>
+          </span>
+          <span>
+            <small>Lembrete programado</small>
+            <strong>{{ formatLongDate(selectedTask.reminderAt) }}</strong>
+          </span>
         </div>
+      </section>
+
+      <section v-if="selectedTask.description" class="drawer-section">
+        <h3>Descrição</h3>
+        <p class="automation-note">{{ selectedTask.description }}</p>
       </section>
 
       <section class="drawer-section">
@@ -750,6 +945,121 @@ onMounted(loadBoard)
         </button>
       </footer>
     </aside>
+
+    <div v-if="createTaskOpen" class="modal-backdrop" @click="closeCreateTask"></div>
+    <section v-if="createTaskOpen" class="task-modal" aria-label="Criar nova tarefa">
+      <header class="modal-head">
+        <div>
+          <span>Operação manual</span>
+          <h2>Nova tarefa</h2>
+          <p>Crie uma atividade para um funcionário com prazo, hora, minuto e alarme.</p>
+        </div>
+        <button
+          type="button"
+          class="icon-button"
+          aria-label="Fechar modal"
+          @click="closeCreateTask"
+        >
+          <NIcon :component="CloseOutline" size="18" />
+        </button>
+      </header>
+
+      <form class="task-form" @submit.prevent="submitCreateTask">
+        <label class="field field--full">
+          <span>Título da tarefa</span>
+          <input
+            v-model="createForm.title"
+            type="text"
+            maxlength="90"
+            placeholder="Ex.: Ligar para aluno e confirmar pagamento"
+            required
+          />
+        </label>
+
+        <label class="field field--full">
+          <span>Descrição / instruções</span>
+          <textarea
+            v-model="createForm.description"
+            rows="3"
+            maxlength="320"
+            placeholder="Explique o que o funcionário precisa fazer e qual resultado esperado."
+          ></textarea>
+        </label>
+
+        <label class="field">
+          <span>Aluno vinculado</span>
+          <select v-model="createForm.studentKey">
+            <option value="">Tarefa interna / sem aluno</option>
+            <option v-for="student in students" :key="student.id" :value="student.id">
+              {{ student.studentName }} · {{ student.course }}
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Funcionário responsável</span>
+          <input
+            v-model="createForm.assignee"
+            type="text"
+            list="task-assignees"
+            placeholder="Nome do funcionário"
+            required
+          />
+          <datalist id="task-assignees">
+            <option v-for="employee in employeeSuggestions" :key="employee" :value="employee" />
+          </datalist>
+        </label>
+
+        <label class="field">
+          <span>Equipe</span>
+          <select v-model="createForm.role">
+            <option v-for="role in roleChoices" :key="role.value" :value="role.value">
+              {{ role.label }}
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Prioridade</span>
+          <select v-model="createForm.priority">
+            <option v-for="priority in priorityChoices" :key="priority" :value="priority">
+              {{ priority }}
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Prazo, hora e minutos</span>
+          <input v-model="createForm.dueAt" type="datetime-local" required />
+        </label>
+
+        <label class="field">
+          <span>Alarme</span>
+          <select v-model="createForm.reminderDaysBefore">
+            <option value="1">Avisar 1 dia antes</option>
+            <option value="2">Avisar 2 dias antes</option>
+            <option value="">Sem alarme</option>
+          </select>
+        </label>
+
+        <p v-if="createTaskError" class="form-error">{{ createTaskError }}</p>
+
+        <footer class="modal-actions">
+          <button
+            type="button"
+            class="ghost-action"
+            :disabled="creatingTask"
+            @click="closeCreateTask"
+          >
+            Cancelar
+          </button>
+          <button type="submit" class="primary-action" :disabled="creatingTask">
+            <NIcon :component="AlarmOutline" size="16" />
+            {{ creatingTask ? 'Criando...' : 'Criar tarefa com alarme' }}
+          </button>
+        </footer>
+      </form>
+    </section>
   </div>
 </template>
 
@@ -841,7 +1151,7 @@ button:disabled {
 
 .ops-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1047,6 +1357,7 @@ button:disabled {
 .origin-pill,
 .priority-pill,
 .due-chip,
+.alarm-chip,
 .check-progress {
   min-height: 24px;
   border-radius: 999px;
@@ -1110,6 +1421,22 @@ button:disabled {
 .due-chip--late {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.alarm-chip {
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+}
+
+.alarm-chip--24h,
+.alarm-chip--late {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.alarm-chip--48h {
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .check-progress {
@@ -1286,6 +1613,124 @@ button:disabled {
   padding: 16px 20px 20px;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.task-modal {
+  position: fixed;
+  z-index: 31;
+  top: 50%;
+  left: 50%;
+  width: min(760px, calc(100vw - 28px));
+  max-height: min(86vh, 760px);
+  transform: translate(-50%, -50%);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.modal-head {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.modal-head span {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.modal-head h2 {
+  margin: 4px 0;
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.modal-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.task-form {
+  padding: 18px 20px 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field--full {
+  grid-column: 1 / -1;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 0 11px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field textarea {
+  min-height: 92px;
+  padding: 11px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.modal-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 6px;
+}
+
 @media (max-width: 1100px) {
   .ops-strip,
   .filters-bar {
@@ -1328,6 +1773,14 @@ button:disabled {
 
   .task-drawer {
     width: 100vw;
+  }
+
+  .task-form {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
   }
 }
 </style>

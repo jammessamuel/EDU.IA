@@ -300,6 +300,9 @@ export interface PostSaleTask {
     | string
   createdBy?: 'humano' | 'automacao' | string
   relatedEntity?: Record<string, unknown> | string | null
+  description?: string | null
+  reminderDaysBefore?: number | null
+  reminderAt?: string | null
   autoResolve?: boolean
   dueAt: string
   automation: string

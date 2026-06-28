@@ -38,11 +38,40 @@ export const postSalesApi = {
 
   createTask(
     studentId: string,
-    input: { title: string; ownerTeam?: string; priority?: string; dueInDays?: number },
+    input: {
+      title: string
+      description?: string
+      ownerTeam?: string
+      assignee?: string
+      role?: string
+      priority?: string
+      dueInDays?: number
+      dueAt?: string
+      column?: string
+      origin?: string
+      reminderDaysBefore?: number | null
+    },
   ): Promise<PostSaleOverview> {
     return apiClient
       .post<PostSaleOverview>(`/post-sales/students/${studentId}/tasks`, input)
       .then((res) => res.data)
+  },
+
+  createManualTask(input: {
+    title: string
+    description?: string
+    studentKey?: string | null
+    studentName?: string
+    ownerTeam?: string
+    assignee?: string
+    role?: string
+    priority?: string
+    dueAt?: string
+    column?: string
+    origin?: string
+    reminderDaysBefore?: number | null
+  }): Promise<PostSaleOverview> {
+    return apiClient.post<PostSaleOverview>('/post-sales/tasks', input).then((res) => res.data)
   },
 
   updateTask(
