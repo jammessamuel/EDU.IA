@@ -460,8 +460,12 @@ async function assignCase(studentId: string, event: Event) {
 
 <style scoped>
 .today-page {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   background: var(--app-bg);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .today-shell {
