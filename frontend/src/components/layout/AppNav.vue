@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon } from 'naive-ui'
 import {
@@ -11,6 +11,7 @@ import {
   LogoWhatsapp,
   MoonOutline,
   PlayCircleOutline,
+  PeopleOutline,
   RepeatOutline,
   SchoolOutline,
   SettingsOutline,
@@ -28,7 +29,7 @@ const { isDark, themeLabel, toggleTheme } = useTheme()
 
 onMounted(() => ws.load())
 
-const links = [
+const baseLinks = [
   { to: '/hoje', label: 'Hoje', icon: CalendarOutline },
   { to: '/whatsapp', label: 'WhatsApp', icon: LogoWhatsapp },
   { to: '/', label: 'Simulador', icon: PlayCircleOutline },
@@ -37,8 +38,13 @@ const links = [
   { to: '/tasks', label: 'Tarefas', icon: ClipboardOutline },
   { to: '/dashboard', label: 'Dashboard', icon: BarChartOutline },
   { to: '/kanban', label: 'Pipeline', icon: GitNetworkOutline },
-  { to: '/settings', label: 'Configurações', icon: SettingsOutline },
+  { to: '/settings', label: 'Configurações', icon: SettingsOutline, adminOnly: true },
+  { to: '/team', label: 'Equipe', icon: PeopleOutline, adminOnly: true },
 ]
+
+const links = computed(() =>
+  baseLinks.filter((link) => !link.adminOnly || auth.user?.roleName !== 'CONSULTANT'),
+)
 
 async function logout() {
   await auth.logout()

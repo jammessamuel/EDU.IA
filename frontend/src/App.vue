@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { darkTheme, NConfigProvider, NGlobalStyle } from 'naive-ui'
 import { RouterView } from 'vue-router'
 import { useTheme } from '@/composables/useTheme'
 import AccessibilityMenu from '@/components/accessibility/AccessibilityMenu.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const { isDark } = useTheme()
+const auth = useAuthStore()
+
+onMounted(() => {
+  if (auth.token) void auth.refreshUser().catch(() => undefined)
+})
 
 const themeOverrides = computed(() => ({
   common: {
@@ -20,8 +26,7 @@ const themeOverrides = computed(() => ({
     cardColor: isDark.value ? '#101D1A' : '#FFFFFF',
     modalColor: isDark.value ? '#101D1A' : '#FFFFFF',
     popoverColor: isDark.value ? '#101D1A' : '#FFFFFF',
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif',
   },
   Input: {
     borderHover: `1px solid ${isDark.value ? '#34D399' : '#128C7E'}`,

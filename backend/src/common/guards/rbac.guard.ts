@@ -9,8 +9,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
 
 // Cache de permissões em memória (5 minutos)
-const permissionsCache = new Map<string, { permissions: string[]; timestamp: number }>();
+const permissionsCache = new Map<
+  string,
+  { permissions: string[]; timestamp: number }
+>();
 const CACHE_TTL = 5 * 60 * 1000;
+
+export function invalidatePermissionsCache(userId: string) {
+  permissionsCache.delete(userId);
+}
 
 @Injectable()
 export class RbacGuard implements CanActivate {
@@ -27,7 +34,7 @@ export class RbacGuard implements CanActivate {
 
     if (!required) return true;
 
-    const req = context.switchToHttp().getRequest<any>();
+    const req = context.switchToHttp().getRequest<{ user?: { id: string } }>();
     const userId = req.user?.id;
 
     if (!userId) throw new ForbiddenException('Não autenticado');
@@ -63,14 +70,20 @@ export class RbacGuard implements CanActivate {
 
     const permissions =
       user?.role?.permissions.map(
-        (rp) => `${rp.permission.resource}:${rp.permission.action}:${rp.permission.scope}`,
+        (rp) =>
+          `${rp.permission.resource}:${rp.permission.action}:${rp.permission.scope}`,
       ) ?? [];
 
     permissionsCache.set(userId, { permissions, timestamp: Date.now() });
     return permissions;
   }
 
-  private hasPermission(perms: string[], resource: string, action: string, scope: string): boolean {
+  private hasPermission(
+    perms: string[],
+    resource: string,
+    action: string,
+    scope: string,
+  ): boolean {
     if (perms.includes('*:*:all')) return true;
     const scopes = scope === 'school' ? [scope, 'all'] : [scope];
     return scopes.some(

@@ -11,31 +11,56 @@ interface AuthUser {
   schoolId: string
   schoolName?: string
   verticalSlug?: string
+  roleName?: 'SCHOOL_ADMIN' | 'CONSULTANT' | 'SUPER_ADMIN' | null
 }
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('eduia_token'))
-  const user  = ref<AuthUser | null>(JSON.parse(localStorage.getItem('eduia_user') ?? 'null'))
+  const user = ref<AuthUser | null>(JSON.parse(localStorage.getItem('eduia_user') ?? 'null'))
 
   const isAuthenticated = computed(() => !!token.value)
 
   async function login(email: string, password: string) {
-    const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/login', { email, password })
+    const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/login', {
+      email,
+      password,
+    })
     _persist(data)
     await useAccessibility().syncFromServer()
   }
 
-  async function register(name: string, email: string, password: string, workspaceName: string, verticalId: string) {
+  async function register(
+    name: string,
+    email: string,
+    password: string,
+    workspaceName: string,
+    verticalId: string,
+  ) {
     const { data } = await api.post<{ token: string; user: AuthUser }>('/auth/register', {
-      name, email, password, workspaceName, verticalId,
+      name,
+      email,
+      password,
+      workspaceName,
+      verticalId,
     })
     _persist(data)
   }
 
+  async function refreshUser() {
+    if (!token.value) return
+    const { data } = await api.get<AuthUser>('/auth/me')
+    user.value = { ...(user.value ?? {}), ...data } as AuthUser
+    localStorage.setItem('eduia_user', JSON.stringify(user.value))
+  }
+
   async function logout() {
-    try { await api.post('/auth/logout') } catch { /* ignora */ }
+    try {
+      await api.post('/auth/logout')
+    } catch {
+      /* ignora */
+    }
     token.value = null
-    user.value  = null
+    user.value = null
     localStorage.removeItem('eduia_token')
     localStorage.removeItem('eduia_user')
     useWorkspaceStore().clear()
@@ -43,10 +68,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   function _persist(data: { token: string; user: AuthUser }) {
     token.value = data.token
-    user.value  = data.user
+    user.value = data.user
     localStorage.setItem('eduia_token', data.token)
-    localStorage.setItem('eduia_user',  JSON.stringify(data.user))
+    localStorage.setItem('eduia_user', JSON.stringify(data.user))
   }
 
-  return { token, user, isAuthenticated, login, register, logout }
+  return { token, user, isAuthenticated, login, register, refreshUser, logout }
 })

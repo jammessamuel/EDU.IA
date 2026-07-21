@@ -69,6 +69,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/team',
+      name: 'team',
+      component: () => import('../views/TeamView.vue'),
+      meta: { requiresAuth: true, adminOnly: true },
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('../views/LoginView.vue'),
@@ -79,6 +85,10 @@ const router = createRouter({
 router.beforeEach((to) => {
   const token = localStorage.getItem('eduia_token')
   if (to.meta.requiresAuth && !token) return { name: 'login' }
+  if (to.meta.adminOnly) {
+    const user = JSON.parse(localStorage.getItem('eduia_user') ?? 'null')
+    if (user?.roleName === 'CONSULTANT') return { name: 'today' }
+  }
   if (to.name === 'login' && token) return { name: 'today' }
 })
 

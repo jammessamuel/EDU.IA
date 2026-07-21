@@ -26,23 +26,18 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  async login(@Body() dto: LoginDto, @Req() req: any) {
+  async login(@Body() dto: LoginDto, @Req() req: { schoolId: string }) {
     const schoolId: string = req.schoolId;
     return this.authService.login(dto, schoolId);
   }
 
   @Get('me')
-  async me(@CurrentUser() user: any) {
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      schoolId: user.schoolId,
-    };
+  async me(@CurrentUser() user: { id: string; schoolId: string }) {
+    return this.authService.me(user.id, user.schoolId);
   }
 
   @Post('logout')
-  async logout(@CurrentUser() user: any) {
+  async logout(@CurrentUser() user: { id: string }) {
     return this.authService.logout(user.id);
   }
 }

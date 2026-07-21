@@ -343,6 +343,33 @@ export interface SchoolUser {
   isActive: boolean
 }
 
+export interface UserRoleDefinition {
+  name: 'SCHOOL_ADMIN' | 'CONSULTANT'
+  label: string
+  description: string
+}
+
+export interface UserWorkload {
+  assignedLeads: number
+  openTasks: number
+  activeCases: number
+  pendingEnrollments: number
+  total: number
+}
+
+export interface ManagedSchoolUser extends SchoolUser {
+  createdAt: string
+  role: { id: string; name: string } | null
+  roleLabel: string
+  isCurrentUser: boolean
+  workload: UserWorkload
+}
+
+export interface UserManagementResponse {
+  roles: UserRoleDefinition[]
+  users: ManagedSchoolUser[]
+}
+
 export interface ContactInput {
   channel: string
   outcome: string

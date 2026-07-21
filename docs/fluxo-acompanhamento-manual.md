@@ -15,6 +15,17 @@ Cada caso ativo deve ter:
 
 Se algum desses vínculos faltar, a reconciliação diária repara o caso e o coloca novamente na fila de trabalho.
 
+## Gestão da equipe
+
+A tela `/team` é exclusiva de administradores da escola. Nela é possível cadastrar funcionários, editar nome, email e perfil, redefinir senha, desativar ou reativar acessos.
+
+Os perfis disponíveis são:
+
+- `Administrador`: acesso completo à operação, configurações e gestão da equipe;
+- `Atendente`: acesso ao atendimento, contatos e execução do próprio trabalho, sem gestão de usuários ou configurações da escola.
+
+Não é permitido desativar o próprio usuário nem remover o último administrador ativo. Quando um funcionário possui leads, matrículas, casos ou tarefas abertas, a desativação exige escolher outro funcionário ativo; a redistribuição e o bloqueio de acesso acontecem na mesma operação. Alterar perfil, redefinir senha ou desativar o usuário encerra as sessões anteriores quando necessário.
+
 ## Fluxo diário
 
 ```mermaid

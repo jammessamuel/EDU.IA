@@ -17,19 +17,29 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const { name, email, password, verticalId } = dto;
-    const workspaceName = dto.workspaceName ?? dto.schoolName ?? 'Meu Workspace';
+    const workspaceName =
+      dto.workspaceName ?? dto.schoolName ?? 'Meu Workspace';
 
     // Valida vertical
-    const vertical = await this.prisma.vertical.findUnique({ where: { id: verticalId } });
-    if (!vertical) throw new BadRequestException('Vertical inválido. Selecione um setor válido.');
+    const vertical = await this.prisma.vertical.findUnique({
+      where: { id: verticalId },
+    });
+    if (!vertical)
+      throw new BadRequestException(
+        'Vertical inválido. Selecione um setor válido.',
+      );
 
     // Gera subdomain a partir do nome do workspace
     const subdomain = this.generateSubdomain(workspaceName);
 
     // Verifica se subdomínio está disponível
-    const existingSchool = await this.prisma.school.findUnique({ where: { subdomain } });
+    const existingSchool = await this.prisma.school.findUnique({
+      where: { subdomain },
+    });
     if (existingSchool) {
-      throw new ConflictException(`Workspace "${subdomain}" já existe. Escolha outro nome.`);
+      throw new ConflictException(
+        `Workspace "${subdomain}" já existe. Escolha outro nome.`,
+      );
     }
 
     // Verifica unicidade do email (pode existir o mesmo email em escolas diferentes)
@@ -66,7 +76,7 @@ export class AuthService {
         },
       });
 
-      return { school, user };
+      return { school, user, roleName: adminRole.name };
     });
 
     const token = this.generateToken(result.user);
@@ -82,6 +92,7 @@ export class AuthService {
         subdomain: result.school.subdomain,
         verticalId: vertical.id,
         verticalSlug: vertical.slug,
+        roleName: result.roleName,
       },
     };
   }
@@ -93,13 +104,31 @@ export class AuthService {
     // Em produção o subdomínio já resolve corretamente, então schoolId sempre bate.
     let user = await this.prisma.user.findFirst({
       where: { email: normalizedEmail, schoolId, isActive: true },
-      include: { school: { select: { name: true, subdomain: true, vertical: { select: { slug: true } } } } },
+      include: {
+        role: { select: { name: true } },
+        school: {
+          select: {
+            name: true,
+            subdomain: true,
+            vertical: { select: { slug: true } },
+          },
+        },
+      },
     });
 
     if (!user && process.env.NODE_ENV !== 'production') {
       user = await this.prisma.user.findFirst({
         where: { email: normalizedEmail, isActive: true },
-        include: { school: { select: { name: true, subdomain: true, vertical: { select: { slug: true } } } } },
+        include: {
+          role: { select: { name: true } },
+          school: {
+            select: {
+              name: true,
+              subdomain: true,
+              vertical: { select: { slug: true } },
+            },
+          },
+        },
         orderBy: { createdAt: 'asc' },
       });
     }
@@ -122,10 +151,44 @@ export class AuthService {
         name: user.name,
         email: user.email,
         schoolId: user.schoolId,
-        schoolName:   user.school.name,
-        subdomain:    user.school.subdomain,
-        verticalSlug: (user.school as any).vertical?.slug ?? null,
+        schoolName: user.school.name,
+        subdomain: user.school.subdomain,
+        verticalSlug: user.school.vertical?.slug ?? null,
+        roleName: user.role?.name ?? null,
       },
+    };
+  }
+
+  async me(userId: string, schoolId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, schoolId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        schoolId: true,
+        role: { select: { name: true } },
+        school: {
+          select: {
+            name: true,
+            subdomain: true,
+            vertical: { select: { slug: true } },
+          },
+        },
+      },
+    });
+    if (!user)
+      throw new UnauthorizedException('Usuário inválido ou desativado');
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      schoolId: user.schoolId,
+      schoolName: user.school.name,
+      subdomain: user.school.subdomain,
+      verticalSlug: user.school.vertical?.slug ?? null,
+      roleName: user.role?.name ?? null,
     };
   }
 
@@ -137,7 +200,13 @@ export class AuthService {
     return { ok: true };
   }
 
-  private generateToken(user: { id: string; email: string; name: string; schoolId: string; tokenVersion: number }) {
+  private generateToken(user: {
+    id: string;
+    email: string;
+    name: string;
+    schoolId: string;
+    tokenVersion: number;
+  }) {
     return jwt.sign(
       {
         userId: user.id,
