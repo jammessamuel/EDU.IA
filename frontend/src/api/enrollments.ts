@@ -31,12 +31,58 @@ export const enrollmentApi = {
     return apiClient.post<EnrollmentChatResponse>('/enrollments/chat', input).then((res) => res.data)
   },
 
+  create(data: Record<string, unknown>): Promise<Enrollment> {
+    return apiClient
+      .post<Enrollment>('/enrollments', { data, simulatePayment: false })
+      .then((res) => res.data)
+  },
+
+  update(id: string, data: Record<string, unknown>): Promise<Enrollment> {
+    return apiClient.patch<Enrollment>(`/enrollments/${id}`, { data }).then((res) => res.data)
+  },
+
+  review(
+    id: string,
+    decision: 'CONFIRM' | 'RETURN' | 'REJECT',
+    note?: string,
+  ): Promise<Enrollment> {
+    return apiClient
+      .patch<Enrollment>(`/enrollments/${id}/review`, { decision, note })
+      .then((res) => res.data)
+  },
+
+  cancel(id: string, note?: string): Promise<Enrollment> {
+    return apiClient
+      .patch<Enrollment>(`/enrollments/${id}/cancel`, { note })
+      .then((res) => res.data)
+  },
+
+  reopen(id: string): Promise<Enrollment> {
+    return apiClient.patch<Enrollment>(`/enrollments/${id}/reopen`).then((res) => res.data)
+  },
+
+  updatePayment(
+    id: string,
+    status: 'PENDENTE' | 'APROVADO' | 'RECUSADO',
+    note?: string,
+  ): Promise<Enrollment> {
+    return apiClient
+      .patch<Enrollment>(`/enrollments/${id}/payment`, { status, note })
+      .then((res) => res.data)
+  },
+
   list(): Promise<Enrollment[]> {
     return apiClient.get<Enrollment[]>('/enrollments').then((res) => res.data)
   },
 
   detail(id: string): Promise<Enrollment> {
     return apiClient.get<Enrollment>(`/enrollments/${id}`).then((res) => res.data)
+  },
+
+  confirm(id: string, note?: string): Promise<Enrollment> {
+    return apiClient
+      .patch<Enrollment>(`/enrollments/${id}/confirm`, { note })
+      .then((res) => res.data)
   },
 
   documents(id: string): Promise<EnrollmentDocument[]> {
@@ -51,6 +97,20 @@ export const enrollmentApi = {
       .post<EnrollmentDocument>(`/enrollments/${id}/documents`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+      .then((res) => res.data)
+  },
+
+  reviewDocument(
+    enrollmentId: string,
+    documentId: string,
+    status: 'RECEBIDO' | 'APROVADO' | 'RECUSADO',
+    note?: string,
+  ): Promise<EnrollmentDocument> {
+    return apiClient
+      .patch<EnrollmentDocument>(
+        `/enrollments/${enrollmentId}/documents/${documentId}/review`,
+        { status, note },
+      )
       .then((res) => res.data)
   },
 

@@ -141,6 +141,36 @@ export const useSimulatorStore = defineStore('simulator', () => {
     if (idx >= 0) leads.value[idx] = updated
   }
 
+  async function updateLeadAssignee(id: string, assigneeId: string | null): Promise<Lead> {
+    const updated = await simulatorApi.updateLeadAssignee(id, assigneeId)
+    const idx = leads.value.findIndex((lead) => lead.id === id)
+    if (idx >= 0) leads.value[idx] = updated
+    return updated
+  }
+
+  async function registerLeadContact(id: string, input: Parameters<typeof simulatorApi.registerLeadContact>[1]): Promise<Lead> {
+    const updated = await simulatorApi.registerLeadContact(id, input)
+    const idx = leads.value.findIndex((lead) => lead.id === id)
+    if (idx >= 0) leads.value[idx] = updated
+    return updated
+  }
+
+  async function createLead(input: Parameters<typeof simulatorApi.createLead>[0]): Promise<Lead> {
+    const created = await simulatorApi.createLead(input)
+    leads.value.unshift(created)
+    return created
+  }
+
+  async function updateLead(
+    id: string,
+    input: Parameters<typeof simulatorApi.updateLead>[1],
+  ): Promise<Lead> {
+    const updated = await simulatorApi.updateLead(id, input)
+    const idx = leads.value.findIndex((lead) => lead.id === id)
+    if (idx >= 0) leads.value[idx] = updated
+    return updated
+  }
+
   return {
     messages,
     leads,
@@ -157,5 +187,9 @@ export const useSimulatorStore = defineStore('simulator', () => {
     resetSession,
     fetchLeads,
     updateLeadStatus,
+    updateLeadAssignee,
+    registerLeadContact,
+    createLead,
+    updateLead,
   }
 })

@@ -19,14 +19,19 @@ import {
   WarningOutline,
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
+import ContactForm from '@/components/follow-up/ContactForm.vue'
 import { postSalesApi } from '@/api/postSales'
 import { schoolConfigApi, type CommercialPdfKind } from '@/api/schoolConfig'
+import { enrollmentApi } from '@/api/enrollments'
+import { usersApi } from '@/api/users'
 import type {
+  ContactInput,
   PostSaleIntegrationLog,
   PostSaleProfileDocumentRequirement,
   PostSaleStudentProfile,
   PostSaleTask,
   PostSaleTimelineEvent,
+  SchoolUser,
 } from '@/types'
 
 const route = useRoute()
@@ -39,12 +44,17 @@ const feedback = ref<string | null>(null)
 const pdfBusy = ref<CommercialPdfKind | null>(null)
 const rejectDocumentType = ref<string | null>(null)
 const rejectReason = ref('')
+const contactFormKey = ref(0)
 const validationDraft = ref({
   documentType: 'CPF',
   documentNumber: '',
   email: '',
   phone: '',
 })
+const users = ref<SchoolUser[]>([])
+const lifecycleStatus = ref<'ATIVO' | 'PAUSADO' | 'ENCERRADO'>('ATIVO')
+const lifecycleReason = ref('')
+const nextActionAt = ref('')
 
 const studentId = computed(() => String(route.params.studentId ?? ''))
 const student = computed(() => profile.value?.student ?? null)
@@ -173,7 +183,9 @@ const validationChecks = computed(() => {
   ]
 })
 
-onMounted(() => loadProfile())
+onMounted(async () => {
+  await Promise.all([loadProfile(), usersApi.list().then((list) => (users.value = list))])
+})
 
 watch(profile, (current) => {
   if (!current) return
@@ -183,6 +195,11 @@ watch(profile, (current) => {
     email: current.enrollment?.email || '',
     phone: current.enrollment?.phone || '',
   }
+  lifecycleStatus.value = current.student.lifecycleStatus
+  lifecycleReason.value = current.student.lifecycleReason || ''
+  nextActionAt.value = current.student.nextActionAt
+    ? toDatetimeLocal(new Date(current.student.nextActionAt))
+    : ''
 })
 
 async function loadProfile(showLoading = true) {
@@ -224,6 +241,61 @@ function sendRuler() {
   return withAction('ruler', async () => {
     const res = await postSalesApi.simulateRuler(studentId.value)
     return res.result.message
+  })
+}
+
+function registerContact(input: ContactInput) {
+  return withAction('contact', async () => {
+    await postSalesApi.registerContact(studentId.value, input)
+    contactFormKey.value += 1
+    return 'Contato humano registrado na timeline.'
+  })
+}
+
+function assignCase(event: Event) {
+  return withAction('assign-case', async () => {
+    await postSalesApi.assignStudent(studentId.value, (event.target as HTMLSelectElement).value || null)
+    return 'Responsável principal atualizado.'
+  })
+}
+
+function saveLifecycle() {
+  return withAction('lifecycle', async () => {
+    await postSalesApi.updateLifecycle(studentId.value, {
+      status: lifecycleStatus.value,
+      reason: lifecycleReason.value || undefined,
+      nextActionAt: nextActionAt.value ? new Date(nextActionAt.value).toISOString() : null,
+    })
+    return 'Ciclo operacional atualizado.'
+  })
+}
+
+function updatePaymentManually(status: 'PENDENTE' | 'PAGO' | 'FALHOU' | 'ESTORNADO') {
+  return withAction(`manual-payment-${status}`, async () => {
+    await postSalesApi.updateOperationalPayment(studentId.value, status, lifecycleReason.value || undefined)
+    return `Pagamento atualizado manualmente para ${status}.`
+  })
+}
+
+function updateContractManually(
+  status: 'PENDENTE' | 'ENVIADO' | 'ASSINADO' | 'RECUSADO' | 'EXPIRADO',
+) {
+  return withAction(`manual-contract-${status}`, async () => {
+    await postSalesApi.updateOperationalContract(studentId.value, status, lifecycleReason.value || undefined)
+    return `Contrato atualizado manualmente para ${status}.`
+  })
+}
+
+function reviewRealDocument(documentId: string, status: 'APROVADO' | 'RECUSADO') {
+  return withAction(`real-document-${documentId}-${status}`, async () => {
+    if (!profile.value?.enrollment) return null
+    const note = status === 'RECUSADO' ? rejectReason.value.trim() : undefined
+    if (status === 'RECUSADO' && !note) {
+      throw new Error('Informe o motivo da recusa.')
+    }
+    await enrollmentApi.reviewDocument(profile.value.enrollment.id, documentId, status, note)
+    rejectReason.value = ''
+    return `Documento ${status.toLowerCase()} pela equipe.`
   })
 }
 
@@ -312,6 +384,13 @@ function formatDate(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function toDatetimeLocal(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`
 }
 
 function formatCurrency(value?: number | null) {
@@ -519,6 +598,35 @@ function isValidPhone(value: string) {
             <strong>{{ card.value }}</strong>
             <em>{{ card.helper }}</em>
           </a>
+        </section>
+
+        <section v-if="!student.isDemo" class="profile-panel human-control-panel">
+          <div>
+            <span>Responsável principal</span>
+            <select :value="student.assigneeId || ''" :disabled="!!actionBusy" @change="assignCase">
+              <option value="">Sem responsável</option>
+              <option v-for="user in users" :key="user.id" :value="user.id">{{ user.name }}</option>
+            </select>
+          </div>
+          <div>
+            <span>Situação</span>
+            <select v-model="lifecycleStatus" :disabled="!!actionBusy">
+              <option value="ATIVO">Ativo</option>
+              <option value="PAUSADO">Pausado</option>
+              <option value="ENCERRADO">Encerrado</option>
+            </select>
+          </div>
+          <div>
+            <span>Próxima ação</span>
+            <input v-model="nextActionAt" type="datetime-local" :disabled="!!actionBusy" />
+          </div>
+          <div>
+            <span>Motivo/nota</span>
+            <input v-model="lifecycleReason" :disabled="!!actionBusy" placeholder="Obrigatório ao pausar/encerrar" />
+          </div>
+          <button type="button" :disabled="!!actionBusy" @click="saveLifecycle">
+            Salvar acompanhamento humano
+          </button>
         </section>
 
         <section class="profile-layout">
@@ -736,14 +844,37 @@ function isValidPhone(value: string) {
                   </div>
                 </div>
               </div>
+
+              <div v-if="profile.documents.uploaded.length" class="real-document-list">
+                <h3>Arquivos reais enviados</h3>
+                <article v-for="document in profile.documents.uploaded" :key="document.id">
+                  <div>
+                    <strong>{{ document.type }} · {{ document.fileName }}</strong>
+                    <span>{{ document.status }} · {{ formatDate(document.uploadedAt) }}</span>
+                    <small v-if="document.reviewNote">{{ document.reviewNote }}</small>
+                  </div>
+                  <div>
+                    <button type="button" :disabled="!!actionBusy" @click="reviewRealDocument(document.id, 'APROVADO')">
+                      Aprovar real
+                    </button>
+                    <button type="button" :disabled="!!actionBusy" @click="reviewRealDocument(document.id, 'RECUSADO')">
+                      Recusar real
+                    </button>
+                  </div>
+                </article>
+                <label>
+                  <span>Motivo para eventual recusa</span>
+                  <input v-model="rejectReason" placeholder="Informe antes de recusar um arquivo real" />
+                </label>
+              </div>
             </section>
 
             <section class="ops-grid">
               <article class="profile-panel ops-panel" id="pagamento">
                 <div class="panel-head panel-head--tight">
                   <div>
-                    <h2>Pagamento fake</h2>
-                    <p>Estados simulados sem cobrança real.</p>
+                    <h2>Pagamento</h2>
+                    <p>Baixa manual real; simulação permanece identificada abaixo.</p>
                   </div>
                 </div>
                 <div class="ops-status">
@@ -754,6 +885,12 @@ function isValidPhone(value: string) {
                     {{ profile.payment.method || 'método não definido' }}</small
                   >
                 </div>
+                <div class="ops-buttons">
+                  <button type="button" :disabled="!!actionBusy" @click="updatePaymentManually('PAGO')">Pago manual</button>
+                  <button type="button" :disabled="!!actionBusy" @click="updatePaymentManually('FALHOU')">Falhou manual</button>
+                  <button type="button" :disabled="!!actionBusy" @click="updatePaymentManually('PENDENTE')">Pendente manual</button>
+                </div>
+                <small class="demo-divider">Simulação de gateway</small>
                 <div class="ops-buttons">
                   <button
                     type="button"
@@ -777,8 +914,8 @@ function isValidPhone(value: string) {
               <article class="profile-panel ops-panel" id="contrato">
                 <div class="panel-head panel-head--tight">
                   <div>
-                    <h2>Contrato fake</h2>
-                    <p>Assinatura simulada sem D4Sign.</p>
+                    <h2>Contrato</h2>
+                    <p>Atualização manual real; simulação permanece separada.</p>
                   </div>
                 </div>
                 <div class="ops-status">
@@ -790,6 +927,12 @@ function isValidPhone(value: string) {
                       : 'sem evento recente'
                   }}</small>
                 </div>
+                <div class="ops-buttons">
+                  <button type="button" :disabled="!!actionBusy" @click="updateContractManually('ENVIADO')">Enviado manual</button>
+                  <button type="button" :disabled="!!actionBusy" @click="updateContractManually('ASSINADO')">Assinado manual</button>
+                  <button type="button" :disabled="!!actionBusy" @click="updateContractManually('RECUSADO')">Recusado manual</button>
+                </div>
+                <small class="demo-divider">Simulação de assinatura</small>
                 <div class="ops-buttons">
                   <button type="button" :disabled="!!actionBusy" @click="simulateContract('SEND')">
                     Enviar
@@ -839,6 +982,20 @@ function isValidPhone(value: string) {
                 <strong>Nenhuma mensagem simulada ainda</strong>
                 <p>Use o botão de WhatsApp fake ou régua para registrar o primeiro contato.</p>
               </div>
+            </section>
+
+            <section class="profile-panel" id="registrar-contato">
+              <div class="panel-head">
+                <div>
+                  <h2>Registrar contato</h2>
+                  <p>Guarde o resultado do atendimento e programe o próximo retorno.</p>
+                </div>
+              </div>
+              <ContactForm
+                :key="contactFormKey"
+                :busy="actionBusy === 'contact'"
+                @submit="registerContact"
+              />
             </section>
 
             <section class="profile-panel" id="timeline">
@@ -964,6 +1121,85 @@ function isValidPhone(value: string) {
   overflow-y: auto;
   padding: 20px 24px 32px;
   scroll-behavior: smooth;
+}
+
+.human-control-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.human-control-panel > div,
+.real-document-list > label {
+  display: grid;
+  gap: 5px;
+}
+
+.human-control-panel span,
+.real-document-list label span,
+.real-document-list article span,
+.real-document-list article small,
+.demo-divider {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.human-control-panel input,
+.human-control-panel select,
+.real-document-list input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 9px;
+}
+
+.human-control-panel button,
+.real-document-list button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--brand);
+  color: white;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px;
+}
+
+.real-document-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.real-document-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.real-document-list article > div {
+  display: grid;
+  gap: 4px;
+}
+
+.real-document-list article > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.demo-divider {
+  display: block;
+  margin-top: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .profile-header,

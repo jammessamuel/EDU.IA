@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { NIcon } from 'naive-ui'
 import {
   BarChartOutline,
+  CalendarOutline,
   ClipboardOutline,
   GitNetworkOutline,
   LogOutOutline,
@@ -28,6 +29,7 @@ const { isDark, themeLabel, toggleTheme } = useTheme()
 onMounted(() => ws.load())
 
 const links = [
+  { to: '/hoje', label: 'Hoje', icon: CalendarOutline },
   { to: '/whatsapp', label: 'WhatsApp', icon: LogoWhatsapp },
   { to: '/', label: 'Simulador', icon: PlayCircleOutline },
   { to: '/enrollments', label: 'Matrículas', icon: SchoolOutline },

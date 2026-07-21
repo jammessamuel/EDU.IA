@@ -149,6 +149,7 @@ EDU.IA/
    | `POSTGRES_URL_NON_POOLING` | **já vem da integração Supabase** (direta/5432) — usada por `db push` |
    | `OPENAI_API_KEY` | sua chave da OpenAI (`sk-...`) — **precisa setar** |
    | `JWT_SECRET` | string aleatória (`openssl rand -hex 32`) — **precisa setar (obrigatória em prod)** |
+   | `CRON_SECRET` | outra string aleatória — protege a reconciliação diária de acompanhamentos |
    | `FRONTEND_URL` | URL do frontend no Vercel |
 
    > O banco (`POSTGRES_*`) é injetado automaticamente pela integração Supabase↔Vercel
@@ -157,6 +158,10 @@ EDU.IA/
    > costumam ser `OPENAI_API_KEY` e `JWT_SECRET`. (NODE_ENV a Vercel já define como production.)
 
 5. Clique em **Deploy**. Aguarde — o build demora ~2 min na primeira vez.
+
+   O `backend/vercel.json` agenda a reconciliação todos os dias às 11:00 UTC
+   (08:00 em Brasília). Com `CRON_SECRET` definido, a própria Vercel envia o
+   token Bearer exigido pelo endpoint `/internal/automation/run`.
 
 6. Anote a URL gerada (ex: `https://edu-ia-backend.vercel.app`)
 

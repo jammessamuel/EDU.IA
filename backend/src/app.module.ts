@@ -14,6 +14,7 @@ import { JwtAuthGuard } from './auth/guards/jwt.guard';
 import { RbacGuard } from './common/guards/rbac.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AppService } from './app.service';
     SchoolConfigModule,
     EnrollmentModule,
     PostSaleModule,
+    UsersModule,
   ],
   providers: [
     AppService,

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { PostSaleService } from './post-sale.service';
@@ -9,14 +17,29 @@ export class PostSaleController {
 
   @Get('overview')
   @RequirePermission('leads:read:school')
-  overview(@CurrentUser() user: { schoolId: string }): Promise<unknown> {
-    return this.service.overview(user.schoolId);
+  overview(
+    @CurrentUser() user: { schoolId: string },
+    @Query('includeDemo') includeDemo?: string,
+  ): Promise<unknown> {
+    return this.service.overview(user.schoolId, includeDemo === 'true');
   }
 
   @Get('integration-logs')
   @RequirePermission('leads:read:school')
   integrationLogs(@CurrentUser() user: { schoolId: string }): Promise<unknown> {
     return this.service.listIntegrationLogs(user.schoolId);
+  }
+
+  @Get('today')
+  @RequirePermission('leads:read:school')
+  today(
+    @CurrentUser() user: { id: string; schoolId: string },
+    @Query('onlyMine') onlyMine?: string,
+  ): Promise<unknown> {
+    return this.service.today(
+      user.schoolId,
+      onlyMine === 'true' ? user.id : undefined,
+    );
   }
 
   @Get('students/:studentKey/profile')
@@ -26,6 +49,23 @@ export class PostSaleController {
     @CurrentUser() user: { schoolId: string },
   ): Promise<unknown> {
     return this.service.studentProfile(user.schoolId, studentKey);
+  }
+
+  @Post('students/:studentKey/contacts')
+  @RequirePermission('leads:create:school')
+  registerContact(
+    @Param('studentKey') studentKey: string,
+    @Body()
+    body: {
+      channel: string;
+      outcome: string;
+      note?: string;
+      nextContactAt?: string | null;
+    },
+    @CurrentUser()
+    user: { id: string; schoolId: string; name?: string },
+  ): Promise<unknown> {
+    return this.service.registerContact(user.schoolId, studentKey, body, user);
   }
 
   @Patch('students/:studentKey/status')
@@ -38,6 +78,36 @@ export class PostSaleController {
     return this.service.updateStudentStatus(user.schoolId, studentKey, body);
   }
 
+  @Patch('students/:studentKey/assignee')
+  @RequirePermission('leads:create:school')
+  assignStudent(
+    @Param('studentKey') studentKey: string,
+    @Body() body: { assigneeId: string | null },
+    @CurrentUser() user: { id: string; schoolId: string; name?: string },
+  ): Promise<unknown> {
+    return this.service.assignStudent(
+      user.schoolId,
+      studentKey,
+      body.assigneeId,
+      user,
+    );
+  }
+
+  @Patch('students/:studentKey/lifecycle')
+  @RequirePermission('leads:create:school')
+  updateLifecycle(
+    @Param('studentKey') studentKey: string,
+    @Body()
+    body: {
+      status: 'ATIVO' | 'PAUSADO' | 'ENCERRADO';
+      reason?: string;
+      nextActionAt?: string | null;
+    },
+    @CurrentUser() user: { id: string; schoolId: string; name?: string },
+  ): Promise<unknown> {
+    return this.service.updateLifecycle(user.schoolId, studentKey, body, user);
+  }
+
   @Post('students/:studentKey/tasks')
   @RequirePermission('leads:create:school')
   createTask(
@@ -48,6 +118,7 @@ export class PostSaleController {
       description?: string;
       ownerTeam?: string;
       assignee?: string;
+      assigneeId?: string | null;
       role?: string;
       priority?: string;
       dueInDays?: number;
@@ -55,10 +126,15 @@ export class PostSaleController {
       column?: string;
       origin?: string;
       reminderDaysBefore?: number | null;
+      recurrenceIntervalDays?: number | null;
     },
-    @CurrentUser() user: { schoolId: string },
+    @CurrentUser() user: { id: string; schoolId: string },
   ): Promise<unknown> {
-    return this.service.createTask(user.schoolId, { ...body, studentKey });
+    return this.service.createTask(
+      user.schoolId,
+      { ...body, studentKey },
+      user,
+    );
   }
 
   @Post('tasks')
@@ -72,16 +148,18 @@ export class PostSaleController {
       studentName?: string;
       ownerTeam?: string;
       assignee?: string;
+      assigneeId?: string | null;
       role?: string;
       priority?: string;
       dueAt?: string;
       column?: string;
       origin?: string;
       reminderDaysBefore?: number | null;
+      recurrenceIntervalDays?: number | null;
     },
-    @CurrentUser() user: { schoolId: string },
+    @CurrentUser() user: { id: string; schoolId: string },
   ): Promise<unknown> {
-    return this.service.createTask(user.schoolId, body);
+    return this.service.createTask(user.schoolId, body, user);
   }
 
   @Patch('tasks/:taskId')
@@ -93,12 +171,18 @@ export class PostSaleController {
       column?: string;
       status?: string;
       assignee?: string;
+      assigneeId?: string | null;
       role?: string;
       priority?: string;
+      title?: string;
+      description?: string;
+      dueAt?: string | null;
+      recurrenceIntervalDays?: number | null;
+      action?: 'CANCEL' | 'REOPEN';
     },
-    @CurrentUser() user: { schoolId: string },
+    @CurrentUser() user: { id: string; schoolId: string },
   ): Promise<unknown> {
-    return this.service.updateTask(user.schoolId, taskId, body);
+    return this.service.updateTask(user.schoolId, taskId, body, user);
   }
 
   @Post('tasks/:taskId/alert/dispatch')
@@ -118,6 +202,36 @@ export class PostSaleController {
     @CurrentUser() user: { schoolId: string },
   ): Promise<unknown> {
     return this.service.simulateMessage(user.schoolId, studentKey, body);
+  }
+
+  @Patch('students/:studentKey/operations/payment')
+  @RequirePermission('leads:create:school')
+  updateOperationalPayment(
+    @Param('studentKey') studentKey: string,
+    @Body() body: { status?: string; note?: string },
+    @CurrentUser() user: { id: string; schoolId: string; name?: string },
+  ): Promise<unknown> {
+    return this.service.updateOperationalPayment(
+      user.schoolId,
+      studentKey,
+      body,
+      user,
+    );
+  }
+
+  @Patch('students/:studentKey/operations/contract')
+  @RequirePermission('leads:create:school')
+  updateOperationalContract(
+    @Param('studentKey') studentKey: string,
+    @Body() body: { status?: string; note?: string },
+    @CurrentUser() user: { id: string; schoolId: string; name?: string },
+  ): Promise<unknown> {
+    return this.service.updateOperationalContract(
+      user.schoolId,
+      studentKey,
+      body,
+      user,
+    );
   }
 
   @Post('students/:studentKey/ruler/simulate')

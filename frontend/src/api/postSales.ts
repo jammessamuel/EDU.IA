@@ -8,11 +8,22 @@ import type {
   PostSaleRulerResponse,
   PostSaleSimulatedMessageResponse,
   PostSaleStudentProfile,
+  PostSaleToday,
+  ContactAttempt,
+  ContactInput,
 } from '@/types'
 
 export const postSalesApi = {
-  overview(): Promise<PostSaleOverview> {
-    return apiClient.get<PostSaleOverview>('/post-sales/overview').then((res) => res.data)
+  overview(includeDemo = false): Promise<PostSaleOverview> {
+    return apiClient
+      .get<PostSaleOverview>('/post-sales/overview', { params: { includeDemo } })
+      .then((res) => res.data)
+  },
+
+  today(onlyMine = false): Promise<PostSaleToday> {
+    return apiClient
+      .get<PostSaleToday>('/post-sales/today', { params: { onlyMine } })
+      .then((res) => res.data)
   },
 
   integrationLogs(): Promise<PostSaleIntegrationLog[]> {
@@ -27,6 +38,18 @@ export const postSalesApi = {
       .then((res) => res.data)
   },
 
+  registerContact(
+    studentId: string,
+    input: ContactInput,
+  ): Promise<{ contact: ContactAttempt; overview: PostSaleOverview }> {
+    return apiClient
+      .post<{ contact: ContactAttempt; overview: PostSaleOverview }>(
+        `/post-sales/students/${studentId}/contacts`,
+        input,
+      )
+      .then((res) => res.data)
+  },
+
   updateStatus(
     studentId: string,
     action: PostSaleAction,
@@ -37,6 +60,51 @@ export const postSalesApi = {
       .then((res) => res.data)
   },
 
+  assignStudent(studentId: string, assigneeId: string | null): Promise<PostSaleOverview> {
+    return apiClient
+      .patch<PostSaleOverview>(`/post-sales/students/${studentId}/assignee`, { assigneeId })
+      .then((res) => res.data)
+  },
+
+  updateLifecycle(
+    studentId: string,
+    input: {
+      status: 'ATIVO' | 'PAUSADO' | 'ENCERRADO'
+      reason?: string
+      nextActionAt?: string | null
+    },
+  ): Promise<PostSaleOverview> {
+    return apiClient
+      .patch<PostSaleOverview>(`/post-sales/students/${studentId}/lifecycle`, input)
+      .then((res) => res.data)
+  },
+
+  updateOperationalPayment(
+    studentId: string,
+    status: 'PENDENTE' | 'PAGO' | 'APROVADO' | 'FALHOU' | 'ESTORNADO',
+    note?: string,
+  ): Promise<PostSaleOverview> {
+    return apiClient
+      .patch<PostSaleOverview>(`/post-sales/students/${studentId}/operations/payment`, {
+        status,
+        note,
+      })
+      .then((res) => res.data)
+  },
+
+  updateOperationalContract(
+    studentId: string,
+    status: 'PENDENTE' | 'ENVIADO' | 'ASSINADO' | 'RECUSADO' | 'EXPIRADO',
+    note?: string,
+  ): Promise<PostSaleOverview> {
+    return apiClient
+      .patch<PostSaleOverview>(`/post-sales/students/${studentId}/operations/contract`, {
+        status,
+        note,
+      })
+      .then((res) => res.data)
+  },
+
   createTask(
     studentId: string,
     input: {
@@ -44,6 +112,7 @@ export const postSalesApi = {
       description?: string
       ownerTeam?: string
       assignee?: string
+      assigneeId?: string | null
       role?: string
       priority?: string
       dueInDays?: number
@@ -51,6 +120,7 @@ export const postSalesApi = {
       column?: string
       origin?: string
       reminderDaysBefore?: number | null
+      recurrenceIntervalDays?: number | null
     },
   ): Promise<PostSaleOverview> {
     return apiClient
@@ -65,12 +135,14 @@ export const postSalesApi = {
     studentName?: string
     ownerTeam?: string
     assignee?: string
+    assigneeId?: string | null
     role?: string
     priority?: string
     dueAt?: string
     column?: string
     origin?: string
     reminderDaysBefore?: number | null
+    recurrenceIntervalDays?: number | null
   }): Promise<PostSaleOverview> {
     return apiClient.post<PostSaleOverview>('/post-sales/tasks', input).then((res) => res.data)
   },
@@ -81,8 +153,14 @@ export const postSalesApi = {
       column?: string
       status?: string
       assignee?: string
+      assigneeId?: string | null
       role?: string
       priority?: string
+      title?: string
+      description?: string
+      dueAt?: string | null
+      recurrenceIntervalDays?: number | null
+      action?: 'CANCEL' | 'REOPEN'
     },
   ): Promise<PostSaleOverview> {
     return apiClient

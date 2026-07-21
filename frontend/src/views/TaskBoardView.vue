@@ -26,12 +26,15 @@ import {
 } from '@vicons/ionicons5'
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
+import { usersApi } from '@/api/users'
+import { useAuthStore } from '@/stores/auth'
 import type {
   PostSaleAlert,
   PostSaleIntegrationLog,
   PostSaleOverview,
   PostSaleStudent,
   PostSaleTask,
+  SchoolUser,
 } from '@/types'
 
 type BoardColumn =
@@ -48,7 +51,9 @@ interface BoardColumnMeta {
 }
 
 const router = useRouter()
+const auth = useAuthStore()
 const overview = ref<PostSaleOverview | null>(null)
+const users = ref<SchoolUser[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const selectedTaskId = ref<string | null>(null)
@@ -73,16 +78,18 @@ const roleFilter = ref('todos')
 const priorityFilter = ref('todas')
 const originFilter = ref('todas')
 const courseFilter = ref('todos')
+const ownershipFilter = ref<'mine' | 'all'>('all')
 
 interface CreateTaskForm {
   title: string
   description: string
   studentKey: string
-  assignee: string
+  assigneeId: string
   role: string
   priority: string
   dueAt: string
   reminderDaysBefore: '' | '1' | '2'
+  recurrenceIntervalDays: string
 }
 
 const roleChoices = [
@@ -94,15 +101,9 @@ const roleChoices = [
 ]
 
 const priorityChoices = ['Urgente', 'Alta', 'Média', 'Normal']
-const employeeSuggestions = [
-  'Amanda - Comercial',
-  'Bruno - Financeiro',
-  'Camila - Secretaria',
-  'Diego - Sucesso do aluno',
-  'Gestor responsável',
-]
-
 const createForm = ref<CreateTaskForm>(defaultCreateTaskForm())
+const editingTask = ref(false)
+const editTaskForm = ref({ title: '', description: '', dueAt: '', recurrenceIntervalDays: '' })
 let alertAudioContext: AudioContext | null = null
 let alertFeedbackTimer: number | null = null
 
@@ -172,6 +173,7 @@ const courseOptions = computed(() =>
 const filteredTasks = computed(() => {
   const query = normalize(search.value)
   return tasks.value.filter((task) => {
+    if (ownershipFilter.value === 'mine' && task.assigneeId !== auth.user?.id) return false
     const student = task.studentId ? studentById.value.get(task.studentId) : null
     const haystack = normalize(
       [
@@ -279,7 +281,12 @@ async function loadBoard() {
   loading.value = true
   error.value = null
   try {
-    overview.value = await postSalesApi.overview()
+    const [nextOverview, schoolUsers] = await Promise.all([
+      postSalesApi.overview(),
+      usersApi.list(),
+    ])
+    overview.value = nextOverview
+    users.value = schoolUsers
   } catch {
     error.value = 'Não foi possível carregar o quadro operacional agora.'
   } finally {
@@ -436,6 +443,19 @@ async function moveTask(task: PostSaleTask, column: BoardColumn) {
   }
 }
 
+async function assignTask(task: PostSaleTask, event: Event) {
+  if (updatingTaskId.value) return
+  const assigneeId = (event.target as HTMLSelectElement).value || null
+  updatingTaskId.value = task.id
+  try {
+    overview.value = await postSalesApi.updateTask(task.id, { assigneeId })
+  } catch {
+    error.value = 'Não foi possível atualizar o responsável da tarefa.'
+  } finally {
+    updatingTaskId.value = null
+  }
+}
+
 function openCreateTask() {
   createForm.value = defaultCreateTaskForm()
   createTaskError.value = null
@@ -453,12 +473,12 @@ async function submitCreateTask() {
   createTaskError.value = null
 
   const title = createForm.value.title.trim()
-  const assignee = createForm.value.assignee.trim()
+  const assignedUser = users.value.find((user) => user.id === createForm.value.assigneeId)
   if (!title) {
     createTaskError.value = 'Informe o título da tarefa.'
     return
   }
-  if (!assignee) {
+  if (!assignedUser) {
     createTaskError.value = 'Informe o funcionário responsável.'
     return
   }
@@ -479,7 +499,8 @@ async function submitCreateTask() {
       title,
       description: createForm.value.description.trim() || undefined,
       studentKey: createForm.value.studentKey || null,
-      assignee,
+      assignee: assignedUser.name,
+      assigneeId: assignedUser.id,
       role: createForm.value.role,
       priority: createForm.value.priority,
       ownerTeam: roleLabel(createForm.value.role),
@@ -488,6 +509,9 @@ async function submitCreateTask() {
       origin: 'manual',
       reminderDaysBefore: createForm.value.reminderDaysBefore
         ? Number(createForm.value.reminderDaysBefore)
+        : null,
+      recurrenceIntervalDays: createForm.value.recurrenceIntervalDays
+        ? Number(createForm.value.recurrenceIntervalDays)
         : null,
     })
     createTaskOpen.value = false
@@ -523,6 +547,58 @@ function selectTask(task: PostSaleTask) {
 
 function closeDrawer() {
   selectedTaskId.value = null
+  editingTask.value = false
+}
+
+function startEditTask() {
+  if (!selectedTask.value) return
+  editTaskForm.value = {
+    title: selectedTask.value.title,
+    description: selectedTask.value.description || '',
+    dueAt: selectedTask.value.dueAt
+      ? toDatetimeLocalValue(new Date(selectedTask.value.dueAt))
+      : '',
+    recurrenceIntervalDays: selectedTask.value.recurrenceIntervalDays
+      ? String(selectedTask.value.recurrenceIntervalDays)
+      : '',
+  }
+  editingTask.value = true
+}
+
+async function saveTaskEdit() {
+  const task = selectedTask.value
+  if (!task || updatingTaskId.value) return
+  updatingTaskId.value = task.id
+  try {
+    overview.value = await postSalesApi.updateTask(task.id, {
+      title: editTaskForm.value.title,
+      description: editTaskForm.value.description,
+      dueAt: editTaskForm.value.dueAt
+        ? new Date(editTaskForm.value.dueAt).toISOString()
+        : null,
+      recurrenceIntervalDays: editTaskForm.value.recurrenceIntervalDays
+        ? Number(editTaskForm.value.recurrenceIntervalDays)
+        : null,
+    })
+    editingTask.value = false
+  } catch {
+    error.value = 'Não foi possível editar ou reagendar a tarefa.'
+  } finally {
+    updatingTaskId.value = null
+  }
+}
+
+async function cancelTask(task: PostSaleTask) {
+  if (updatingTaskId.value) return
+  updatingTaskId.value = task.id
+  try {
+    overview.value = await postSalesApi.updateTask(task.id, { action: 'CANCEL' })
+    selectedTaskId.value = null
+  } catch {
+    error.value = 'Não foi possível cancelar a tarefa.'
+  } finally {
+    updatingTaskId.value = null
+  }
 }
 
 function clearFilters() {
@@ -790,11 +866,12 @@ function defaultCreateTaskForm(): CreateTaskForm {
     title: '',
     description: '',
     studentKey: '',
-    assignee: '',
+    assigneeId: '',
     role: 'secretaria',
     priority: 'Média',
     dueAt: toDatetimeLocalValue(due),
     reminderDaysBefore: '1',
+    recurrenceIntervalDays: '',
   }
 }
 
@@ -929,6 +1006,23 @@ onBeforeUnmount(() => {
       </section>
 
       <section class="filters-bar" aria-label="Filtros de tarefas">
+        <div class="ownership-toggle" aria-label="Escopo das tarefas">
+          <button
+            type="button"
+            :class="{ active: ownershipFilter === 'mine' }"
+            @click="ownershipFilter = 'mine'"
+          >
+            Minhas tarefas
+          </button>
+          <button
+            type="button"
+            :class="{ active: ownershipFilter === 'all' }"
+            @click="ownershipFilter = 'all'"
+          >
+            Todas
+          </button>
+        </div>
+
         <label class="search-field">
           <NIcon :component="SearchOutline" size="16" />
           <input
@@ -1006,17 +1100,19 @@ onBeforeUnmount(() => {
           </header>
 
           <div class="task-stack">
-            <button
+            <article
               v-for="task in boardTasks.get(column.key)"
               :key="task.id"
-              type="button"
               class="task-card"
               :class="{
                 'task-card--dragging': draggedTaskId === task.id,
                 'task-card--selected': selectedTaskId === task.id,
               }"
               draggable="true"
+              role="button"
+              tabindex="0"
               @click="selectTask(task)"
+              @keydown.enter="selectTask(task)"
               @dragstart="startDrag($event, task)"
               @dragend="endDrag"
             >
@@ -1038,6 +1134,20 @@ onBeforeUnmount(() => {
                 <span>{{ labelFor(task.role || task.ownerTeam) }}</span>
               </span>
 
+              <label class="task-assignee" @click.stop>
+                <span>Responsável</span>
+                <select
+                  :value="task.assigneeId || ''"
+                  :disabled="updatingTaskId === task.id"
+                  @change="assignTask(task, $event)"
+                >
+                  <option value="">Equipe: {{ task.ownerTeam }}</option>
+                  <option v-for="user in users" :key="user.id" :value="user.id">
+                    {{ user.name }}
+                  </option>
+                </select>
+              </label>
+
               <span class="task-card__footer">
                 <span class="due-chip" :class="{ 'due-chip--late': isOverdue(task) }">
                   <NIcon :component="TimeOutline" size="13" />
@@ -1057,7 +1167,7 @@ onBeforeUnmount(() => {
                   }}
                 </span>
               </span>
-            </button>
+            </article>
 
             <p v-if="!boardTasks.get(column.key)?.length" class="empty-column">
               Nenhuma tarefa nesta etapa.
@@ -1241,6 +1351,32 @@ onBeforeUnmount(() => {
       </section>
 
       <section class="drawer-section">
+        <div class="task-edit-actions">
+          <button type="button" class="ghost-action" @click="startEditTask">Editar / reagendar</button>
+          <button type="button" class="clear-filters" @click="cancelTask(selectedTask)">Cancelar tarefa</button>
+        </div>
+        <form v-if="editingTask" class="task-edit-form" @submit.prevent="saveTaskEdit">
+          <label>
+            <span>Título</span>
+            <input v-model="editTaskForm.title" required />
+          </label>
+          <label>
+            <span>Descrição</span>
+            <textarea v-model="editTaskForm.description" rows="3"></textarea>
+          </label>
+          <label>
+            <span>Novo prazo</span>
+            <input v-model="editTaskForm.dueAt" type="datetime-local" />
+          </label>
+          <label>
+            <span>Recorrência em dias</span>
+            <input v-model="editTaskForm.recurrenceIntervalDays" type="number" min="1" max="365" placeholder="Sem recorrência" />
+          </label>
+          <button type="submit" class="primary-action">Salvar alterações</button>
+        </form>
+      </section>
+
+      <section class="drawer-section">
         <h3>Checklist operacional</h3>
         <div class="mini-checklist">
           <span
@@ -1410,16 +1546,12 @@ onBeforeUnmount(() => {
 
         <label class="field">
           <span>Funcionário responsável</span>
-          <input
-            v-model="createForm.assignee"
-            type="text"
-            list="task-assignees"
-            placeholder="Nome do funcionário"
-            required
-          />
-          <datalist id="task-assignees">
-            <option v-for="employee in employeeSuggestions" :key="employee" :value="employee" />
-          </datalist>
+          <select v-model="createForm.assigneeId" required>
+            <option value="" disabled>Selecione um usuário</option>
+            <option v-for="user in users" :key="user.id" :value="user.id">
+              {{ user.name }} · {{ user.email }}
+            </option>
+          </select>
         </label>
 
         <label class="field">
@@ -1452,6 +1584,17 @@ onBeforeUnmount(() => {
             <option value="2">Avisar 2 dias antes</option>
             <option value="">Sem alarme</option>
           </select>
+        </label>
+
+        <label class="field">
+          <span>Recorrência</span>
+          <input
+            v-model="createForm.recurrenceIntervalDays"
+            type="number"
+            min="1"
+            max="365"
+            placeholder="Sem recorrência"
+          />
         </label>
 
         <p v-if="createTaskError" class="form-error">{{ createTaskError }}</p>
@@ -1699,13 +1842,41 @@ button:disabled {
 
 .filters-bar {
   display: grid;
-  grid-template-columns: minmax(260px, 1.6fr) repeat(4, minmax(130px, 1fr)) auto;
+  grid-template-columns: auto minmax(260px, 1.6fr) repeat(4, minmax(130px, 1fr)) auto;
   gap: 9px;
   align-items: end;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-raised);
+}
+
+.ownership-toggle {
+  display: inline-flex;
+  align-self: end;
+  min-height: 38px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.ownership-toggle button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.ownership-toggle button.active {
+  background: var(--surface-raised);
+  color: var(--brand);
+  box-shadow: var(--shadow-xs);
 }
 
 .filters-bar label {
@@ -1871,6 +2042,31 @@ button:disabled {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.task-assignee {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-assignee span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.task-assignee select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .origin-pill,
@@ -2059,6 +2255,38 @@ button:disabled {
 .drawer-section {
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
+}
+
+.task-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-edit-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.task-edit-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.task-edit-form label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.task-edit-form input,
+.task-edit-form textarea {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 9px;
 }
 
 .drawer-section h3 {

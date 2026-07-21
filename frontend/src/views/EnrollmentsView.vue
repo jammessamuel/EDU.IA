@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { NAlert, NIcon, NScrollbar } from 'naive-ui'
 import {
   CloudUploadOutline,
+  CheckmarkCircleOutline,
   DocumentTextOutline,
   DownloadOutline,
   RefreshOutline,
@@ -48,6 +49,12 @@ const error = ref<string | null>(null)
 const docType = ref('PACOTE_COMPLETO')
 const docFile = ref<File | null>(null)
 const uploadBusy = ref(false)
+const confirmingId = ref<string | null>(null)
+const entryMode = ref<'ai' | 'manual'>('ai')
+const manualDraft = ref<Record<string, unknown>>({})
+const manualBusy = ref(false)
+const editingEnrollment = ref(false)
+const reviewNote = ref('')
 const { effectiveReduceMotion, updateProfile } = useAccessibility()
 
 const requiredCount = computed(() => fields.value.filter((f) => f.required).length)
@@ -197,6 +204,124 @@ async function uploadDocument() {
   }
 }
 
+async function confirmEnrollment(enrollment: Enrollment) {
+  if (confirmingId.value) return
+  confirmingId.value = enrollment.id
+  error.value = null
+  try {
+    const confirmed = await enrollmentApi.confirm(enrollment.id)
+    const index = enrollments.value.findIndex((item) => item.id === confirmed.id)
+    if (index >= 0) enrollments.value[index] = confirmed
+    if (selected.value?.id === confirmed.id) selected.value = confirmed
+  } catch {
+    error.value = 'Não foi possível confirmar a matrícula.'
+  } finally {
+    confirmingId.value = null
+  }
+}
+
+async function createManualEnrollment() {
+  if (manualBusy.value) return
+  manualBusy.value = true
+  error.value = null
+  try {
+    const created = await enrollmentApi.create(manualDraft.value)
+    manualDraft.value = {}
+    await loadEnrollments()
+    await selectEnrollment(created)
+  } catch (err: any) {
+    error.value = err?.response?.data?.message || 'Não foi possível criar a matrícula manual.'
+  } finally {
+    manualBusy.value = false
+  }
+}
+
+function startEditEnrollment() {
+  if (!selected.value) return
+  manualDraft.value = { ...selected.value.data }
+  for (const field of fields.value) {
+    const direct = selected.value[field.name as keyof Enrollment]
+    if (manualDraft.value[field.name] == null && direct != null) {
+      manualDraft.value[field.name] = direct as string
+    }
+  }
+  editingEnrollment.value = true
+  entryMode.value = 'manual'
+}
+
+async function saveEnrollmentCorrections() {
+  if (!selected.value || manualBusy.value) return
+  manualBusy.value = true
+  error.value = null
+  try {
+    const updated = await enrollmentApi.update(selected.value.id, manualDraft.value)
+    editingEnrollment.value = false
+    await loadEnrollments()
+    await selectEnrollment(updated)
+  } catch (err: any) {
+    error.value = err?.response?.data?.message || 'Não foi possível salvar as correções.'
+  } finally {
+    manualBusy.value = false
+  }
+}
+
+async function reviewEnrollment(decision: 'RETURN' | 'REJECT') {
+  if (!selected.value || confirmingId.value) return
+  if (!reviewNote.value.trim()) {
+    error.value = 'Informe o motivo antes de devolver ou rejeitar.'
+    return
+  }
+  confirmingId.value = selected.value.id
+  try {
+    const updated = await enrollmentApi.review(selected.value.id, decision, reviewNote.value)
+    reviewNote.value = ''
+    await loadEnrollments()
+    await selectEnrollment(updated)
+  } catch {
+    error.value = 'Não foi possível registrar a decisão.'
+  } finally {
+    confirmingId.value = null
+  }
+}
+
+async function updateManualPayment(status: 'APROVADO' | 'RECUSADO') {
+  if (!selected.value || confirmingId.value) return
+  confirmingId.value = selected.value.id
+  try {
+    const updated = await enrollmentApi.updatePayment(selected.value.id, status, reviewNote.value)
+    await loadEnrollments()
+    await selectEnrollment(updated)
+  } catch {
+    error.value = 'Não foi possível atualizar o pagamento.'
+  } finally {
+    confirmingId.value = null
+  }
+}
+
+async function cancelOrReopenEnrollment() {
+  if (!selected.value || confirmingId.value) return
+  confirmingId.value = selected.value.id
+  try {
+    const updated = ['CANCELADA', 'REJEITADA'].includes(selected.value.status)
+      ? await enrollmentApi.reopen(selected.value.id)
+      : await enrollmentApi.cancel(selected.value.id, reviewNote.value || undefined)
+    reviewNote.value = ''
+    await loadEnrollments()
+    await selectEnrollment(updated)
+  } catch {
+    error.value = 'Não foi possível atualizar o ciclo da matrícula.'
+  } finally {
+    confirmingId.value = null
+  }
+}
+
+function fieldInputType(field: EnrollmentField) {
+  if (field.type === 'email') return 'email'
+  if (field.type === 'date') return 'date'
+  if (field.type === 'phone') return 'tel'
+  return 'text'
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
@@ -226,14 +351,28 @@ function formatFileSize(value?: number | null) {
       <section class="enrollment-chat">
         <div class="chat-strip">
           <div>
-            <strong>Matrícula assistida</strong>
-            <span>Atendimento guiado, pagamento demo e comprovante em PDF.</span>
+            <strong>{{ entryMode === 'ai' ? 'Matrícula assistida' : 'Matrícula manual' }}</strong>
+            <span>IA e equipe humana usam a mesma validação do servidor.</span>
           </div>
           <button class="icon-action" title="Nova matrícula" @click="resetChat">
             <NIcon :component="RefreshOutline" size="16" />
           </button>
         </div>
 
+        <div class="mode-toggle">
+          <button type="button" :class="{ active: entryMode === 'ai' }" @click="entryMode = 'ai'">
+            Assistida por IA
+          </button>
+          <button
+            type="button"
+            :class="{ active: entryMode === 'manual' }"
+            @click="entryMode = 'manual'; editingEnrollment = false; manualDraft = {}"
+          >
+            Preenchimento manual
+          </button>
+        </div>
+
+        <template v-if="entryMode === 'ai'">
         <div class="progress">
           <div class="progress__bar"><span :style="{ width: `${progress}%` }"></span></div>
           <small>{{ collectedRequiredCount }}/{{ requiredCount }} campos obrigatórios coletados</small>
@@ -242,6 +381,39 @@ function formatFileSize(value?: number | null) {
         <ChatMessages :messages="messages" :is-typing="isTyping" />
 
         <ChatInput :disabled="isSending" placeholder="Escreva sua resposta aqui..." @send="sendEnrollmentMessage" />
+        </template>
+
+        <form v-else class="manual-enrollment-form" @submit.prevent="editingEnrollment ? saveEnrollmentCorrections() : createManualEnrollment()">
+          <header>
+            <strong>{{ editingEnrollment ? `Corrigir ${selected?.number}` : 'Nova matrícula sem IA' }}</strong>
+            <span>O pagamento fica pendente até a conferência manual.</span>
+          </header>
+          <label v-for="field in fields" :key="field.name">
+            <span>{{ field.label }} <em v-if="field.required">obrigatório</em></span>
+            <select
+              v-if="field.type === 'select' && field.options?.length"
+              v-model="manualDraft[field.name]"
+              :required="field.required"
+            >
+              <option value="">Selecione</option>
+              <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+            </select>
+            <input
+              v-else
+              v-model="manualDraft[field.name]"
+              :type="fieldInputType(field)"
+              :required="field.required"
+            />
+          </label>
+          <div class="manual-form-actions">
+            <button v-if="editingEnrollment" type="button" @click="editingEnrollment = false; manualDraft = {}">
+              Cancelar edição
+            </button>
+            <button type="submit" :disabled="manualBusy">
+              {{ manualBusy ? 'Salvando...' : editingEnrollment ? 'Salvar correções' : 'Criar matrícula manual' }}
+            </button>
+          </div>
+        </form>
       </section>
 
       <section class="enrollment-list">
@@ -266,7 +438,10 @@ function formatFileSize(value?: number | null) {
               v-for="enrollment in enrollments"
               :key="enrollment.id"
               class="enrollment-card"
-              :class="{ 'enrollment-card--active': selected?.id === enrollment.id }"
+              :class="{
+                'enrollment-card--active': selected?.id === enrollment.id,
+                'enrollment-card--review': enrollment.status === 'AGUARDANDO_CONFERENCIA',
+              }"
               @click="selectEnrollment(enrollment)"
             >
               <span class="enrollment-card__number">{{ enrollment.number }}</span>
@@ -300,6 +475,55 @@ function formatFileSize(value?: number | null) {
             <span>Pagamento demo</span>
             <strong>{{ formatMoney(selected.paymentAmount) }}</strong>
             <small>{{ selected.paymentMethod || 'Forma não informada' }} · {{ selected.paymentRef || 'sem referência' }}</small>
+          </div>
+
+          <button
+            v-if="selected.status === 'AGUARDANDO_CONFERENCIA'"
+            type="button"
+            class="confirm-action"
+            :disabled="confirmingId === selected.id"
+            @click="confirmEnrollment(selected)"
+          >
+            <NIcon :component="CheckmarkCircleOutline" size="17" />
+            {{ confirmingId === selected.id ? 'Confirmando...' : 'Confirmar matrícula' }}
+          </button>
+
+          <div class="human-review-box">
+            <strong>Operação humana</strong>
+            <textarea
+              v-model="reviewNote"
+              rows="3"
+              placeholder="Nota, motivo da devolução, rejeição ou cancelamento"
+            ></textarea>
+            <div>
+              <button type="button" @click="startEditEnrollment">Editar dados</button>
+              <button
+                v-if="selected.paymentStatus !== 'APROVADO' && !['CANCELADA', 'REJEITADA'].includes(selected.status)"
+                type="button"
+                @click="updateManualPayment('APROVADO')"
+              >
+                Confirmar pagamento
+              </button>
+              <button
+                v-if="selected.status === 'AGUARDANDO_CONFERENCIA'"
+                type="button"
+                @click="reviewEnrollment('RETURN')"
+              >
+                Devolver para correção
+              </button>
+              <button
+                v-if="selected.status === 'AGUARDANDO_CONFERENCIA'"
+                type="button"
+                class="danger-action"
+                @click="reviewEnrollment('REJECT')"
+              >
+                Rejeitar
+              </button>
+              <button type="button" class="danger-action" @click="cancelOrReopenEnrollment">
+                {{ ['CANCELADA', 'REJEITADA'].includes(selected.status) ? 'Reabrir' : 'Cancelar' }}
+              </button>
+            </div>
+            <small v-if="selected.reviewNote">Última nota: {{ selected.reviewNote }}</small>
           </div>
 
           <button
@@ -574,6 +798,12 @@ function formatFileSize(value?: number | null) {
   background: #f0fdf8;
 }
 
+.enrollment-card--review {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  box-shadow: inset 4px 0 0 #f59e0b;
+}
+
 .enrollment-card__number {
   display: block;
   color: #075e54;
@@ -669,6 +899,27 @@ function formatFileSize(value?: number | null) {
   width: 100%;
   padding: 11px 14px;
   margin-bottom: 18px;
+}
+
+.confirm-action {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #d97706;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 11px 14px;
+}
+
+.confirm-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .detail-section {
@@ -784,6 +1035,98 @@ function formatFileSize(value?: number | null) {
 .document-row strong {
   color: #075e54;
   font-size: 11px;
+}
+
+.mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+
+.mode-toggle button,
+.manual-form-actions button,
+.human-review-box button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 9px 10px;
+}
+
+.mode-toggle button.active,
+.manual-form-actions button:last-child {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: white;
+}
+
+.manual-enrollment-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.manual-enrollment-form header,
+.manual-form-actions {
+  grid-column: 1 / -1;
+}
+
+.manual-enrollment-form header,
+.manual-enrollment-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.manual-enrollment-form header span,
+.manual-enrollment-form label span,
+.human-review-box small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.manual-enrollment-form label em {
+  color: var(--danger);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.manual-enrollment-form input,
+.manual-enrollment-form select,
+.human-review-box textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 9px 10px;
+}
+
+.manual-form-actions,
+.human-review-box > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.human-review-box {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 12px;
+}
+
+.human-review-box .danger-action {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  color: var(--danger);
 }
 
 .document-row span {

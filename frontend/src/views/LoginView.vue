@@ -78,7 +78,7 @@ async function handleLogin() {
   error.value = null
   try {
     await authStore.login(f.email, f.password)
-    router.push('/')
+    router.push('/hoje')
   } catch (err: any) {
     error.value = err?.response?.data?.message ?? 'E-mail ou senha incorretos.'
   } finally {
@@ -105,7 +105,7 @@ async function handleRegister() {
       selectedVertical.value.id,
     )
     await updateProfile({ ...accessibilityProfile.value })
-    router.push('/')
+    router.push('/hoje')
   } catch (err: any) {
     error.value = err?.response?.data?.message ?? 'Não foi possível criar a conta.'
   } finally {

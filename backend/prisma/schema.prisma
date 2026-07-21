@@ -60,6 +60,7 @@ model School {
   courseOffers    CourseOffer[]
   documents       DocumentRequirement[]
   commercial      CommercialCondition?
+  contactAttempts ContactAttempt[]
 
   @@map("schools")
 }
@@ -215,26 +216,47 @@ model User {
   school School @relation(fields: [schoolId], references: [id])
   role   Role?  @relation(fields: [roleId], references: [id])
 
+  contactAttempts      ContactAttempt[]
+  assignedTasks        PostSaleTask[]       @relation("TaskAssignee")
+  createdTasks         PostSaleTask[]       @relation("TaskCreator")
+  updatedTasks         PostSaleTask[]       @relation("TaskUpdater")
+  completedTasks       PostSaleTask[]       @relation("TaskCompleter")
+  assignedLeads        Lead[]               @relation("LeadAssignee")
+  createdLeads         Lead[]               @relation("LeadCreator")
+  confirmedEnrollments Enrollment[]         @relation("EnrollmentConfirmer")
+  assignedEnrollments  Enrollment[]         @relation("EnrollmentAssignee")
+  ownedPostSaleCases   PostSaleState[]      @relation("PostSaleCaseOwner")
+  reviewedDocuments    EnrollmentDocument[] @relation("DocumentReviewer")
+
   @@unique([schoolId, email])
   @@index([schoolId])
   @@map("users")
 }
 
 model Lead {
-  id           String   @id @default(cuid())
-  schoolId     String
-  name         String
-  phone        String?
-  data         String   @default("{}")
-  conversation String   @default("[]")
-  qualified    Boolean  @default(true)
-  status       String   @default("NOVO")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  schoolId      String
+  name          String
+  phone         String?
+  data          String    @default("{}")
+  conversation  String    @default("[]")
+  qualified     Boolean   @default(true)
+  status        String    @default("NOVO")
+  assigneeId    String?
+  createdById   String?
+  nextContactAt DateTime?
+  lastContactAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  school School @relation(fields: [schoolId], references: [id])
+  school    School @relation(fields: [schoolId], references: [id])
+  assignee  User?  @relation("LeadAssignee", fields: [assigneeId], references: [id])
+  createdBy User?  @relation("LeadCreator", fields: [createdById], references: [id])
 
   @@index([schoolId])
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([schoolId, nextContactAt])
   @@map("leads")
 }
 
@@ -249,7 +271,7 @@ model Enrollment {
   leadId   String? // lead de origem, se a matrícula veio de uma conversa
 
   number String // nº de matrícula legível: "2026-0042"
-  status String @default("RASCUNHO") // RASCUNHO, AGUARDANDO_PAGAMENTO, CONFIRMADA, CANCELADA
+  status String @default("RASCUNHO") // RASCUNHO, AGUARDANDO_PAGAMENTO, AGUARDANDO_CONFERENCIA, CONFIRMADA, CANCELADA
 
   // Identificação principal (colunas diretas p/ busca e p/ o comprovante)
   studentName        String
@@ -279,22 +301,32 @@ model Enrollment {
   // Código de autenticação do comprovante (vai dentro do QR Code)
   authCode String
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  confirmedAt DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  confirmedAt        DateTime?
+  humanConfirmedAt   DateTime?
+  humanConfirmedById String?
+  assigneeId         String?
+  reviewNote         String?
+  reviewedAt         DateTime?
+  canceledAt         DateTime?
 
-  school    School               @relation(fields: [schoolId], references: [id])
-  documents EnrollmentDocument[]
+  school           School               @relation(fields: [schoolId], references: [id])
+  documents        EnrollmentDocument[]
+  humanConfirmedBy User?                @relation("EnrollmentConfirmer", fields: [humanConfirmedById], references: [id])
+  assignee         User?                @relation("EnrollmentAssignee", fields: [assigneeId], references: [id])
 
   @@unique([schoolId, number])
   @@index([schoolId])
+  @@index([humanConfirmedById])
+  @@index([assigneeId])
   @@index([cpf])
   @@index([documentNumber])
   @@map("enrollments")
 }
 
 model EnrollmentDocument {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   enrollmentId String
   type         String // RG, CPF, HISTORICO, COMPROVANTE_RESIDENCIA, FOTO…
   fileName     String
@@ -302,63 +334,97 @@ model EnrollmentDocument {
   content      Bytes? // demo robusta em Vercel/local sem bucket externo
   mimeType     String?
   size         Int?
-  uploadedAt   DateTime @default(now())
+  uploadedAt   DateTime  @default(now())
+  status       String    @default("PENDENTE") // PENDENTE, RECEBIDO, APROVADO, RECUSADO
+  reviewNote   String    @default("")
+  reviewedAt   DateTime?
+  reviewedById String?
 
   enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  reviewedBy User?      @relation("DocumentReviewer", fields: [reviewedById], references: [id])
 
   @@index([enrollmentId])
+  @@index([reviewedById])
   @@map("enrollment_documents")
 }
 
 model PostSaleState {
-  id             String   @id @default(cuid())
-  schoolId       String
-  studentKey     String
-  enrollmentId   String?
-  status         String?
-  documentStatus String?
-  contractStatus String?
-  paymentStatus  String?
-  accessStatus   String?
-  riskScore      Int?
-  nextAction     String?
-  ownerTeam      String?
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  schoolId           String
+  studentKey         String
+  enrollmentId       String?
+  status             String?
+  documentStatus     String?
+  contractStatus     String?
+  paymentStatus      String?
+  accessStatus       String?
+  riskScore          Int?
+  nextAction         String?
+  ownerTeam          String?
+  assigneeId         String?
+  lifecycleStatus    String    @default("ATIVO") // ATIVO, PAUSADO, ENCERRADO
+  lifecycleReason    String?
+  nextActionAt       DateTime?
+  lastHumanActionAt  DateTime?
+  notes              String?
+  nextContactAt      DateTime?
+  lastContactAt      DateTime?
+  lastContactChannel String?
+  lastContactOutcome String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  assignee User? @relation("PostSaleCaseOwner", fields: [assigneeId], references: [id])
 
   @@unique([schoolId, studentKey])
   @@index([schoolId])
   @@index([enrollmentId])
+  @@index([assigneeId])
+  @@index([schoolId, lifecycleStatus, nextActionAt])
   @@map("post_sale_states")
 }
 
 model PostSaleTask {
-  id            String    @id @default(cuid())
-  schoolId      String
-  studentKey    String?
-  leadId        String?
-  enrollmentId  String?
-  studentName   String
-  title         String
-  ownerTeam     String
-  assignee      String    @default("")
-  role          String    @default("secretaria")
-  priority      String    @default("Normal")
-  status        String    @default("ABERTA")
-  column        String    @default("a_fazer")
-  origin        String    @default("manual")
-  createdBy     String    @default("humano")
-  automation    String?
-  relatedEntity String    @default("{}")
-  autoResolve   Boolean   @default(false)
-  dueAt         DateTime?
-  firstMovedAt  DateTime?
-  resolvedAt    DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  schoolId               String
+  studentKey             String?
+  leadId                 String?
+  enrollmentId           String?
+  studentName            String
+  title                  String
+  ownerTeam              String
+  assignee               String    @default("")
+  assigneeId             String?
+  role                   String    @default("secretaria")
+  priority               String    @default("Normal")
+  status                 String    @default("ABERTA")
+  column                 String    @default("a_fazer")
+  origin                 String    @default("manual")
+  createdBy              String    @default("humano")
+  createdById            String?
+  updatedById            String?
+  completedById          String?
+  automation             String?
+  relatedEntity          String    @default("{}")
+  autoResolve            Boolean   @default(false)
+  dueAt                  DateTime?
+  recurrenceIntervalDays Int?
+  canceledAt             DateTime?
+  firstMovedAt           DateTime?
+  resolvedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  assignedUser    User? @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdByUser   User? @relation("TaskCreator", fields: [createdById], references: [id])
+  updatedByUser   User? @relation("TaskUpdater", fields: [updatedById], references: [id])
+  completedByUser User? @relation("TaskCompleter", fields: [completedById], references: [id])
 
   @@index([schoolId])
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([completedById])
   @@index([studentKey])
   @@index([leadId])
   @@index([enrollmentId])
@@ -366,6 +432,29 @@ model PostSaleTask {
   @@index([schoolId, column])
   @@index([schoolId, origin])
   @@map("post_sale_tasks")
+}
+
+model ContactAttempt {
+  id              String    @id @default(cuid())
+  schoolId        String
+  studentKey      String?
+  leadId          String?
+  channel         String
+  outcome         String
+  note            String    @default("")
+  nextContactAt   DateTime?
+  contactedById   String?
+  contactedByName String    @default("")
+  createdAt       DateTime  @default(now())
+
+  school      School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  contactedBy User?  @relation(fields: [contactedById], references: [id])
+
+  @@index([schoolId])
+  @@index([studentKey])
+  @@index([leadId])
+  @@index([schoolId, nextContactAt])
+  @@map("contact_attempts")
 }
 
 model PostSaleEvent {

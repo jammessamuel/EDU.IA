@@ -1,5 +1,13 @@
 import { apiClient } from './client'
-import type { SendMessageResponse, Lead, Metrics, VerticalField, VerticalStage } from '@/types'
+import type {
+  ContactAttempt,
+  ContactInput,
+  Lead,
+  Metrics,
+  SendMessageResponse,
+  VerticalField,
+  VerticalStage,
+} from '@/types'
 
 export interface HistoryMessage {
   role: 'user' | 'assistant'
@@ -19,6 +27,29 @@ export const simulatorApi = {
 
   getLeads(): Promise<Lead[]> {
     return apiClient.get<Lead[]>('/simulator/leads').then((res) => res.data)
+  },
+
+  createLead(input: {
+    name: string
+    phone?: string | null
+    data?: Record<string, unknown>
+    status?: string
+    assigneeId?: string | null
+  }): Promise<Lead> {
+    return apiClient.post<Lead>('/simulator/leads', input).then((res) => res.data)
+  },
+
+  updateLead(
+    id: string,
+    input: { name?: string; phone?: string | null; data?: Record<string, unknown> },
+  ): Promise<Lead> {
+    return apiClient.patch<Lead>(`/simulator/leads/${id}`, input).then((res) => res.data)
+  },
+
+  getLeadContacts(id: string): Promise<ContactAttempt[]> {
+    return apiClient
+      .get<ContactAttempt[]>(`/simulator/leads/${id}/contacts`)
+      .then((res) => res.data)
   },
 
   getMetrics(): Promise<Metrics> {
@@ -50,6 +81,18 @@ export const simulatorApi = {
   updateLeadStatus(id: string, status: string): Promise<Lead> {
     return apiClient
       .patch<Lead>(`/simulator/leads/${id}/status`, { status })
+      .then((res) => res.data)
+  },
+
+  updateLeadAssignee(id: string, assigneeId: string | null): Promise<Lead> {
+    return apiClient
+      .patch<Lead>(`/simulator/leads/${id}/assignee`, { assigneeId })
+      .then((res) => res.data)
+  },
+
+  registerLeadContact(id: string, input: ContactInput): Promise<Lead> {
+    return apiClient
+      .post<Lead>(`/simulator/leads/${id}/contacts`, input)
       .then((res) => res.data)
   },
 }

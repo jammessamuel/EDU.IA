@@ -52,6 +52,10 @@ export interface Lead {
   conversation: ConversationMessage[]
   qualified: boolean
   status: string
+  assigneeId?: string | null
+  assignee?: Pick<SchoolUser, 'id' | 'name'> | null
+  nextContactAt?: string | null
+  lastContactAt?: string | null
   createdAt: string
   updatedAt?: string
 }
@@ -152,6 +156,12 @@ export interface Enrollment {
   authCode: string
   createdAt: string
   confirmedAt?: string | null
+  humanConfirmedAt?: string | null
+  humanConfirmedById?: string | null
+  assigneeId?: string | null
+  reviewNote?: string | null
+  reviewedAt?: string | null
+  canceledAt?: string | null
   schoolName?: string
   documentsCount?: number
 }
@@ -165,6 +175,10 @@ export interface EnrollmentDocument {
   mimeType?: string | null
   size?: number | null
   uploadedAt: string
+  status: 'PENDENTE' | 'RECEBIDO' | 'APROVADO' | 'RECUSADO' | string
+  reviewNote?: string
+  reviewedAt?: string | null
+  reviewedById?: string | null
 }
 
 export interface EnrollmentChatResponse {
@@ -242,8 +256,13 @@ export interface PostSaleStudent {
   accessStatus: string
   nextAction: string
   ownerTeam: string
+  assigneeId: string | null
+  assignedUser: Pick<SchoolUser, 'id' | 'name'> | null
+  lifecycleStatus: 'ATIVO' | 'PAUSADO' | 'ENCERRADO'
+  lifecycleReason: string | null
+  nextActionAt: string | null
   daysSinceEnrollment: number
-  lastContactAt: string
+  lastContactAt: string | null
   upcomingDueAt: string
   checklist: PostSaleChecklistStep[]
   timeline: PostSaleTimelineEvent[]
@@ -278,6 +297,8 @@ export interface PostSaleTask {
   studentName: string
   ownerTeam: string
   assignee?: string
+  assigneeId?: string | null
+  assignedUser?: Pick<SchoolUser, 'id' | 'name'> | null
   role?: 'comercial' | 'financeiro' | 'sucesso_do_aluno' | 'secretaria' | 'gestor' | string
   priority: string
   status?: string
@@ -309,8 +330,89 @@ export interface PostSaleTask {
   source?: 'automatic' | 'manual'
   firstMovedAt?: string | null
   resolvedAt?: string | null
+  recurrenceIntervalDays?: number | null
+  canceledAt?: string | null
   createdAt?: string
   updatedAt?: string
+}
+
+export interface SchoolUser {
+  id: string
+  name: string
+  email: string
+  isActive: boolean
+}
+
+export interface ContactInput {
+  channel: string
+  outcome: string
+  note?: string
+  nextContactAt?: string | null
+}
+
+export interface ContactAttempt {
+  id: string
+  schoolId: string
+  studentKey: string | null
+  leadId: string | null
+  channel: string
+  outcome: string
+  note: string
+  nextContactAt: string | null
+  contactedById: string | null
+  contactedByName: string
+  createdAt: string
+}
+
+export interface PostSaleToday {
+  generatedAt: string
+  counts: {
+    aguardandoConferencia: number
+    contatosAtrasados: number
+    contatosHoje: number
+    tarefasAtrasadas: number
+    tarefasHoje: number
+    leadsSemContatoHa24h: number
+    acoesDeCaso: number
+    casosSemResponsavel: number
+  }
+  aguardandoConferencia: Array<{
+    id: string
+    number: string
+    studentName: string
+    course: string | null
+    createdAt: string
+    paymentStatus: string
+  }>
+  pendenciasDeContato: Array<{
+    origem: 'lead' | 'aluno'
+    id: string
+    nome: string
+    nextContactAt: string
+    atrasado: boolean
+    ultimoContato: { channel: string; outcome: string; at: string } | null
+  }>
+  tarefas: PostSaleTask[]
+  leadsSemContatoHa24h: Array<{
+    id: string
+    name: string
+    createdAt: string
+    updatedAt: string
+  }>
+  acoesDeCaso: Array<{
+    id: string
+    nome: string
+    nextAction: string
+    nextActionAt: string
+    assignee: Pick<SchoolUser, 'id' | 'name'> | null
+    atrasado: boolean
+  }>
+  casosSemResponsavel: Array<{
+    id: string
+    nome: string
+    nextAction: string | null
+    nextActionAt: string | null
+  }>
 }
 
 export type PostSaleAlertLevel = 'VENCIDA' | 'CRITICO' | '24H' | '48H'

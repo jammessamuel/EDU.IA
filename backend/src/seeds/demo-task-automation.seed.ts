@@ -459,6 +459,7 @@ async function main(): Promise<void> {
       ownerTeam: ownerTeam(student.lifecycleStatus),
       daysSinceEnrollment: student.daysAgo,
       upcomingDueAt: addDays(now, 2),
+      assigneeId: null,
     });
 
     console.log(`Aluno: ${student.name} (${student.course})`);

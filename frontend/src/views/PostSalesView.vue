@@ -23,6 +23,7 @@ import {
 import AppNav from '@/components/layout/AppNav.vue'
 import { postSalesApi } from '@/api/postSales'
 import { schoolConfigApi, type CommercialPdfKind } from '@/api/schoolConfig'
+import { usersApi } from '@/api/users'
 import type {
   PostSaleAction,
   PostSaleIntegrationLog,
@@ -30,6 +31,7 @@ import type {
   PostSaleOverview,
   PostSaleStudent,
   PostSaleTask,
+  SchoolUser,
 } from '@/types'
 
 type FilterKey = 'TODOS' | 'RISCO' | PostSaleLifecycleStatus
@@ -54,6 +56,8 @@ const taskPriority = ref('Normal')
 const taskDueInDays = ref(1)
 const messagePreview = ref<string | null>(null)
 const pdfBusy = ref<CommercialPdfKind | null>(null)
+const includeDemo = ref(false)
+const users = ref<SchoolUser[]>([])
 
 const filterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'TODOS', label: 'Todos' },
@@ -182,18 +186,42 @@ const funnelMax = computed(() => {
   return Math.max(1, ...counts)
 })
 
-onMounted(loadOverview)
+onMounted(async () => {
+  await Promise.all([loadOverview(), usersApi.list().then((list) => (users.value = list))])
+})
 
 async function loadOverview() {
   loading.value = true
   error.value = null
   try {
-    overview.value = await postSalesApi.overview()
+    overview.value = await postSalesApi.overview(includeDemo.value)
     selectedId.value = overview.value.students[0]?.id ?? null
   } catch {
     error.value = 'Não foi possível carregar o pós-venda agora.'
   } finally {
     loading.value = false
+  }
+}
+
+async function toggleDemo() {
+  includeDemo.value = !includeDemo.value
+  await loadOverview()
+}
+
+async function assignSelectedStudent(event: Event) {
+  if (!selectedStudent.value || selectedStudent.value.isDemo || actionBusy.value) return
+  actionBusy.value = 'ASSIGN_STUDENT'
+  try {
+    applyOverview(
+      await postSalesApi.assignStudent(
+        selectedStudent.value.id,
+        (event.target as HTMLSelectElement).value || null,
+      ),
+    )
+  } catch {
+    error.value = 'Não foi possível atualizar o responsável principal.'
+  } finally {
+    actionBusy.value = null
   }
 }
 
@@ -407,6 +435,9 @@ function actionLabel(action: string) {
           </p>
         </div>
         <div class="post-actions">
+          <button type="button" class="secondary-action" @click="toggleDemo">
+            {{ includeDemo ? 'Ocultar demonstração' : 'Mostrar demonstração' }}
+          </button>
           <button type="button" class="secondary-action" @click="router.push('/enrollments')">
             <NIcon :component="ShieldCheckmarkOutline" size="16" />
             Matrículas
@@ -617,6 +648,24 @@ function actionLabel(action: string) {
                   >
                 </div>
               </div>
+
+              <label v-if="!selectedStudent.isDemo" class="case-owner-field">
+                <span>Responsável principal pelo aluno</span>
+                <select
+                  :value="selectedStudent.assigneeId || ''"
+                  :disabled="!!actionBusy"
+                  @change="assignSelectedStudent"
+                >
+                  <option value="">Sem responsável</option>
+                  <option v-for="user in users" :key="user.id" :value="user.id">
+                    {{ user.name }}
+                  </option>
+                </select>
+                <small>
+                  {{ selectedStudent.lifecycleStatus }} · próxima ação
+                  {{ formatDate(selectedStudent.nextActionAt || selectedStudent.upcomingDueAt) }}
+                </small>
+              </label>
 
               <div
                 class="ruler-box"
@@ -1501,6 +1550,32 @@ function actionLabel(action: string) {
 .student-detail__head p {
   color: var(--muted);
   font-size: 13px;
+}
+
+.case-owner-field {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 12px;
+}
+
+.case-owner-field span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.case-owner-field select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 9px;
+}
+
+.case-owner-field small {
+  color: var(--muted);
 }
 
 .profile-link {

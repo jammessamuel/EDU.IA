@@ -9,10 +9,11 @@ import { SchoolConfigModule } from '../school-config/school-config.module';
 import { PostSaleController } from './post-sale.controller';
 import { PostSaleService } from './post-sale.service';
 import { TaskAutomationService } from './task-automation.service';
+import { AutomationCronController } from './automation-cron.controller';
 
 @Module({
   imports: [PrismaModule, SchoolConfigModule],
-  controllers: [PostSaleController],
+  controllers: [PostSaleController, AutomationCronController],
   providers: [
     PostSaleService,
     TaskAutomationService,

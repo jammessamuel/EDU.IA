@@ -26,7 +26,10 @@ import {
   camposFaltando,
   buildEnrollmentPrompt,
 } from './enrollment-agent';
-import { RuntimeSchoolConfig, SchoolConfigService } from '../school-config/school-config.service';
+import {
+  RuntimeSchoolConfig,
+  SchoolConfigService,
+} from '../school-config/school-config.service';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -75,7 +78,9 @@ export class EnrollmentChatService {
     enrollment: any | null;
     accessibility: AccessibilityProfile | null;
   }> {
-    const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+    });
     const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
     let accessibility = await this.accessibility.getForUser(userId);
     const fields = this.fieldsForConfig(runtimeConfig);
@@ -98,7 +103,9 @@ export class EnrollmentChatService {
       fee: runtimeConfig.courses[0]?.enrollmentFee ?? DEFAULT_ENROLLMENT_FEE,
       draft: initialDraft,
       accessibility,
-      frontendUrl: this.config.get<string>('FRONTEND_PUBLIC_URL') ?? 'https://edu-ia-front.vercel.app',
+      frontendUrl:
+        this.config.get<string>('FRONTEND_PUBLIC_URL') ??
+        'https://edu-ia-front.vercel.app',
       institutionPrompt: this.schoolConfig.institutionPrompt(runtimeConfig),
     });
 
@@ -120,7 +127,12 @@ export class EnrollmentChatService {
 
       // Sem tool calls → é a resposta final, em texto, pro aluno.
       if (!msg.tool_calls || msg.tool_calls.length === 0) {
-        return { reply: msg.content ?? '', draft: current, enrollment, accessibility: updatedAccessibility };
+        return {
+          reply: msg.content ?? '',
+          draft: current,
+          enrollment,
+          accessibility: updatedAccessibility,
+        };
       }
 
       // Executa cada ferramenta que a IA pediu e devolve o resultado pra ela.
@@ -161,7 +173,12 @@ export class EnrollmentChatService {
       }
     }
 
-    return { reply: 'Vamos continuar de onde paramos?', draft: current, enrollment, accessibility: updatedAccessibility };
+    return {
+      reply: 'Vamos continuar de onde paramos?',
+      draft: current,
+      enrollment,
+      accessibility: updatedAccessibility,
+    };
   }
 
   /** Chamada à OpenAI com tratamento de chave inválida (vira um 503 amigável). */
@@ -219,14 +236,21 @@ export class EnrollmentChatService {
     }
 
     if (name === 'salvar_dados') {
-      const campos = this.filterFieldsWithEvidence(args.campos || {}, draft, currentUserText, fields);
+      const campos = this.filterFieldsWithEvidence(
+        args.campos || {},
+        draft,
+        currentUserText,
+        fields,
+      );
       const novo = normalizeEnrollmentData(fields, { ...draft, ...campos });
       const erros = validateEnrollment(fields, novo, { requireMissing: false });
       const faltando = camposFaltando(fields, novo);
       return {
         ok: erros.length === 0,
         salvos: Object.keys(campos),
-        ignorados_por_falta_de_evidencia: Object.keys(args.campos || {}).filter((field) => !(field in campos)),
+        ignorados_por_falta_de_evidencia: Object.keys(args.campos || {}).filter(
+          (field) => !(field in campos),
+        ),
         faltando,
         erros: erros.map((e) => e.message),
         pronto_para_efetivar: faltando.length === 0 && erros.length === 0,
@@ -241,7 +265,10 @@ export class EnrollmentChatService {
       if (erros.length || faltando.length) {
         return { ok: false, faltando, erros: erros.map((e) => e.message) };
       }
-      const e = await this.enrollments.enroll(schoolId, normalized);
+      const e = await this.enrollments.enroll(schoolId, normalized, {
+        assigneeId: userId,
+        simulatePayment: true,
+      });
       return {
         ok: true,
         numero: e.number,
@@ -253,7 +280,10 @@ export class EnrollmentChatService {
 
     if (name === 'ajustar_acessibilidade') {
       const { motivo: _motivo, ...preferences } = args || {};
-      const profile = await this.accessibility.updateForUser(userId, preferences);
+      const profile = await this.accessibility.updateForUser(
+        userId,
+        preferences,
+      );
       return {
         ok: true,
         aplicado: profile,
@@ -266,21 +296,38 @@ export class EnrollmentChatService {
     return { ok: false, erro: `Ferramenta desconhecida: ${name}` };
   }
 
-  private fieldsForConfig(runtimeConfig: RuntimeSchoolConfig): EnrollmentField[] {
-    const courseOptions = runtimeConfig.courses.map((course) => course.name).filter(Boolean);
-    const shiftOptions = [...new Set(runtimeConfig.courses.flatMap((course) => course.shifts))].filter(Boolean);
-    const modalityOptions = [...new Set(runtimeConfig.courses.map((course) => course.modality).filter(Boolean))];
+  private fieldsForConfig(
+    runtimeConfig: RuntimeSchoolConfig,
+  ): EnrollmentField[] {
+    const courseOptions = runtimeConfig.courses
+      .map((course) => course.name)
+      .filter(Boolean);
+    const shiftOptions = [
+      ...new Set(runtimeConfig.courses.flatMap((course) => course.shifts)),
+    ].filter(Boolean);
+    const modalityOptions = [
+      ...new Set(
+        runtimeConfig.courses.map((course) => course.modality).filter(Boolean),
+      ),
+    ];
 
     return EDUCATION_ENROLLMENT_FIELDS.map((field) => {
-      if (field.name === 'course' && courseOptions.length) return { ...field, options: courseOptions };
-      if (field.name === 'shift' && shiftOptions.length) return { ...field, options: shiftOptions };
-      if (field.name === 'modalidade' && modalityOptions.length) return { ...field, options: modalityOptions };
-      if (field.name === 'unit') return { ...field, required: false, options: ['Sede principal'] };
+      if (field.name === 'course' && courseOptions.length)
+        return { ...field, options: courseOptions };
+      if (field.name === 'shift' && shiftOptions.length)
+        return { ...field, options: shiftOptions };
+      if (field.name === 'modalidade' && modalityOptions.length)
+        return { ...field, options: modalityOptions };
+      if (field.name === 'unit')
+        return { ...field, required: false, options: ['Sede principal'] };
       return field;
     });
   }
 
-  private extractObviousFields(text: string, fields: EnrollmentField[]): Record<string, string> {
+  private extractObviousFields(
+    text: string,
+    fields: EnrollmentField[],
+  ): Record<string, string> {
     const found: Record<string, string> = {};
     const haystack = this.normalizeText(text);
     const digits = onlyDigits(text);
@@ -293,16 +340,20 @@ export class EnrollmentChatService {
 
     for (const fieldName of ['course', 'unit', 'modalidade', 'ingresso']) {
       const field = fields.find((candidate) => candidate.name === fieldName);
-      const option = field?.options?.find((candidate) => haystack.includes(this.normalizeText(candidate)));
+      const option = field?.options?.find((candidate) =>
+        haystack.includes(this.normalizeText(candidate)),
+      );
       if (option) found[fieldName] = option;
     }
 
     const shift = this.extractShift(text);
     if (shift) found.shift = shift;
 
-    if (/\b(passport|passaporte|pasaporte)\b/i.test(text)) found.documentType = 'Passaporte';
+    if (/\b(passport|passaporte|pasaporte)\b/i.test(text))
+      found.documentType = 'Passaporte';
     if (/\bssn\b|social security/i.test(text)) found.documentType = 'SSN';
-    if (/\bdriver'?s? license\b/i.test(text)) found.documentType = 'Driver License';
+    if (/\bdriver'?s? license\b/i.test(text))
+      found.documentType = 'Driver License';
     if (/\bstate id\b/i.test(text)) found.documentType = 'State ID';
     if (/\bnie\b/i.test(text)) found.documentType = 'NIE';
     if (/\bdni\b/i.test(text)) found.documentType = 'DNI';
@@ -317,13 +368,17 @@ export class EnrollmentChatService {
       found.documentNumber = cpfCandidate;
     }
 
-    const passportCandidate = text.match(/\b(?:passaporte|passport|pasaporte)\s*(?:é|e|:|#|number|nº|no\.?)?\s*([A-Z0-9][A-Z0-9 -]{4,18})\b/i)?.[1];
+    const passportCandidate = text.match(
+      /\b(?:passaporte|passport|pasaporte)\s*(?:é|e|:|#|number|nº|no\.?)?\s*([A-Z0-9][A-Z0-9 -]{4,18})\b/i,
+    )?.[1];
     if (passportCandidate) {
       found.documentType = 'Passaporte';
       found.documentNumber = passportCandidate;
     }
 
-    const dateCandidate = text.match(/\b(?:nasci(?:mento)?|birth(?:date)?|nací|fecha de nacimiento|data de nascimento)?\s*(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\b/i)?.[1];
+    const dateCandidate = text.match(
+      /\b(?:nasci(?:mento)?|birth(?:date)?|nací|fecha de nacimiento|data de nascimento)?\s*(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\b/i,
+    )?.[1];
     if (dateCandidate) found.birthDate = dateCandidate;
 
     const cepCandidate = text.match(/\b\d{5}-?\d{3}\b/)?.[0];
@@ -331,20 +386,35 @@ export class EnrollmentChatService {
 
     const phoneCandidate = text.match(/(?:\+?\d[\d\s().-]{9,}\d)/)?.[0];
     const phoneDigits = phoneCandidate ? onlyDigits(phoneCandidate) : '';
-    if (phoneCandidate && phoneDigits.length >= 10 && phoneDigits.length <= 15 && !isValidCpf(phoneDigits)) {
+    if (
+      phoneCandidate &&
+      phoneDigits.length >= 10 &&
+      phoneDigits.length <= 15 &&
+      !isValidCpf(phoneDigits)
+    ) {
       found.phone = phoneCandidate.trim();
-    } else if (!found.phone && digits.length >= 10 && digits.length <= 15 && !isValidCpf(digits)) {
+    } else if (
+      !found.phone &&
+      digits.length >= 10 &&
+      digits.length <= 15 &&
+      !isValidCpf(digits)
+    ) {
       found.phone = text.trim();
     }
 
     const nameCandidate =
-      text.match(/\b(?:meu nome é|me chamo|my name is|mi nombre es|me llamo)\s+([A-ZÀ-ÿ][A-ZÀ-ÿ' -]{4,80})/i)?.[1] ??
-      null;
-    if (nameCandidate) found.studentName = nameCandidate.replace(/[,.].*$/, '').trim();
+      text.match(
+        /\b(?:meu nome é|me chamo|my name is|mi nombre es|me llamo)\s+([A-ZÀ-ÿ][A-ZÀ-ÿ' -]{4,80})/i,
+      )?.[1] ?? null;
+    if (nameCandidate)
+      found.studentName = nameCandidate.replace(/[,.].*$/, '').trim();
 
-    if (!found.paymentMethod && /\bcart[aã]o\b/i.test(text)) found.paymentMethod = 'Cartão de crédito';
-    if (!found.paymentMethod && /\bpix\b/i.test(text)) found.paymentMethod = 'PIX';
-    if (!found.paymentMethod && /\bboleto\b/i.test(text)) found.paymentMethod = 'Boleto';
+    if (!found.paymentMethod && /\bcart[aã]o\b/i.test(text))
+      found.paymentMethod = 'Cartão de crédito';
+    if (!found.paymentMethod && /\bpix\b/i.test(text))
+      found.paymentMethod = 'PIX';
+    if (!found.paymentMethod && /\bboleto\b/i.test(text))
+      found.paymentMethod = 'Boleto';
     return found;
   }
 
@@ -354,9 +424,24 @@ export class EnrollmentChatService {
     if (compact === 'manha') return 'manhã';
     if (compact === 'tarde') return 'tarde';
     if (compact === 'noite') return 'noite';
-    if (/\bturno\s*(da|de)?\s*manha\b|\b(de|pela|a)\s*manha\b|\bmatutino\b/.test(normalized)) return 'manhã';
-    if (/\bturno\s*(da|de)?\s*tarde\b|\b(de|pela|a)\s*tarde\b|\bvespertino\b/.test(normalized)) return 'tarde';
-    if (/\bturno\s*(da|de)?\s*noite\b|\b(de|pela|a)\s*noite\b|\bnoturno\b/.test(normalized)) return 'noite';
+    if (
+      /\bturno\s*(da|de)?\s*manha\b|\b(de|pela|a)\s*manha\b|\bmatutino\b/.test(
+        normalized,
+      )
+    )
+      return 'manhã';
+    if (
+      /\bturno\s*(da|de)?\s*tarde\b|\b(de|pela|a)\s*tarde\b|\bvespertino\b/.test(
+        normalized,
+      )
+    )
+      return 'tarde';
+    if (
+      /\bturno\s*(da|de)?\s*noite\b|\b(de|pela|a)\s*noite\b|\bnoturno\b/.test(
+        normalized,
+      )
+    )
+      return 'noite';
     return null;
   }
 
@@ -374,7 +459,10 @@ export class EnrollmentChatService {
       }
 
       const alreadySaved = String(draft[fieldName] ?? '').trim();
-      if (alreadySaved && this.normalizeText(alreadySaved) === this.normalizeText(String(value))) {
+      if (
+        alreadySaved &&
+        this.normalizeText(alreadySaved) === this.normalizeText(String(value))
+      ) {
         filtered[fieldName] = value;
         continue;
       }
@@ -387,24 +475,44 @@ export class EnrollmentChatService {
   }
 
   private requiresExplicitEvidence(fieldName: string): boolean {
-    return ['course', 'shift', 'unit', 'modalidade', 'ingresso', 'paymentMethod'].includes(fieldName);
+    return [
+      'course',
+      'shift',
+      'unit',
+      'modalidade',
+      'ingresso',
+      'paymentMethod',
+    ].includes(fieldName);
   }
 
-  private hasExplicitEvidence(fieldName: string, value: string, text: string, fields: EnrollmentField[]): boolean {
+  private hasExplicitEvidence(
+    fieldName: string,
+    value: string,
+    text: string,
+    fields: EnrollmentField[],
+  ): boolean {
     if (fieldName === 'shift') return this.extractShift(text) === value;
     if (fieldName === 'paymentMethod') {
       const normalized = this.normalizeText(text);
       if (value === 'PIX') return /\bpix\b/.test(normalized);
       if (value === 'Boleto') return /\bboleto\b/.test(normalized);
-      if (value === 'Cartão de crédito') return /\bcartao\b|\bcredito\b/.test(normalized);
+      if (value === 'Cartão de crédito')
+        return /\bcartao\b|\bcredito\b/.test(normalized);
     }
 
     const field = fields.find((candidate) => candidate.name === fieldName);
-    const option = field?.options?.find((candidate) => this.normalizeText(candidate) === this.normalizeText(value));
-    return Boolean(option && this.normalizeText(text).includes(this.normalizeText(option)));
+    const option = field?.options?.find(
+      (candidate) =>
+        this.normalizeText(candidate) === this.normalizeText(value),
+    );
+    return Boolean(
+      option && this.normalizeText(text).includes(this.normalizeText(option)),
+    );
   }
 
-  private detectLanguage(text: string): 'Português' | 'English' | 'Español' | null {
+  private detectLanguage(
+    text: string,
+  ): 'Português' | 'English' | 'Español' | null {
     const lower = text.toLowerCase();
 
     if (
@@ -425,14 +533,21 @@ export class EnrollmentChatService {
         lower,
       );
 
-    if (hasPortugueseSignal && !/\b(hola|quiero|soy|tengo|nac[ií]|espa[ñn]ol|matricularme)\b/i.test(lower)) {
+    if (
+      hasPortugueseSignal &&
+      !/\b(hola|quiero|soy|tengo|nac[ií]|espa[ñn]ol|matricularme)\b/i.test(
+        lower,
+      )
+    ) {
       return 'Português';
     }
 
     if (hasSpanishSignal) return 'Español';
 
     if (
-      /\b(ol[aá]|quero|matr[ií]cula|inscri[cç][aã]o|brasileir|passaporte|documento|cpf)\b/i.test(lower)
+      /\b(ol[aá]|quero|matr[ií]cula|inscri[cç][aã]o|brasileir|passaporte|documento|cpf)\b/i.test(
+        lower,
+      )
     ) {
       return 'Português';
     }
@@ -444,7 +559,11 @@ export class EnrollmentChatService {
     const lower = text.toLowerCase();
     const profile: Record<string, string> = {};
 
-    if (/\b(american|u\.?s\.? citizen|usa|united states|from the us|from the u\.s\.|from america)\b/i.test(lower)) {
+    if (
+      /\b(american|u\.?s\.? citizen|usa|united states|from the us|from the u\.s\.|from america)\b/i.test(
+        lower,
+      )
+    ) {
       profile.nacionalidade = 'American';
       profile.countryOfResidence = 'United States';
       profile.preferredLanguage = 'English';
@@ -456,16 +575,27 @@ export class EnrollmentChatService {
       profile.preferredLanguage = 'English';
     }
 
-    if (/\b(from spain|spaniard|soy de espa[ñn]a|vivo en espa[ñn]a|nac[ií] en espa[ñn]a)\b/i.test(lower)) {
+    if (
+      /\b(from spain|spaniard|soy de espa[ñn]a|vivo en espa[ñn]a|nac[ií] en espa[ñn]a)\b/i.test(
+        lower,
+      )
+    ) {
       profile.nacionalidade = 'Spanish';
       profile.countryOfResidence = 'Spain';
       profile.preferredLanguage = 'Español';
     }
 
-    if (/\b(brasileir[oa]|sou do brasil|moro no brasil|brazilian|from brazil)\b/i.test(lower)) {
+    if (
+      /\b(brasileir[oa]|sou do brasil|moro no brasil|brazilian|from brazil)\b/i.test(
+        lower,
+      )
+    ) {
       profile.nacionalidade = 'Brazilian';
       profile.countryOfResidence = 'Brasil';
-      profile.preferredLanguage = lower.includes('brazilian') || lower.includes('from brazil') ? 'English' : 'Português';
+      profile.preferredLanguage =
+        lower.includes('brazilian') || lower.includes('from brazil')
+          ? 'English'
+          : 'Português';
     }
 
     return profile;

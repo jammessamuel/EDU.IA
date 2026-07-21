@@ -37,6 +37,7 @@ export interface TaskAutomationStudent {
   ownerTeam: string;
   daysSinceEnrollment: number;
   upcomingDueAt: Date;
+  assigneeId: string | null;
 }
 
 export interface TaskAutomationLead {
@@ -46,6 +47,7 @@ export interface TaskAutomationLead {
   data: string;
   createdAt: Date;
   updatedAt: Date;
+  assigneeId?: string | null;
 }
 
 interface DesiredTask {
@@ -62,6 +64,7 @@ interface DesiredTask {
   column: AutomationColumn;
   relatedEntity: Record<string, unknown>;
   automation: string;
+  assigneeId?: string | null;
 }
 
 @Injectable()
@@ -234,7 +237,10 @@ export class TaskAutomationService {
       });
     }
 
-    return tasks;
+    return tasks.map((task) => ({
+      ...task,
+      assigneeId: student.assigneeId,
+    }));
   }
 
   private tasksForLead(
@@ -267,6 +273,7 @@ export class TaskAutomationService {
         automation: isStale
           ? 'Gerada automaticamente porque o lead quente ficou sem contato por mais de 24h.'
           : 'Gerada automaticamente porque um lead novo entrou no funil.',
+        assigneeId: lead.assigneeId ?? null,
       },
     ];
   }
@@ -293,6 +300,7 @@ export class TaskAutomationService {
           studentName: task.studentName,
           ownerTeam: this.teamLabel(task.role),
           assignee: existing.assignee || this.teamLabel(task.role),
+          assigneeId: existing.assigneeId ?? task.assigneeId ?? null,
           role: task.role,
           priority: task.priority,
           automation: task.automation,
@@ -312,6 +320,7 @@ export class TaskAutomationService {
         title: task.title,
         ownerTeam: this.teamLabel(task.role),
         assignee: this.teamLabel(task.role),
+        assigneeId: task.assigneeId ?? null,
         role: task.role,
         priority: task.priority,
         status: 'ABERTA',

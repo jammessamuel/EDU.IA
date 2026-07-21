@@ -10,6 +10,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/hoje',
+      name: 'today',
+      component: () => import('../views/TodayView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/kanban',
       name: 'kanban',
       component: () => import('../views/KanbanView.vue'),
@@ -73,7 +79,7 @@ const router = createRouter({
 router.beforeEach((to) => {
   const token = localStorage.getItem('eduia_token')
   if (to.meta.requiresAuth && !token) return { name: 'login' }
-  if (to.name === 'login' && token) return { name: 'simulator' }
+  if (to.name === 'login' && token) return { name: 'today' }
 })
 
 export default router

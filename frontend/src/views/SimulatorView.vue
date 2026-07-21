@@ -213,7 +213,11 @@ onMounted(async () => {
     </div>
 
     <!-- Modal de detalhe do lead -->
-    <LeadDetailModal :lead="detailLead" @close="detailLead = null" />
+    <LeadDetailModal
+      :lead="detailLead"
+      @close="detailLead = null"
+      @updated="detailLead = $event"
+    />
   </div>
 </template>
 

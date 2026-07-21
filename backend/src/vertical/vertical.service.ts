@@ -38,7 +38,17 @@ export class VerticalService {
       where: { id: schoolId },
       include: { vertical: true },
     });
-    const raw = school?.customFields ?? school?.vertical?.defaultFields ?? '[]';
+    const fallback = school?.vertical
+      ? null
+      : await this.prisma.vertical.findUnique({
+          where: { slug: 'education' },
+          select: { defaultFields: true },
+        });
+    const raw =
+      school?.customFields ??
+      school?.vertical?.defaultFields ??
+      fallback?.defaultFields ??
+      '[]';
     return JSON.parse(raw) as VerticalField[];
   }
 
@@ -47,19 +57,29 @@ export class VerticalService {
       where: { id: schoolId },
       include: { vertical: true },
     });
-    const raw = school?.customStages ?? school?.vertical?.defaultStages ?? '[]';
+    const fallback = school?.vertical
+      ? null
+      : await this.prisma.vertical.findUnique({
+          where: { slug: 'education' },
+          select: { defaultStages: true },
+        });
+    const raw =
+      school?.customStages ??
+      school?.vertical?.defaultStages ??
+      fallback?.defaultStages ??
+      '[]';
     return JSON.parse(raw) as VerticalStage[];
   }
 
   private serialize(v: any) {
     return {
-      id:    v.id,
-      slug:  v.slug,
-      name:  v.name,
-      icon:  v.icon,
+      id: v.id,
+      slug: v.slug,
+      name: v.name,
+      icon: v.icon,
       color: v.color,
-      fields:  JSON.parse(v.defaultFields)  as VerticalField[],
-      stages:  JSON.parse(v.defaultStages)  as VerticalStage[],
+      fields: JSON.parse(v.defaultFields) as VerticalField[],
+      stages: JSON.parse(v.defaultStages) as VerticalStage[],
     };
   }
 }

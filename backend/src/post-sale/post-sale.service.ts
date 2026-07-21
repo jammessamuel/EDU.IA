@@ -83,8 +83,13 @@ interface LifecycleStudent {
   accessStatus: string;
   nextAction: string;
   ownerTeam: string;
+  assigneeId: string | null;
+  assignedUser: { id: string; name: string } | null;
+  lifecycleStatus: 'ATIVO' | 'PAUSADO' | 'ENCERRADO';
+  lifecycleReason: string | null;
+  nextActionAt: Date | null;
   daysSinceEnrollment: number;
-  lastContactAt: Date;
+  lastContactAt: Date | null;
   upcomingDueAt: Date;
   checklist: ChecklistStep[];
   timeline: TimelineEvent[];
@@ -99,6 +104,7 @@ interface ManualPostSaleTaskInput {
   studentName?: string;
   ownerTeam?: string;
   assignee?: string;
+  assigneeId?: string | null;
   role?: string;
   priority?: string;
   dueInDays?: number;
@@ -106,6 +112,7 @@ interface ManualPostSaleTaskInput {
   column?: string;
   origin?: string;
   reminderDaysBefore?: number | null;
+  recurrenceIntervalDays?: number | null;
 }
 
 type PostSaleAlertLevel = 'VENCIDA' | 'CRITICO' | '24H' | '48H';
@@ -118,6 +125,8 @@ interface SerializedPostSaleTask {
   studentName: string;
   ownerTeam: string;
   assignee: string;
+  assigneeId: string | null;
+  assignedUser: { id: string; name: string } | null;
   role: string;
   priority: string;
   column: string;
@@ -131,6 +140,8 @@ interface SerializedPostSaleTask {
   dueAt: Date | null;
   firstMovedAt: Date | null;
   resolvedAt: Date | null;
+  recurrenceIntervalDays: number | null;
+  canceledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   automation: string;
@@ -172,37 +183,38 @@ export class PostSaleService {
     private taskAutomation: TaskAutomationService,
   ) {}
 
-  async overview(schoolId: string): Promise<Record<string, unknown>> {
+  async overview(
+    schoolId: string,
+    includeDemo = false,
+  ): Promise<Record<string, unknown>> {
     const runtimeConfig = await this.schoolConfig.getRuntimeConfig(schoolId);
     const enrollments = await this.prisma.enrollment.findMany({
-      where: { schoolId },
-      include: { documents: true },
+      where: { schoolId, status: 'CONFIRMADA' },
+      include: {
+        documents: true,
+        assignee: { select: { id: true, name: true } },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 12,
     });
 
     const students = enrollments.map((enrollment, index) =>
       this.fromEnrollment(enrollment, index),
     );
-    const demoStudents = this.demoStudents().slice(
-      0,
-      Math.max(0, 6 - students.length),
-    );
+    const demoStudents = includeDemo ? this.demoStudents() : [];
     const baseLifecycle = [...students, ...demoStudents];
     const studentKeys = baseLifecycle.map((student) => student.id);
     const [states, events, leads, integrationLogs] = await Promise.all([
       this.prisma.postSaleState.findMany({
         where: { schoolId, studentKey: { in: studentKeys } },
+        include: { assignee: { select: { id: true, name: true } } },
       }),
       this.prisma.postSaleEvent.findMany({
         where: { schoolId, studentKey: { in: studentKeys } },
         orderBy: { createdAt: 'desc' },
-        take: 160,
       }),
       this.prisma.lead.findMany({
         where: { schoolId },
         orderBy: { createdAt: 'desc' },
-        take: 40,
       }),
       this.integrationLogs.recent(schoolId, 16),
     ]);
@@ -223,12 +235,18 @@ export class PostSaleService {
       };
     });
     await this.taskAutomation.syncForOverview(schoolId, lifecycle, leads);
-    const storedTasks = await this.prisma.postSaleTask.findMany({
-      where: { schoolId, status: { not: 'CONCLUIDA' } },
-      orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
-      take: 60,
-    });
-    const tasks = this.tasks(storedTasks);
+    const [storedTasks, users] = await Promise.all([
+      this.prisma.postSaleTask.findMany({
+        where: { schoolId, status: 'ABERTA' },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.user.findMany({
+        where: { schoolId, isActive: true },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const userNameById = new Map(users.map((user) => [user.id, user.name]));
+    const tasks = this.tasks(storedTasks, userNameById);
 
     return {
       generatedAt: new Date(),
@@ -247,6 +265,398 @@ export class PostSaleService {
 
   listIntegrationLogs(schoolId: string): Promise<unknown> {
     return this.integrationLogs.recent(schoolId, 40);
+  }
+
+  async runScheduledAutomation(targetSchoolId?: string) {
+    const schools = await this.prisma.school.findMany({
+      where: {
+        isActive: true,
+        ...(targetSchoolId ? { id: targetSchoolId } : {}),
+      },
+      select: { id: true },
+    });
+    const results: Array<Record<string, unknown>> = [];
+    for (const school of schools) {
+      results.push(await this.reconcileSchoolContinuity(school.id));
+      await this.overview(school.id, false);
+    }
+    return { ok: true, processedAt: new Date(), schools: results };
+  }
+
+  private async reconcileSchoolContinuity(schoolId: string) {
+    const [enrollments, users] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: { schoolId, status: 'CONFIRMADA' },
+        select: {
+          id: true,
+          studentName: true,
+          assigneeId: true,
+          confirmedAt: true,
+        },
+      }),
+      this.prisma.user.findMany({
+        where: { schoolId, isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const fallbackOwner = users[0] ?? null;
+    let repairedCases = 0;
+    let createdTasks = 0;
+    const now = new Date();
+
+    for (const enrollment of enrollments) {
+      const ownerId = enrollment.assigneeId ?? fallbackOwner?.id ?? null;
+      const state = await this.prisma.postSaleState.findUnique({
+        where: {
+          schoolId_studentKey: { schoolId, studentKey: enrollment.id },
+        },
+      });
+      const nextActionAt = state?.nextActionAt ?? this.addDays(now, 1);
+      if (!state || !state.assigneeId || !state.nextActionAt) {
+        await this.prisma.postSaleState.upsert({
+          where: {
+            schoolId_studentKey: { schoolId, studentKey: enrollment.id },
+          },
+          create: {
+            schoolId,
+            studentKey: enrollment.id,
+            enrollmentId: enrollment.id,
+            assigneeId: ownerId,
+            lifecycleStatus: 'ATIVO',
+            nextAction: 'Revisar continuidade do acompanhamento',
+            nextActionAt,
+            ownerTeam: 'Secretaria',
+          },
+          update: {
+            assigneeId: state?.assigneeId ?? ownerId,
+            nextActionAt,
+          },
+        });
+        if (!enrollment.assigneeId && ownerId) {
+          await this.prisma.enrollment.update({
+            where: { id: enrollment.id },
+            data: { assigneeId: ownerId },
+          });
+        }
+        repairedCases += 1;
+      }
+
+      const openTask = await this.prisma.postSaleTask.findFirst({
+        where: {
+          schoolId,
+          enrollmentId: enrollment.id,
+          status: 'ABERTA',
+        },
+        select: { id: true },
+      });
+      if (!openTask) {
+        await this.prisma.postSaleTask.create({
+          data: {
+            schoolId,
+            studentKey: enrollment.id,
+            enrollmentId: enrollment.id,
+            studentName: enrollment.studentName,
+            title: 'Revisar acompanhamento do aluno',
+            ownerTeam: 'Secretaria',
+            assignee: fallbackOwner?.name ?? 'Secretaria',
+            assigneeId: ownerId,
+            role: 'secretaria',
+            priority: 'Alta',
+            status: 'ABERTA',
+            column: 'a_fazer',
+            origin: 'continuidade',
+            createdBy: 'automacao',
+            automation:
+              'Reconciliação diária: aluno ativo estava sem tarefa aberta.',
+            relatedEntity: JSON.stringify({ rule: 'continuidade_diaria' }),
+            dueAt: nextActionAt,
+          },
+        });
+        createdTasks += 1;
+      }
+    }
+
+    const escalationCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const escalated = await this.prisma.postSaleTask.updateMany({
+      where: {
+        schoolId,
+        status: 'ABERTA',
+        dueAt: { lt: escalationCutoff },
+        priority: { not: 'Urgente' },
+      },
+      data: { priority: 'Urgente' },
+    });
+
+    return {
+      schoolId,
+      confirmedEnrollments: enrollments.length,
+      repairedCases,
+      createdTasks,
+      escalatedTasks: escalated.count,
+      withoutAvailableOwner: fallbackOwner ? 0 : repairedCases,
+    };
+  }
+
+  async today(schoolId: string, onlyMineUserId?: string) {
+    const now = new Date();
+    const startOfToday = this.startOfDay(now);
+    const endOfToday = this.endOfDay(now);
+    const staleCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [
+      awaitingEnrollments,
+      contactLeads,
+      contactStates,
+      storedTasks,
+      staleLeads,
+      caseActions,
+      unassignedCases,
+      users,
+    ] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: {
+          schoolId,
+          status: 'AGUARDANDO_CONFERENCIA',
+          ...(onlyMineUserId ? { assigneeId: onlyMineUserId } : {}),
+        },
+        select: {
+          id: true,
+          number: true,
+          studentName: true,
+          course: true,
+          createdAt: true,
+          paymentStatus: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.lead.findMany({
+        where: {
+          schoolId,
+          nextContactAt: { not: null, lte: endOfToday },
+          ...(onlyMineUserId ? { assigneeId: onlyMineUserId } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          nextContactAt: true,
+          lastContactAt: true,
+        },
+      }),
+      this.prisma.postSaleState.findMany({
+        where: {
+          schoolId,
+          lifecycleStatus: 'ATIVO',
+          nextContactAt: { not: null, lte: endOfToday },
+          ...(onlyMineUserId ? { assigneeId: onlyMineUserId } : {}),
+        },
+        select: {
+          studentKey: true,
+          enrollmentId: true,
+          nextContactAt: true,
+          lastContactAt: true,
+          lastContactChannel: true,
+          lastContactOutcome: true,
+        },
+      }),
+      this.prisma.postSaleTask.findMany({
+        where: {
+          schoolId,
+          status: 'ABERTA',
+          dueAt: { not: null, lte: endOfToday },
+          ...(onlyMineUserId ? { assigneeId: onlyMineUserId } : {}),
+        },
+        orderBy: { dueAt: 'asc' },
+      }),
+      this.prisma.lead.findMany({
+        where: {
+          schoolId,
+          status: 'NOVO',
+          lastContactAt: null,
+          createdAt: { lte: staleCutoff },
+          ...(onlyMineUserId ? { assigneeId: onlyMineUserId } : {}),
+        },
+        select: { id: true, name: true, createdAt: true, updatedAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.postSaleState.findMany({
+        where: {
+          schoolId,
+          lifecycleStatus: 'ATIVO',
+          nextActionAt: { not: null, lte: endOfToday },
+          ...(onlyMineUserId ? { assigneeId: onlyMineUserId } : {}),
+        },
+        include: { assignee: { select: { id: true, name: true } } },
+        orderBy: { nextActionAt: 'asc' },
+      }),
+      onlyMineUserId
+        ? Promise.resolve([])
+        : this.prisma.postSaleState.findMany({
+            where: {
+              schoolId,
+              lifecycleStatus: 'ATIVO',
+              assigneeId: null,
+            },
+            orderBy: { createdAt: 'asc' },
+          }),
+      this.prisma.user.findMany({
+        where: { schoolId, isActive: true },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const studentKeys = [
+      ...contactStates.map((state) => state.studentKey),
+      ...caseActions.map((state) => state.studentKey),
+      ...unassignedCases.map((state) => state.studentKey),
+    ];
+    const enrollmentIds = contactStates
+      .map((state) => state.enrollmentId)
+      .filter((id): id is string => Boolean(id));
+    const targetLeadIds = contactLeads.map((lead) => lead.id);
+    const [contactEnrollments, contactAttempts] = await Promise.all([
+      studentKeys.length || enrollmentIds.length
+        ? this.prisma.enrollment.findMany({
+            where: {
+              schoolId,
+              id: { in: [...new Set([...studentKeys, ...enrollmentIds])] },
+            },
+            select: { id: true, studentName: true },
+          })
+        : Promise.resolve([]),
+      studentKeys.length || targetLeadIds.length
+        ? this.prisma.contactAttempt.findMany({
+            where: {
+              schoolId,
+              OR: [
+                ...(studentKeys.length
+                  ? [{ studentKey: { in: studentKeys } }]
+                  : []),
+                ...(targetLeadIds.length
+                  ? [{ leadId: { in: targetLeadIds } }]
+                  : []),
+              ],
+            },
+            select: {
+              studentKey: true,
+              leadId: true,
+              channel: true,
+              outcome: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const enrollmentNameById = new Map(
+      contactEnrollments.map(
+        (enrollment) => [enrollment.id, enrollment.studentName] as const,
+      ),
+    );
+    const lastContactByTarget = new Map<
+      string,
+      { channel: string; outcome: string; at: Date }
+    >();
+    for (const attempt of contactAttempts) {
+      const key = attempt.studentKey
+        ? `aluno:${attempt.studentKey}`
+        : `lead:${attempt.leadId}`;
+      if (!lastContactByTarget.has(key)) {
+        lastContactByTarget.set(key, {
+          channel: attempt.channel,
+          outcome: attempt.outcome,
+          at: attempt.createdAt,
+        });
+      }
+    }
+
+    const pendenciasDeContato = [
+      ...contactLeads.map((lead) => ({
+        origem: 'lead' as const,
+        id: lead.id,
+        nome: lead.name,
+        nextContactAt: lead.nextContactAt as Date,
+        atrasado: (lead.nextContactAt as Date).getTime() < now.getTime(),
+        ultimoContato: lastContactByTarget.get(`lead:${lead.id}`) ?? null,
+      })),
+      ...contactStates.map((state) => ({
+        origem: 'aluno' as const,
+        id: state.studentKey,
+        nome:
+          enrollmentNameById.get(state.enrollmentId ?? '') ??
+          enrollmentNameById.get(state.studentKey) ??
+          state.studentKey,
+        nextContactAt: state.nextContactAt as Date,
+        atrasado: (state.nextContactAt as Date).getTime() < now.getTime(),
+        ultimoContato:
+          lastContactByTarget.get(`aluno:${state.studentKey}`) ??
+          (state.lastContactAt &&
+          state.lastContactChannel &&
+          state.lastContactOutcome
+            ? {
+                channel: state.lastContactChannel,
+                outcome: state.lastContactOutcome,
+                at: state.lastContactAt,
+              }
+            : null),
+      })),
+    ].sort((a, b) => a.nextContactAt.getTime() - b.nextContactAt.getTime());
+
+    const userNameById = new Map(users.map((user) => [user.id, user.name]));
+    const tarefas = this.tasks(storedTasks, userNameById);
+    const isToday = (date: Date | null) =>
+      Boolean(
+        date &&
+        date.getTime() >= startOfToday.getTime() &&
+        date.getTime() <= endOfToday.getTime(),
+      );
+
+    return {
+      generatedAt: now,
+      counts: {
+        aguardandoConferencia: awaitingEnrollments.length,
+        contatosAtrasados: pendenciasDeContato.filter(
+          (contact) => contact.atrasado,
+        ).length,
+        contatosHoje: pendenciasDeContato.filter((contact) =>
+          isToday(contact.nextContactAt),
+        ).length,
+        tarefasAtrasadas: storedTasks.filter(
+          (task) => task.dueAt && task.dueAt.getTime() < now.getTime(),
+        ).length,
+        tarefasHoje: storedTasks.filter((task) => isToday(task.dueAt)).length,
+        leadsSemContatoHa24h: staleLeads.length,
+        acoesDeCaso: caseActions.length,
+        casosSemResponsavel: unassignedCases.length,
+      },
+      aguardandoConferencia: awaitingEnrollments,
+      pendenciasDeContato,
+      tarefas,
+      leadsSemContatoHa24h: staleLeads,
+      acoesDeCaso: caseActions.map((state) => ({
+        id: state.studentKey,
+        nome:
+          enrollmentNameById.get(state.enrollmentId ?? '') ??
+          enrollmentNameById.get(state.studentKey) ??
+          state.studentKey,
+        nextAction: state.nextAction || 'Dar continuidade ao acompanhamento',
+        nextActionAt: state.nextActionAt,
+        assignee: state.assignee,
+        atrasado: Boolean(
+          state.nextActionAt && state.nextActionAt.getTime() < now.getTime(),
+        ),
+      })),
+      casosSemResponsavel: unassignedCases.map((state) => ({
+        id: state.studentKey,
+        nome:
+          enrollmentNameById.get(state.enrollmentId ?? '') ??
+          enrollmentNameById.get(state.studentKey) ??
+          state.studentKey,
+        nextAction: state.nextAction,
+        nextActionAt: state.nextActionAt,
+      })),
+    };
   }
 
   async studentProfile(
@@ -269,6 +679,7 @@ export class PostSaleService {
       }),
       this.prisma.postSaleTask.findMany({
         where: { schoolId, studentKey: student.id },
+        include: { assignedUser: { select: { id: true, name: true } } },
         orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
         take: 40,
       }),
@@ -336,6 +747,214 @@ export class PostSaleService {
     };
   }
 
+  async registerContact(
+    schoolId: string,
+    studentKey: string,
+    input: {
+      channel: string;
+      outcome: string;
+      note?: string;
+      nextContactAt?: string | null;
+    },
+    actingUser: { id: string; name?: string },
+  ) {
+    this.validateContactTarget(studentKey, null);
+    const channel = input.channel?.trim();
+    const outcome = input.outcome?.trim();
+    if (!channel) throw new BadRequestException('Informe o canal do contato.');
+    if (!outcome)
+      throw new BadRequestException('Informe o resultado do contato.');
+    const allowedChannels = [
+      'WHATSAPP',
+      'LIGACAO',
+      'EMAIL',
+      'PRESENCIAL',
+      'OUTRO',
+    ];
+    const allowedOutcomes = [
+      'RESPONDEU',
+      'NAO_ATENDEU',
+      'AGENDADO',
+      'SEM_INTERESSE',
+      'CAIXA_POSTAL',
+      'NUMERO_INVALIDO',
+    ];
+    if (!allowedChannels.includes(channel))
+      throw new BadRequestException('Canal de contato inválido.');
+    if (!allowedOutcomes.includes(outcome))
+      throw new BadRequestException('Resultado de contato inválido.');
+
+    const student = await this.findStudent(schoolId, studentKey);
+    const terminal = ['SEM_INTERESSE', 'NUMERO_INVALIDO'].includes(outcome);
+    const nextContactAt = terminal
+      ? null
+      : this.parseOptionalContactDate(input.nextContactAt);
+    const contactedAt = new Date();
+    const contact = await this.prisma.contactAttempt.create({
+      data: {
+        schoolId,
+        studentKey,
+        channel,
+        outcome,
+        note: input.note?.trim() || '',
+        nextContactAt,
+        contactedById: actingUser.id,
+        contactedByName: actingUser.name ?? '',
+      },
+    });
+
+    await this.saveStatePatch(schoolId, student, {
+      lastContactAt: contactedAt,
+      lastContactChannel: channel,
+      lastContactOutcome: outcome,
+      nextContactAt,
+      nextActionAt: nextContactAt,
+      lastHumanActionAt: contactedAt,
+    });
+    await this.recordEvent(schoolId, student, {
+      type: 'CONTATO_REGISTRADO',
+      title: `Contato registrado: ${channel}`,
+      description: input.note?.trim() || `Resultado: ${outcome}`,
+      metadata: {
+        contactId: contact.id,
+        channel,
+        outcome,
+        nextContactAt,
+      },
+    });
+    await this.prisma.postSaleTask.updateMany({
+      where: {
+        schoolId,
+        studentKey,
+        status: 'ABERTA',
+        autoResolve: true,
+        OR: [
+          { origin: 'risco_evasao' },
+          { title: { contains: 'contato', mode: 'insensitive' } },
+        ],
+      },
+      data: {
+        status: 'CONCLUIDA',
+        column: 'concluido',
+        resolvedAt: contactedAt,
+        completedById: actingUser.id,
+      },
+    });
+
+    return { contact, overview: await this.overview(schoolId) };
+  }
+
+  async assignStudent(
+    schoolId: string,
+    studentKey: string,
+    assigneeId: string | null,
+    actingUser: { id: string; name?: string },
+  ) {
+    const student = await this.findStudent(schoolId, studentKey);
+    if (student.isDemo)
+      throw new BadRequestException(
+        'Alunos de demonstração não podem receber responsáveis reais.',
+      );
+    const assignee = assigneeId
+      ? await this.findAssignableUser(schoolId, assigneeId)
+      : null;
+    const nextActionAt = student.nextActionAt ?? this.addDays(new Date(), 1);
+
+    await this.prisma.$transaction([
+      this.prisma.postSaleState.upsert({
+        where: { schoolId_studentKey: { schoolId, studentKey } },
+        create: {
+          schoolId,
+          studentKey,
+          enrollmentId: student.enrollmentId,
+          assigneeId: assignee?.id ?? null,
+          lifecycleStatus: 'ATIVO',
+          nextActionAt,
+          lastHumanActionAt: new Date(),
+        },
+        update: {
+          assigneeId: assignee?.id ?? null,
+          nextActionAt,
+          lastHumanActionAt: new Date(),
+        },
+      }),
+      ...(student.enrollmentId
+        ? [
+            this.prisma.enrollment.update({
+              where: { id: student.enrollmentId },
+              data: { assigneeId: assignee?.id ?? null },
+            }),
+          ]
+        : []),
+    ]);
+    await this.recordEvent(schoolId, student, {
+      type: 'RESPONSAVEL_ATUALIZADO',
+      title: assignee ? 'Responsável definido' : 'Responsável removido',
+      description: assignee
+        ? `${assignee.name} assumiu o acompanhamento principal.`
+        : 'O aluno voltou para a fila sem responsável.',
+      metadata: {
+        assigneeId: assignee?.id ?? null,
+        actingUserId: actingUser.id,
+      },
+    });
+    return this.overview(schoolId);
+  }
+
+  async updateLifecycle(
+    schoolId: string,
+    studentKey: string,
+    input: {
+      status: 'ATIVO' | 'PAUSADO' | 'ENCERRADO';
+      reason?: string;
+      nextActionAt?: string | null;
+    },
+    actingUser: { id: string; name?: string },
+  ) {
+    const student = await this.findStudent(schoolId, studentKey);
+    const status = input.status;
+    if (!['ATIVO', 'PAUSADO', 'ENCERRADO'].includes(status)) {
+      throw new BadRequestException('Situação operacional inválida.');
+    }
+    const reason = input.reason?.trim() || null;
+    if (status !== 'ATIVO' && !reason) {
+      throw new BadRequestException(
+        'Informe o motivo para pausar ou encerrar o acompanhamento.',
+      );
+    }
+    const requestedNextAction = this.parseOptionalContactDate(
+      input.nextActionAt,
+    );
+    const nextActionAt =
+      status === 'ATIVO' ? (requestedNextAction ?? student.nextActionAt) : null;
+    if (status === 'ATIVO' && (!student.assigneeId || !nextActionAt)) {
+      throw new BadRequestException(
+        'Um acompanhamento ativo precisa de responsável e próxima ação.',
+      );
+    }
+
+    await this.saveStatePatch(schoolId, student, {
+      lifecycleStatus: status,
+      lifecycleReason: reason,
+      nextActionAt,
+      lastHumanActionAt: new Date(),
+    });
+    await this.recordEvent(schoolId, student, {
+      type: 'CICLO_OPERACIONAL',
+      title:
+        status === 'ATIVO'
+          ? 'Acompanhamento ativado'
+          : status === 'PAUSADO'
+            ? 'Acompanhamento pausado'
+            : 'Acompanhamento encerrado',
+      description:
+        reason ||
+        `Próxima ação programada para ${nextActionAt?.toISOString()}.`,
+      metadata: { status, reason, nextActionAt, actingUserId: actingUser.id },
+    });
+    return this.overview(schoolId);
+  }
+
   async updateStudentStatus(
     schoolId: string,
     studentKey: string,
@@ -353,10 +972,14 @@ export class PostSaleService {
         enrollmentId: student.enrollmentId,
         ...patch,
         notes: input.note?.trim() || null,
+        nextActionAt: this.addDays(new Date(), 1),
+        lastHumanActionAt: new Date(),
       },
       update: {
         ...patch,
         notes: input.note?.trim() || undefined,
+        nextActionAt: this.addDays(new Date(), 1),
+        lastHumanActionAt: new Date(),
       },
     });
 
@@ -371,9 +994,129 @@ export class PostSaleService {
     return this.overview(schoolId);
   }
 
+  async updateOperationalPayment(
+    schoolId: string,
+    studentKey: string,
+    input: { status?: string; note?: string },
+    actingUser: { id: string; name?: string },
+  ) {
+    const student = await this.findStudent(schoolId, studentKey);
+    if (!student.enrollmentId) {
+      throw new BadRequestException(
+        'O aluno precisa ter uma matrícula real para atualizar o pagamento.',
+      );
+    }
+    const status = input.status?.toUpperCase();
+    if (
+      !['PENDENTE', 'PAGO', 'APROVADO', 'FALHOU', 'ESTORNADO'].includes(
+        status ?? '',
+      )
+    ) {
+      throw new BadRequestException('Status de pagamento inválido.');
+    }
+    const paid = status === 'PAGO' || status === 'APROVADO';
+    const now = new Date();
+    const nextActionAt = this.addDays(now, paid ? 2 : 1);
+    await this.prisma.$transaction([
+      this.prisma.enrollment.update({
+        where: { id: student.enrollmentId },
+        data: {
+          paymentStatus: paid
+            ? 'APROVADO'
+            : status === 'FALHOU'
+              ? 'RECUSADO'
+              : 'PENDENTE',
+        },
+      }),
+      this.prisma.postSaleState.upsert({
+        where: { schoolId_studentKey: { schoolId, studentKey } },
+        create: {
+          schoolId,
+          studentKey,
+          enrollmentId: student.enrollmentId,
+          assigneeId: student.assigneeId,
+          paymentStatus: paid ? 'Pago' : status,
+          status: paid ? 'CONTRATO_PENDENTE' : 'PAGAMENTO_PENDENTE',
+          nextAction: paid
+            ? 'Validar contrato e liberar acesso'
+            : 'Regularizar pagamento',
+          nextActionAt,
+          lastHumanActionAt: now,
+          notes: input.note?.trim() || null,
+        },
+        update: {
+          paymentStatus: paid ? 'Pago' : status,
+          status: paid ? 'CONTRATO_PENDENTE' : 'PAGAMENTO_PENDENTE',
+          nextAction: paid
+            ? 'Validar contrato e liberar acesso'
+            : 'Regularizar pagamento',
+          nextActionAt,
+          lastHumanActionAt: now,
+          notes: input.note?.trim() || undefined,
+        },
+      }),
+      this.prisma.postSaleEvent.create({
+        data: {
+          schoolId,
+          studentKey,
+          enrollmentId: student.enrollmentId,
+          studentName: student.studentName,
+          type: 'PAGAMENTO_MANUAL',
+          title: `Pagamento atualizado: ${status}`,
+          description:
+            input.note?.trim() || 'Situação conferida manualmente pela equipe.',
+          metadata: JSON.stringify({ status, actingUserId: actingUser.id }),
+        },
+      }),
+    ]);
+    return this.overview(schoolId);
+  }
+
+  async updateOperationalContract(
+    schoolId: string,
+    studentKey: string,
+    input: { status?: string; note?: string },
+    actingUser: { id: string; name?: string },
+  ) {
+    const student = await this.findStudent(schoolId, studentKey);
+    const status = input.status?.toUpperCase();
+    if (
+      !['PENDENTE', 'ENVIADO', 'ASSINADO', 'RECUSADO', 'EXPIRADO'].includes(
+        status ?? '',
+      )
+    ) {
+      throw new BadRequestException('Status de contrato inválido.');
+    }
+    const now = new Date();
+    const signed = status === 'ASSINADO';
+    await this.saveStatePatch(schoolId, student, {
+      contractStatus: status,
+      status: signed
+        ? /pago|aprovado/i.test(student.paymentStatus)
+          ? 'ACESSO_PENDENTE'
+          : 'PAGAMENTO_PENDENTE'
+        : 'CONTRATO_PENDENTE',
+      nextAction: signed
+        ? 'Validar pagamento e liberar acesso'
+        : 'Resolver pendência de contrato',
+      nextActionAt: this.addDays(now, signed ? 2 : 1),
+      lastHumanActionAt: now,
+      notes: input.note?.trim() || undefined,
+    });
+    await this.recordEvent(schoolId, student, {
+      type: 'CONTRATO_MANUAL',
+      title: `Contrato atualizado: ${status}`,
+      description:
+        input.note?.trim() || 'Situação conferida manualmente pela equipe.',
+      metadata: { status, actingUserId: actingUser.id },
+    });
+    return this.overview(schoolId);
+  }
+
   async createTask(
     schoolId: string,
     input: ManualPostSaleTaskInput,
+    actingUser?: { id: string },
   ): Promise<unknown> {
     const title = input.title?.trim();
     if (!title) throw new BadRequestException('Informe o título da tarefa.');
@@ -396,6 +1139,12 @@ export class PostSaleService {
         : null;
     const description = input.description?.trim() || null;
     const column = this.taskColumn(input.column ?? 'a_fazer');
+    const assignedUser = input.assigneeId
+      ? await this.findAssignableUser(schoolId, input.assigneeId)
+      : null;
+    const recurrenceIntervalDays = this.parseRecurrenceInterval(
+      input.recurrenceIntervalDays,
+    );
 
     const task = await this.prisma.postSaleTask.create({
       data: {
@@ -406,12 +1155,14 @@ export class PostSaleService {
           student?.studentName || input.studentName?.trim() || 'Tarefa interna',
         title,
         ownerTeam,
-        assignee: input.assignee?.trim() || ownerTeam,
+        assignee: input.assignee?.trim() || assignedUser?.name || ownerTeam,
+        assigneeId: assignedUser?.id ?? null,
         role,
         priority: input.priority?.trim() || 'Normal',
         column,
         origin: input.origin?.trim() || 'manual',
         createdBy: 'humano',
+        createdById: actingUser?.id ?? null,
         automation:
           description ||
           `Tarefa manual criada para ${input.assignee?.trim() || ownerTeam}.`,
@@ -423,6 +1174,7 @@ export class PostSaleService {
         }),
         autoResolve: false,
         dueAt,
+        recurrenceIntervalDays,
       },
     });
 
@@ -434,13 +1186,21 @@ export class PostSaleService {
         metadata: {
           taskId: task.id,
           ownerTeam,
-          assignee: input.assignee,
+          assignee: assignedUser?.name || input.assignee,
+          assigneeId: assignedUser?.id ?? null,
           priority: input.priority,
           dueAt,
           reminderDaysBefore,
           reminderAt,
+          recurrenceIntervalDays,
         },
       });
+      if (dueAt) {
+        await this.saveStatePatch(schoolId, student, {
+          nextActionAt: dueAt,
+          lastHumanActionAt: new Date(),
+        });
+      }
     }
 
     return this.overview(schoolId);
@@ -453,34 +1213,128 @@ export class PostSaleService {
       column?: string;
       status?: string;
       assignee?: string;
+      assigneeId?: string | null;
       role?: string;
       priority?: string;
+      title?: string;
+      description?: string;
+      dueAt?: string | null;
+      recurrenceIntervalDays?: number | null;
+      action?: 'CANCEL' | 'REOPEN';
     },
+    actingUser?: { id: string },
   ): Promise<unknown> {
     const task = await this.prisma.postSaleTask.findFirst({
       where: { id: taskId, schoolId },
+      include: { assignedUser: { select: { id: true, name: true } } },
     });
     if (!task) throw new BadRequestException('Tarefa não encontrada.');
 
     const nextColumn = this.taskColumn(input.column ?? task.column);
     const moved = nextColumn !== task.column;
+    const canceled = input.action === 'CANCEL' || input.status === 'CANCELADA';
+    const reopened = input.action === 'REOPEN';
     const completed =
-      nextColumn === 'concluido' || input.status === 'CONCLUIDA';
+      !canceled && (nextColumn === 'concluido' || input.status === 'CONCLUIDA');
+    const hasAssigneeId = Object.prototype.hasOwnProperty.call(
+      input,
+      'assigneeId',
+    );
+    const assignedUser = input.assigneeId
+      ? await this.findAssignableUser(schoolId, input.assigneeId)
+      : null;
+    const currentMetadata = this.safeJson(task.relatedEntity);
+    const dueAt = Object.prototype.hasOwnProperty.call(input, 'dueAt')
+      ? this.parseOptionalTaskDate(input.dueAt)
+      : task.dueAt;
+    const recurrenceIntervalDays = Object.prototype.hasOwnProperty.call(
+      input,
+      'recurrenceIntervalDays',
+    )
+      ? this.parseRecurrenceInterval(input.recurrenceIntervalDays)
+      : task.recurrenceIntervalDays;
     const updateData: Record<string, unknown> = {
-      column: nextColumn,
-      status: completed ? 'CONCLUIDA' : input.status?.trim() || 'ABERTA',
-      assignee: input.assignee?.trim() || task.assignee,
+      title: input.title?.trim() || task.title,
+      column: reopened ? 'a_fazer' : canceled ? task.column : nextColumn,
+      status: canceled
+        ? 'CANCELADA'
+        : reopened
+          ? 'ABERTA'
+          : completed
+            ? 'CONCLUIDA'
+            : input.status?.trim() || 'ABERTA',
+      assignee:
+        input.assignee?.trim() ||
+        (hasAssigneeId && input.assigneeId === null
+          ? task.ownerTeam
+          : task.assignee || assignedUser?.name || task.ownerTeam),
       role: input.role?.trim() || task.role,
       priority: input.priority?.trim() || task.priority,
+      relatedEntity: JSON.stringify({
+        ...currentMetadata,
+        ...(Object.prototype.hasOwnProperty.call(input, 'description')
+          ? { description: input.description?.trim() || null }
+          : {}),
+      }),
+      dueAt,
+      recurrenceIntervalDays,
+      updatedById: actingUser?.id ?? null,
       firstMovedAt:
         moved && !task.firstMovedAt ? new Date() : task.firstMovedAt,
-      resolvedAt: completed ? new Date() : null,
+      resolvedAt: completed ? new Date() : reopened ? null : task.resolvedAt,
+      completedById: completed
+        ? (actingUser?.id ?? null)
+        : reopened
+          ? null
+          : task.completedById,
+      canceledAt: canceled ? new Date() : reopened ? null : task.canceledAt,
     };
+    if (hasAssigneeId) {
+      updateData.assigneeId = assignedUser?.id ?? null;
+      if (!task.assignee && assignedUser)
+        updateData.assignee = assignedUser.name;
+    }
 
     await this.prisma.postSaleTask.update({
       where: { id: task.id },
       data: updateData,
     });
+
+    if (
+      completed &&
+      recurrenceIntervalDays &&
+      recurrenceIntervalDays > 0 &&
+      task.dueAt
+    ) {
+      await this.prisma.postSaleTask.create({
+        data: {
+          schoolId,
+          studentKey: task.studentKey,
+          leadId: task.leadId,
+          enrollmentId: task.enrollmentId,
+          studentName: task.studentName,
+          title: input.title?.trim() || task.title,
+          ownerTeam: task.ownerTeam,
+          assignee: task.assignee,
+          assigneeId: task.assigneeId,
+          role: input.role?.trim() || task.role,
+          priority: input.priority?.trim() || task.priority,
+          status: 'ABERTA',
+          column: 'a_fazer',
+          origin: 'recorrencia',
+          createdBy: 'automacao',
+          createdById: actingUser?.id ?? null,
+          automation: `Recorrência de ${task.title}`,
+          relatedEntity: JSON.stringify({
+            ...currentMetadata,
+            parentTaskId: task.id,
+          }),
+          autoResolve: false,
+          dueAt: this.addDays(task.dueAt, recurrenceIntervalDays),
+          recurrenceIntervalDays,
+        },
+      });
+    }
 
     if (task.studentKey) {
       await this.prisma.postSaleEvent.create({
@@ -489,11 +1343,27 @@ export class PostSaleService {
           studentKey: task.studentKey,
           enrollmentId: task.enrollmentId,
           studentName: task.studentName,
-          type: completed ? 'TASK_DONE' : 'TASK_MOVED',
-          title: completed ? 'Tarefa concluída' : 'Tarefa movimentada',
-          description: completed
-            ? `${task.title} foi marcada como concluída.`
-            : `${task.title} foi movida para ${this.taskColumnLabel(nextColumn)}.`,
+          type: canceled
+            ? 'TASK_CANCELED'
+            : reopened
+              ? 'TASK_REOPENED'
+              : completed
+                ? 'TASK_DONE'
+                : 'TASK_MOVED',
+          title: canceled
+            ? 'Tarefa cancelada'
+            : reopened
+              ? 'Tarefa reaberta'
+              : completed
+                ? 'Tarefa concluída'
+                : 'Tarefa movimentada',
+          description: canceled
+            ? `${task.title} foi cancelada.`
+            : reopened
+              ? `${task.title} foi reaberta.`
+              : completed
+                ? `${task.title} foi marcada como concluída.`
+                : `${task.title} foi movida para ${this.taskColumnLabel(nextColumn)}.`,
           metadata: JSON.stringify({
             taskId: task.id,
             fromColumn: task.column,
@@ -517,7 +1387,8 @@ export class PostSaleService {
     });
     if (!task) throw new BadRequestException('Tarefa não encontrada.');
 
-    const alert = this.taskAlert(this.serializeTask(task));
+    const serializedTask = this.serializeTask(task);
+    const alert = this.taskAlert(serializedTask);
     if (!alert) {
       throw new BadRequestException(
         'Esta tarefa ainda não tem alerta ativo para disparo.',
@@ -537,7 +1408,7 @@ export class PostSaleService {
       requestPayload: {
         taskId: task.id,
         level: alert.level,
-        assignee: task.assignee,
+        assignee: serializedTask.assignee,
         role: task.role,
         channel: alert.channel,
         message: alert.message,
@@ -548,7 +1419,7 @@ export class PostSaleService {
         sound: alert.sound,
         notification: 'browser_local',
       },
-      visibleMessage: `Alerta fake disparado para ${task.assignee || task.ownerTeam}: ${task.title}.`,
+      visibleMessage: `Alerta fake disparado para ${serializedTask.assignee || task.ownerTeam}: ${task.title}.`,
     });
 
     if (task.studentKey) {
@@ -778,11 +1649,14 @@ export class PostSaleService {
       enrollment.confirmedAt ?? enrollment.createdAt,
       new Date(),
     );
-    const hasFullPackage = docs.some((doc) => doc.type === 'PACOTE_COMPLETO');
+    const hasFullPackage = docs.some(
+      (doc) => doc.type === 'PACOTE_COMPLETO' && doc.status === 'APROVADO',
+    );
     const hasContract = docs.some((doc) =>
       /CONTRATO|D4SIGN|ASSINADO/i.test(doc.type),
     );
-    const hasMinimumDocs = hasFullPackage || docs.length >= 3;
+    const hasMinimumDocs =
+      hasFullPackage || docs.filter((doc) => doc.status === 'APROVADO').length >= 3;
     const paymentApproved = enrollment.paymentStatus === 'APROVADO';
     const accessReady = hasMinimumDocs && hasContract && paymentApproved;
 
@@ -827,11 +1701,15 @@ export class PostSaleService {
       accessStatus: accessReady ? 'Liberado' : 'Aguardando requisitos',
       nextAction: this.nextAction(status),
       ownerTeam: this.ownerTeam(status),
+      assigneeId: enrollment.assigneeId ?? null,
+      assignedUser: enrollment.assignee
+        ? { id: enrollment.assignee.id, name: enrollment.assignee.name }
+        : null,
+      lifecycleStatus: 'ATIVO',
+      lifecycleReason: null,
+      nextActionAt: this.addDays(new Date(), this.nextDueOffset(status)),
       daysSinceEnrollment,
-      lastContactAt: this.addDays(
-        enrollment.createdAt,
-        Math.min(daysSinceEnrollment, 7),
-      ),
+      lastContactAt: null,
       upcomingDueAt: this.addDays(new Date(), this.nextDueOffset(status)),
       checklist,
       timeline: [],
@@ -933,6 +1811,11 @@ export class PostSaleService {
       accessStatus: demo.accessStatus,
       nextAction: this.nextAction(demo.status),
       ownerTeam: this.ownerTeam(demo.status),
+      assigneeId: null,
+      assignedUser: null,
+      lifecycleStatus: 'ATIVO' as const,
+      lifecycleReason: null,
+      nextActionAt: this.addDays(new Date(), this.nextDueOffset(demo.status)),
       daysSinceEnrollment: demo.daysSinceEnrollment,
       lastContactAt: this.addDays(
         new Date(),
@@ -1044,6 +1927,14 @@ export class PostSaleService {
       riskScore: state.riskScore ?? student.riskScore,
       nextAction: state.nextAction || student.nextAction,
       ownerTeam: state.ownerTeam || student.ownerTeam,
+      assigneeId: state.assigneeId ?? student.assigneeId,
+      assignedUser: state.assignee
+        ? { id: state.assignee.id, name: state.assignee.name }
+        : student.assignedUser,
+      lifecycleStatus: state.lifecycleStatus || student.lifecycleStatus,
+      lifecycleReason: state.lifecycleReason ?? student.lifecycleReason,
+      nextActionAt: state.nextActionAt ?? student.nextActionAt,
+      lastContactAt: state.lastContactAt || student.lastContactAt,
     };
     next.statusLabel = this.statusLabel(next.status);
     next.riskLevel = this.riskLevel(next.riskScore);
@@ -1075,13 +1966,44 @@ export class PostSaleService {
     schoolId: string,
     studentKey: string,
   ): Promise<LifecycleStudent> {
-    const overview = (await this.overview(schoolId)) as any;
-    const student = overview.students?.find(
-      (item: LifecycleStudent) => item.id === studentKey,
-    );
-    if (!student)
-      throw new BadRequestException('Aluno não encontrado no pós-venda.');
-    return student;
+    const [enrollment, state, storedEvents, runtimeConfig] = await Promise.all([
+      this.prisma.enrollment.findFirst({
+        where: { id: studentKey, schoolId, status: 'CONFIRMADA' },
+        include: {
+          documents: true,
+          assignee: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.postSaleState.findUnique({
+        where: { schoolId_studentKey: { schoolId, studentKey } },
+        include: { assignee: { select: { id: true, name: true } } },
+      }),
+      this.prisma.postSaleEvent.findMany({
+        where: { schoolId, studentKey },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.schoolConfig.getRuntimeConfig(schoolId),
+    ]);
+
+    if (!enrollment) {
+      const demo = this.demoStudents().find((item) => item.id === studentKey);
+      if (!demo)
+        throw new BadRequestException('Aluno não encontrado no pós-venda.');
+      const withState = this.applyState(demo, state);
+      return {
+        ...withState,
+        ruler: this.rulerStatus(withState, runtimeConfig, storedEvents),
+        timeline: this.timelineFor(withState, storedEvents),
+      };
+    }
+
+    const base = this.fromEnrollment(enrollment, 0);
+    const withState = this.applyState(base, state);
+    return {
+      ...withState,
+      ruler: this.rulerStatus(withState, runtimeConfig, storedEvents),
+      timeline: this.timelineFor(withState, storedEvents),
+    };
   }
 
   private integrationContext(schoolId: string, student: LifecycleStudent) {
@@ -1157,6 +2079,10 @@ export class PostSaleService {
       mimeType: document.mimeType,
       size: document.size,
       uploadedAt: document.uploadedAt,
+      status: document.status,
+      reviewNote: document.reviewNote,
+      reviewedAt: document.reviewedAt,
+      reviewedById: document.reviewedById,
     };
   }
 
@@ -1233,9 +2159,10 @@ export class PostSaleService {
   ) {
     const audiences = this.documentAudiences(student, enrollment);
     const uploadedDocuments = enrollment?.documents ?? [];
-    const hasPackage = uploadedDocuments.some(
+    const packageDocument = uploadedDocuments.find(
       (document) => this.normalizeKey(document.type) === 'pacotecompleto',
     );
+    const hasPackage = Boolean(packageDocument);
     const fakeStates = this.documentFakeStates(storedEvents);
 
     return config.documents
@@ -1247,9 +2174,10 @@ export class PostSaleService {
         const fake = fakeStates.get(
           this.normalizeKey(requirement.documentType),
         );
+        const realDocument = uploaded ?? packageDocument;
         const baseStatus =
-          hasPackage || uploaded
-            ? 'RECEBIDO'
+          realDocument
+            ? realDocument.status || 'RECEBIDO'
             : requirement.required
               ? 'PENDENTE'
               : 'OPCIONAL';
@@ -1258,14 +2186,18 @@ export class PostSaleService {
           documentType: requirement.documentType,
           instructions: requirement.instructions,
           required: requirement.required,
-          status: fake?.status ?? baseStatus,
-          reason: fake?.reason ?? null,
+          status: realDocument ? baseStatus : fake?.status ?? baseStatus,
+          reason: realDocument?.reviewNote || fake?.reason || null,
           fileName:
             fake?.fileName ??
-            uploaded?.fileName ??
+            realDocument?.fileName ??
             (hasPackage ? 'Pacote completo enviado' : null),
-          uploadedAt: fake?.createdAt ?? uploaded?.uploadedAt ?? null,
-          updatedAt: fake?.createdAt ?? uploaded?.uploadedAt ?? null,
+          uploadedAt: realDocument?.uploadedAt ?? fake?.createdAt ?? null,
+          updatedAt:
+            realDocument?.reviewedAt ??
+            realDocument?.uploadedAt ??
+            fake?.createdAt ??
+            null,
         };
       });
   }
@@ -1390,6 +2322,8 @@ export class PostSaleService {
       studentName: student.studentName,
       ownerTeam: student.ownerTeam,
       assignee: student.ownerTeam,
+      assigneeId: null,
+      assignedUser: null,
       role: this.roleForTeam(student.ownerTeam),
       priority:
         student.riskLevel === 'CRITICO'
@@ -1414,7 +2348,11 @@ export class PostSaleService {
       title: task.title,
       studentName: task.studentName,
       ownerTeam: task.ownerTeam,
-      assignee: task.assignee,
+      assignee: task.assignedUser?.name || task.assignee,
+      assigneeId: task.assigneeId ?? null,
+      assignedUser: task.assignedUser
+        ? { id: task.assignedUser.id, name: task.assignedUser.name }
+        : null,
       role: task.role,
       priority: task.priority,
       column: task.column,
@@ -1425,6 +2363,8 @@ export class PostSaleService {
       dueAt: task.dueAt,
       firstMovedAt: task.firstMovedAt,
       resolvedAt: task.resolvedAt,
+      recurrenceIntervalDays: task.recurrenceIntervalDays ?? null,
+      canceledAt: task.canceledAt ?? null,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
       automation: this.cleanVisibleText(
@@ -1506,7 +2446,7 @@ export class PostSaleService {
   private async saveStatePatch(
     schoolId: string,
     student: LifecycleStudent,
-    patch: Record<string, string | number | null | undefined>,
+    patch: Record<string, string | number | Date | null | undefined>,
   ) {
     await this.prisma.postSaleState.upsert({
       where: { schoolId_studentKey: { schoolId, studentKey: student.id } },
@@ -1907,12 +2847,21 @@ export class PostSaleService {
     }));
   }
 
-  private tasks(storedTasks: any[] = []) {
-    return storedTasks.map((task) => this.serializeTask(task));
+  private tasks(
+    storedTasks: any[] = [],
+    userNameById: Map<string, string> = new Map(),
+  ) {
+    return storedTasks.map((task) => this.serializeTask(task, userNameById));
   }
 
-  private serializeTask(task: any): SerializedPostSaleTask {
+  private serializeTask(
+    task: any,
+    userNameById: Map<string, string> = new Map(),
+  ): SerializedPostSaleTask {
     const metadata = this.safeJson(task.relatedEntity);
+    const assignedUserName = task.assigneeId
+      ? userNameById.get(task.assigneeId) || task.assignedUser?.name
+      : null;
     return {
       id: task.id,
       studentId: task.studentKey,
@@ -1920,7 +2869,12 @@ export class PostSaleService {
       title: task.title,
       studentName: task.studentName,
       ownerTeam: task.ownerTeam,
-      assignee: task.assignee,
+      assignee: assignedUserName || task.assignee,
+      assigneeId: task.assigneeId ?? null,
+      assignedUser:
+        task.assigneeId && assignedUserName
+          ? { id: task.assigneeId, name: assignedUserName }
+          : null,
       role: task.role,
       priority: task.priority,
       column: task.column,
@@ -1941,6 +2895,8 @@ export class PostSaleService {
       dueAt: task.dueAt,
       firstMovedAt: task.firstMovedAt,
       resolvedAt: task.resolvedAt,
+      recurrenceIntervalDays: task.recurrenceIntervalDays ?? null,
+      canceledAt: task.canceledAt ?? null,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
       automation: this.cleanVisibleText(
@@ -2436,6 +3392,39 @@ export class PostSaleService {
     return labels[normalized] ?? 'Secretaria';
   }
 
+  private async findAssignableUser(schoolId: string, userId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, schoolId, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (!user) {
+      throw new BadRequestException('Responsável não encontrado nesta escola.');
+    }
+    return user;
+  }
+
+  private validateContactTarget(
+    studentKey: string | null,
+    leadId: string | null,
+  ) {
+    if (Boolean(studentKey) === Boolean(leadId)) {
+      throw new BadRequestException(
+        'Informe exatamente um aluno ou lead para registrar o contato.',
+      );
+    }
+  }
+
+  private parseOptionalContactDate(value?: string | null) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(
+        'Informe uma data de próximo contato válida.',
+      );
+    }
+    return date;
+  }
+
   private parseTaskDueAt(input: ManualPostSaleTaskInput) {
     if (input.dueAt) {
       const dueAt = new Date(input.dueAt);
@@ -2451,6 +3440,28 @@ export class PostSaleService {
       new Date(),
       Number.isFinite(input.dueInDays) ? Number(input.dueInDays) : 1,
     );
+  }
+
+  private parseOptionalTaskDate(value?: string | null) {
+    if (value === null || value === undefined || value === '') return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(
+        'Informe uma data e hora de prazo válidas.',
+      );
+    }
+    return date;
+  }
+
+  private parseRecurrenceInterval(value: unknown) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 365) {
+      throw new BadRequestException(
+        'A recorrência deve estar entre 1 e 365 dias.',
+      );
+    }
+    return parsed;
   }
 
   private parseReminderDaysBefore(value: unknown) {
@@ -2544,6 +3555,18 @@ export class PostSaleService {
     const next = new Date(date);
     next.setDate(next.getDate() + days);
     return next;
+  }
+
+  private startOfDay(date: Date) {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  private endOfDay(date: Date) {
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+    return end;
   }
 
   private timelineDate(date: Date | string, days: number) {

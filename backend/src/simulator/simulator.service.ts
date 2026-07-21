@@ -196,6 +196,7 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
           enrollmentDraft,
           schoolId,
           runtimeConfig,
+          userId,
         );
       }
       return {
@@ -594,6 +595,7 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
     draft: Record<string, any>,
     schoolId: string,
     runtimeConfig: RuntimeSchoolConfig,
+    userId: string,
   ) {
     const fields = this.fieldsForConfig(runtimeConfig);
     const extracted = this.extractFallbackEnrollmentFields(
@@ -635,7 +637,10 @@ ${this.schoolConfig.institutionPrompt(runtimeConfig)}`;
 
     if (!missing.length) {
       if (this.isConfirmation(text)) {
-        const enrollment = await this.enrollments.enroll(schoolId, current);
+        const enrollment = await this.enrollments.enroll(schoolId, current, {
+          assigneeId: userId,
+          simulatePayment: true,
+        });
         return {
           reply: `Matrícula confirmada! Número ${enrollment.number}.\n\nO comprovante já está pronto para baixar. Depois você pode enviar os documentos em um PDF único ou arquivo por arquivo na etapa de documentos.`,
           lead: null,
@@ -1453,9 +1458,107 @@ Retorne APENAS o JSON, sem explicação.`;
   async getAllLeads(schoolId: string) {
     const leads = await this.prisma.lead.findMany({
       where: { schoolId },
+      include: { assignee: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
     return leads.map(this.serializeLead);
+  }
+
+  async createLeadManually(
+    schoolId: string,
+    input: {
+      name?: string;
+      phone?: string | null;
+      data?: Record<string, unknown>;
+      status?: string;
+      assigneeId?: string | null;
+    },
+    userId: string,
+  ) {
+    const name = input.name?.trim();
+    if (!name) throw new BadRequestException('Informe o nome do lead.');
+    const stages = await this.verticalService.getStagesForWorkspace(schoolId);
+    const status = input.status || stages[0]?.key || 'NOVO';
+    if (!stages.some((stage) => stage.key === status)) {
+      throw new BadRequestException('Etapa do lead inválida.');
+    }
+    if (input.assigneeId) {
+      const assignee = await this.prisma.user.findFirst({
+        where: { id: input.assigneeId, schoolId, isActive: true },
+        select: { id: true },
+      });
+      if (!assignee)
+        throw new BadRequestException(
+          'Responsável não encontrado nesta escola.',
+        );
+    }
+    const lead = await this.prisma.lead.create({
+      data: {
+        schoolId,
+        name,
+        phone: input.phone?.trim() || null,
+        data: JSON.stringify(input.data ?? {}),
+        conversation: '[]',
+        qualified: false,
+        status,
+        assigneeId: input.assigneeId ?? userId,
+        createdById: userId,
+      },
+      include: { assignee: { select: { id: true, name: true } } },
+    });
+    return this.serializeLead(lead);
+  }
+
+  async updateLead(
+    id: string,
+    schoolId: string,
+    input: {
+      name?: string;
+      phone?: string | null;
+      data?: Record<string, unknown>;
+    },
+  ) {
+    const lead = await this.prisma.lead.findFirst({ where: { id, schoolId } });
+    if (!lead) throw new BadRequestException('Lead não encontrado.');
+    const currentData = this.safeJsonObject(lead.data);
+    const name = input.name === undefined ? lead.name : input.name.trim();
+    if (!name) throw new BadRequestException('Informe o nome do lead.');
+    const updated = await this.prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        name,
+        phone:
+          input.phone === undefined ? lead.phone : input.phone?.trim() || null,
+        data:
+          input.data === undefined
+            ? lead.data
+            : JSON.stringify({ ...currentData, ...input.data }),
+      },
+      include: { assignee: { select: { id: true, name: true } } },
+    });
+    return this.serializeLead(updated);
+  }
+
+  async getLeadContacts(id: string, schoolId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, schoolId },
+      select: { id: true },
+    });
+    if (!lead) throw new BadRequestException('Lead não encontrado.');
+    return this.prisma.contactAttempt.findMany({
+      where: { schoolId, leadId: id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        channel: true,
+        outcome: true,
+        note: true,
+        nextContactAt: true,
+        contactedById: true,
+        contactedByName: true,
+        createdAt: true,
+      },
+    });
   }
 
   async updateLeadStatus(id: string, status: string, schoolId: string) {
@@ -1469,8 +1572,131 @@ Retorne APENAS o JSON, sem explicação.`;
     const lead = await this.prisma.lead.update({
       where: { id, schoolId },
       data: { status },
+      include: { assignee: { select: { id: true, name: true } } },
     });
     return this.serializeLead(lead);
+  }
+
+  async updateLeadAssignee(
+    id: string,
+    assigneeId: string | null,
+    schoolId: string,
+  ) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, schoolId },
+    });
+    if (!lead) throw new BadRequestException('Lead não encontrado.');
+
+    if (assigneeId !== null) {
+      const user = await this.prisma.user.findFirst({
+        where: { id: assigneeId, schoolId, isActive: true },
+        select: { id: true },
+      });
+      if (!user) {
+        throw new BadRequestException(
+          'Responsável não encontrado nesta escola.',
+        );
+      }
+    }
+
+    const updated = await this.prisma.lead.update({
+      where: { id: lead.id },
+      data: { assigneeId },
+      include: { assignee: { select: { id: true, name: true } } },
+    });
+    return this.serializeLead(updated);
+  }
+
+  async registerLeadContact(
+    id: string,
+    schoolId: string,
+    input: {
+      channel: string;
+      outcome: string;
+      note?: string;
+      nextContactAt?: string | null;
+    },
+    actingUser: { id: string; name?: string },
+  ) {
+    this.validateContactTarget(null, id);
+    const channel = input.channel?.trim();
+    const outcome = input.outcome?.trim();
+    if (!channel) throw new BadRequestException('Informe o canal do contato.');
+    if (!outcome)
+      throw new BadRequestException('Informe o resultado do contato.');
+    const allowedChannels = [
+      'WHATSAPP',
+      'LIGACAO',
+      'EMAIL',
+      'PRESENCIAL',
+      'OUTRO',
+    ];
+    const allowedOutcomes = [
+      'RESPONDEU',
+      'NAO_ATENDEU',
+      'AGENDADO',
+      'SEM_INTERESSE',
+      'CAIXA_POSTAL',
+      'NUMERO_INVALIDO',
+    ];
+    if (!allowedChannels.includes(channel))
+      throw new BadRequestException('Canal de contato inválido.');
+    if (!allowedOutcomes.includes(outcome))
+      throw new BadRequestException('Resultado de contato inválido.');
+
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, schoolId },
+    });
+    if (!lead) throw new BadRequestException('Lead não encontrado.');
+    const terminal = ['SEM_INTERESSE', 'NUMERO_INVALIDO'].includes(outcome);
+    const nextContactAt = terminal
+      ? null
+      : this.parseOptionalContactDate(input.nextContactAt);
+    const contactedAt = new Date();
+    const stages = terminal
+      ? await this.verticalService.getStagesForWorkspace(schoolId)
+      : [];
+    const lostStatus = stages.find((stage) => stage.key === 'PERDIDO')?.key;
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.contactAttempt.create({
+        data: {
+          schoolId,
+          leadId: lead.id,
+          channel,
+          outcome,
+          note: input.note?.trim() || '',
+          nextContactAt,
+          contactedById: actingUser.id,
+          contactedByName: actingUser.name ?? '',
+        },
+      }),
+      this.prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          lastContactAt: contactedAt,
+          nextContactAt,
+          ...(terminal && lostStatus ? { status: lostStatus } : {}),
+        },
+        include: { assignee: { select: { id: true, name: true } } },
+      }),
+      this.prisma.postSaleTask.updateMany({
+        where: {
+          schoolId,
+          leadId: lead.id,
+          status: 'ABERTA',
+          origin: 'lead',
+        },
+        data: {
+          status: 'CONCLUIDA',
+          column: 'concluido',
+          resolvedAt: contactedAt,
+          completedById: actingUser.id,
+        },
+      }),
+    ]);
+
+    return this.serializeLead(updated);
   }
 
   // ── Métricas ─────────────────────────────────────────────────────────────────
@@ -1583,6 +1809,14 @@ Retorne APENAS o JSON, sem explicação.`;
 
   // ── Serialização ─────────────────────────────────────────────────────────────
 
+  private safeJsonObject(value: string): Record<string, unknown> {
+    try {
+      return JSON.parse(value || '{}');
+    } catch {
+      return {};
+    }
+  }
+
   private serializeLead(lead: any) {
     let data: Record<string, string> = {};
     let conversation: { role: string; content: string }[] = [];
@@ -1604,8 +1838,36 @@ Retorne APENAS o JSON, sem explicação.`;
       conversation,
       qualified: lead.qualified,
       status: lead.status,
+      assigneeId: lead.assigneeId ?? null,
+      assignee: lead.assignee
+        ? { id: lead.assignee.id, name: lead.assignee.name }
+        : null,
+      nextContactAt: lead.nextContactAt ?? null,
+      lastContactAt: lead.lastContactAt ?? null,
       createdAt: lead.createdAt,
       updatedAt: lead.updatedAt,
     };
+  }
+
+  private validateContactTarget(
+    studentKey: string | null,
+    leadId: string | null,
+  ) {
+    if (Boolean(studentKey) === Boolean(leadId)) {
+      throw new BadRequestException(
+        'Informe exatamente um aluno ou lead para registrar o contato.',
+      );
+    }
+  }
+
+  private parseOptionalContactDate(value?: string | null) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(
+        'Informe uma data de próximo contato válida.',
+      );
+    }
+    return date;
   }
 }

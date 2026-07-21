@@ -12,6 +12,7 @@
         <NIcon :component="DownloadOutline" size="15" />
         Exportar CSV
       </button>
+      <button class="btn-csv" @click="createOpen = true">+ Novo lead manual</button>
     </div>
 
     <!-- Banner de follow-up -->
@@ -21,7 +22,41 @@
     </div>
 
     <!-- Modal de detalhe -->
-    <LeadDetailModal :lead="detailLead" @close="detailLead = null" />
+    <LeadDetailModal
+      :lead="detailLead"
+      @close="detailLead = null"
+      @updated="detailLead = $event"
+    />
+
+    <div v-if="createOpen" class="lead-create-backdrop" @click.self="createOpen = false">
+      <form class="lead-create-modal" @submit.prevent="createManualLead">
+        <header>
+          <div>
+            <strong>Novo lead manual</strong>
+            <span>Cadastre sem depender da conversa com IA.</span>
+          </div>
+          <button type="button" @click="createOpen = false">✕</button>
+        </header>
+        <label>
+          <span>Nome</span>
+          <input v-model="createName" required />
+        </label>
+        <label>
+          <span>Telefone</span>
+          <input v-model="createPhone" type="tel" />
+        </label>
+        <label v-for="field in ws.fields" :key="field.name">
+          <span>{{ field.label }}</span>
+          <select v-if="field.type === 'select'" v-model="createData[field.name]">
+            <option value="">Selecione</option>
+            <option v-for="option in field.options || []" :key="option" :value="option">{{ option }}</option>
+          </select>
+          <input v-else v-model="createData[field.name]" />
+        </label>
+        <p v-if="createError">{{ createError }}</p>
+        <button type="submit" :disabled="createBusy">{{ createBusy ? 'Salvando...' : 'Criar lead' }}</button>
+      </form>
+    </div>
 
     <!-- Board -->
     <div class="kanban-board">
@@ -65,6 +100,12 @@ import type { Lead } from '../types'
 const store      = useSimulatorStore()
 const ws         = useWorkspaceStore()
 const detailLead = ref<Lead | null>(null)
+const createOpen = ref(false)
+const createBusy = ref(false)
+const createName = ref('')
+const createPhone = ref('')
+const createData = ref<Record<string, string>>({})
+const createError = ref('')
 
 // Colunas dinâmicas vindas do vertical
 const columns = computed(() => ws.stages.map(s => ({ status: s.key, label: s.label, color: s.color })))
@@ -105,7 +146,30 @@ function exportCsv() {
   URL.revokeObjectURL(url)
 }
 
-onMounted(() => store.fetchLeads())
+async function createManualLead() {
+  if (createBusy.value) return
+  createBusy.value = true
+  createError.value = ''
+  try {
+    const lead = await store.createLead({
+      name: createName.value,
+      phone: createPhone.value || null,
+      data: createData.value,
+      status: ws.firstStage,
+    })
+    createOpen.value = false
+    createName.value = ''
+    createPhone.value = ''
+    createData.value = {}
+    detailLead.value = lead
+  } catch {
+    createError.value = 'Não foi possível criar o lead.'
+  } finally {
+    createBusy.value = false
+  }
+}
+
+onMounted(() => Promise.all([store.fetchLeads(), ws.load()]))
 </script>
 
 <style scoped>
@@ -115,6 +179,71 @@ onMounted(() => store.fetchLeads())
   flex-direction: column;
   background: var(--app-bg);
   overflow: hidden;
+}
+
+.lead-create-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 20px;
+}
+
+.lead-create-modal {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: min(680px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 20px;
+}
+
+.lead-create-modal header,
+.lead-create-modal > button,
+.lead-create-modal > p {
+  grid-column: 1 / -1;
+}
+
+.lead-create-modal header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.lead-create-modal header div,
+.lead-create-modal label {
+  display: grid;
+  gap: 5px;
+}
+
+.lead-create-modal header span,
+.lead-create-modal label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.lead-create-modal input,
+.lead-create-modal select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 10px;
+}
+
+.lead-create-modal > button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--brand);
+  color: white;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 11px;
 }
 
 .kanban-subheader {
