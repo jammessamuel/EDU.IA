@@ -1,0 +1,53 @@
+name: Qualidade
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — testes e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+        working-directory: backend
+      - name: Executar testes com cobertura mínima
+        run: pnpm test:ci
+        working-directory: backend
+      - name: Compilar backend
+        run: pnpm build
+        working-directory: backend
+
+  frontend:
+    name: Frontend — verificação e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - name: Verificar tipos e compilar frontend
+        run: pnpm build
+        working-directory: frontend

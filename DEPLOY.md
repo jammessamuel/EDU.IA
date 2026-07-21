@@ -161,7 +161,9 @@ EDU.IA/
 
    O `backend/vercel.json` agenda a reconciliação todos os dias às 11:00 UTC
    (08:00 em Brasília). Com `CRON_SECRET` definido, a própria Vercel envia o
-   token Bearer exigido pelo endpoint `/internal/automation/run`.
+   token Bearer exigido pelo endpoint `/internal/automation/run`. No plano
+   Hobby, a execução pode ocorrer dentro de uma janela flexível de até uma hora.
+   O resultado fica nos Runtime Logs pelos eventos `daily_continuity.*`.
 
 6. Anote a URL gerada (ex: `https://edu-ia-backend.vercel.app`)
 
@@ -176,8 +178,8 @@ EDU.IA/
    - **Build Command:** `npm run vercel-build`  ← (`vite build`; NÃO use `npm run build`)
    - **Output Directory:** `dist`
 
-   > O script `build` roda `vue-tsc` (type-check) e hoje falha por erros de tipo
-   > pré-existentes em SettingsView/WhatsAppView. O `vercel-build` (`vite build`)
+   > O script `build` roda `vue-tsc` (type-check) antes do Vite. O
+   > `vercel-build` (`vite build`)
    > não faz type-check, então o deploy passa. O `frontend/vercel.json` já fixa isso.
 
 3. Em **Environment Variables**:

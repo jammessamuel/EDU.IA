@@ -19,6 +19,7 @@
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:ci": "jest --runInBand --coverage",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -101,6 +102,20 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
+    "coverageThreshold": {
+      "./src/post-sale/automation-cron.controller.ts": {
+        "branches": 65,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      },
+      "./src/post-sale/task-automation.service.ts": {
+        "branches": 65,
+        "functions": 100,
+        "lines": 95,
+        "statements": 90
+      }
+    },
     "testEnvironment": "node"
   }
 }

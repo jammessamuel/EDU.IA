@@ -97,6 +97,16 @@ A rotina:
 - eleva para `Urgente` tarefas vencidas há mais de 48 horas;
 - sincroniza as tarefas automáticas usando somente matrículas reais confirmadas.
 
+Cada execução registra eventos estruturados `daily_continuity.started`,
+`daily_continuity.completed` ou `daily_continuity.failed` nos Runtime Logs da
+Vercel. O evento de conclusão informa escolas processadas, casos reparados,
+tarefas criadas e tarefas escaladas, sem registrar o segredo do cron.
+
+Os testes automatizados cobrem a autenticação do endpoint, a reconciliação sem
+duplicação, a distribuição para um responsável ativo, o escalonamento após 48
+horas, as regras automáticas de leads/alunos e o handoff humano da matrícula.
+Eles rodam em cada push e pull request pelo workflow `Qualidade`.
+
 Dados de demonstração ficam desativados por padrão e só aparecem quando o usuário liga explicitamente o modo demo. As consultas reais não possuem limite fixo de 12 alunos; o perfil de um aluno histórico é buscado diretamente pelo identificador e pela escola.
 
 ## Estados operacionais
